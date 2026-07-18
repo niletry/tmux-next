@@ -25,6 +25,14 @@ export class ControlClient {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
+      // Same reason as in run.ts: without a UTF-8 locale tmux sanitises
+      // non-ASCII bytes, which would mangle CJK in %output and send-keys.
+      // launchd gives the service an empty environment.
+      env: {
+        ...process.env,
+        LANG: process.env.LANG ?? "en_US.UTF-8",
+        LC_CTYPE: process.env.LC_CTYPE ?? "en_US.UTF-8",
+      },
     });
 
     const client = new ControlClient(proc);

@@ -65,3 +65,38 @@ test("sorts sessions waiting on the user first", async () => {
   const lastIdle = sessions.map((s) => s.idle).lastIndexOf(true);
   if (firstBusy !== -1 && lastIdle !== -1) expect(lastIdle).toBeLessThan(firstBusy);
 });
+
+test("excludes this app's own web sessions from the list", async () => {
+  const { createWebSession, destroyWebSession } = await import("./session-manager");
+  const target = (await listSessions())[0]!.name;
+  const web = await createWebSession(target);
+  try {
+    const names = (await listSessions()).map((s) => s.name);
+    expect(names).not.toContain(web);
+  } finally {
+    await destroyWebSession(web);
+  }
+});
+
+test("parses every field in a bare environment, as under launchd", async () => {
+  // Regression: tmux rewrites a tab in a format string to `_` when no locale
+  // is set, which silently collapsed every field into the session name. The
+  // service only hits this once launchd starts it with an empty environment.
+  const script =
+    `const {listSessions} = await import("${import.meta.dir}/session-list.ts");` +
+    `const s = (await listSessions())[0];` +
+    `process.stdout.write(JSON.stringify({name: s.name, width: s.windowWidth}));`;
+
+  const proc = Bun.spawn([process.execPath, "-e", script], {
+    env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const out = await new Response(proc.stdout).text();
+  await proc.exited;
+
+  const parsed = JSON.parse(out);
+  expect(parsed.name).not.toContain("_");
+  expect(typeof parsed.width).toBe("number");
+  expect(parsed.width).toBeGreaterThan(0);
+});

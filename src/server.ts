@@ -90,7 +90,9 @@ export function startServer(port: number): { stop(): void; port: number } {
     },
   });
 
-  // The explicit close never runs if we are SIGKILLed, so sweep periodically.
+  // Collect anything a previous run left behind, then keep sweeping: the
+  // explicit close never runs if we are SIGKILLed.
+  void reapOrphanWebSessions();
   const reaper = setInterval(() => {
     void reapOrphanWebSessions();
   }, REAP_INTERVAL_MS);

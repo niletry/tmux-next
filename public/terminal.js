@@ -6,7 +6,6 @@ const COLUMNS = 80;
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
-const hiddenInput = document.getElementById("hidden-input");
 const termEl = document.getElementById("term");
 document.getElementById("title").textContent = target || "";
 
@@ -99,26 +98,21 @@ term.onData((data) => sendBytes(encoder.encode(data)));
 
 // --- soft keyboard ---------------------------------------------------------
 
-// Tapping the terminal raises the keyboard through an offscreen input, since
-// xterm's own textarea is unreliable on iOS.
-termEl.addEventListener("touchend", () => hiddenInput.focus());
+/**
+ * xterm's own textarea is the single input path.
+ *
+ * An earlier version routed typing through a separate offscreen input to raise
+ * the iOS keyboard. That broke IME input badly: the `input` event fires on
+ * every composition update, so typing pinyin sent "s", "sh", "shu", "shu r"…
+ * as separate keystrokes before the composed characters. xterm's textarea
+ * already handles composition and emits only the final text through onData,
+ * and focusing it inside a touch handler raises the keyboard just as well.
+ */
+function focusTerminal() {
+  term.focus();
+}
 
-hiddenInput.addEventListener("input", () => {
-  if (hiddenInput.value) {
-    sendBytes(encoder.encode(hiddenInput.value));
-    hiddenInput.value = "";
-  }
-});
-
-hiddenInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    sendBytes(new Uint8Array([0x0d]));
-    e.preventDefault();
-  } else if (e.key === "Backspace") {
-    sendBytes(new Uint8Array([0x7f]));
-    e.preventDefault();
-  }
-});
+termEl.addEventListener("touchend", focusTerminal);
 
 // --- key toolbar -----------------------------------------------------------
 
@@ -128,7 +122,7 @@ const ctrlBtn = document.getElementById("ctrl");
 ctrlBtn.addEventListener("click", () => {
   ctrlArmed = !ctrlArmed;
   ctrlBtn.classList.toggle("sticky-on", ctrlArmed);
-  hiddenInput.focus();
+  focusTerminal();
 });
 
 function disarmCtrl() {
@@ -150,13 +144,15 @@ function interceptCtrl(e) {
 }
 
 term.attachCustomKeyEventHandler(interceptCtrl);
-hiddenInput.addEventListener("keydown", interceptCtrl);
 
 for (const btn of document.querySelectorAll(".keys button[data-hex]")) {
-  btn.addEventListener("click", () => {
+  // pointerdown, not click: clicking would blur the terminal and drop the
+  // soft keyboard between every toolbar tap.
+  btn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
     const bytes = btn.dataset.hex.split(" ").map((h) => parseInt(h, 16));
     sendBytes(new Uint8Array(bytes));
-    hiddenInput.focus();
+    focusTerminal();
   });
 }
 

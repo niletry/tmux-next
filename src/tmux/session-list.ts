@@ -1,3 +1,6 @@
+import { tmux } from "./run";
+import { WEB_SESSION_PREFIX } from "./session-manager";
+
 export type SessionSummary = {
   name: string;
   windowWidth: number;
@@ -50,22 +53,34 @@ export function extractPreview(screen: string): {
   };
 }
 
-export async function listSessions(): Promise<SessionSummary[]> {
-  const fmt =
-    "#{session_name}\t#{window_width}\t#{window_height}\t#{session_activity}\t#{session_attached}";
-  const listed = await Bun.$`tmux list-sessions -F ${fmt}`.quiet().nothrow();
-  if (listed.exitCode !== 0) return [];
+/**
+ * A separator of `|` is safe because every field before the name is numeric,
+ * and the name comes last so it keeps any `|` of its own. A control character
+ * such as tab cannot be used: tmux rewrites it to `_` unless a locale is set.
+ */
+const FIELD_SEP = "|";
+const LIST_FORMAT =
+  "#{window_width}|#{window_height}|#{session_activity}|#{session_attached}|#{session_name}";
 
-  const rows = listed.stdout.toString().trim().split("\n").filter(Boolean);
+export async function listSessions(): Promise<SessionSummary[]> {
+  const listed = await tmux(["list-sessions", "-F", LIST_FORMAT]);
+  if (!listed.ok) return [];
+
+  const rows = listed.stdout.trim().split("\n").filter(Boolean);
   const summaries = await Promise.all(
-    rows.map(async (row): Promise<SessionSummary> => {
-      const [name, width, height, activity, attached] = row.split("\t") as [
-        string, string, string, string, string,
-      ];
+    rows.map(async (row): Promise<SessionSummary | null> => {
+      const parts = row.split(FIELD_SEP);
+      if (parts.length < 5) return null;
+      const [width, height, activity, attached] = parts as [string, string, string, string];
+      const name = parts.slice(4).join(FIELD_SEP);
+
+      // Web sessions are this app's own attach points, not something to show.
+      if (name.startsWith(WEB_SESSION_PREFIX)) return null;
+
       // Visible screen only: -S pulls in stale wrapped scrollback (verified
       // against a session that had been squeezed to 2 columns).
-      const captured = await Bun.$`tmux capture-pane -p -t ${name}`.quiet().nothrow();
-      const screen = captured.exitCode === 0 ? captured.stdout.toString() : "";
+      const captured = await tmux(["capture-pane", "-p", "-t", name]);
+      const screen = captured.ok ? captured.stdout : "";
       return {
         name,
         windowWidth: Number(width),
@@ -78,7 +93,9 @@ export async function listSessions(): Promise<SessionSummary[]> {
   );
 
   // Sessions waiting on the user first, then most recently active.
-  return summaries.sort(
-    (a, b) => Number(b.idle) - Number(a.idle) || b.lastActivityEpoch - a.lastActivityEpoch,
-  );
+  return summaries
+    .filter((s): s is SessionSummary => s !== null)
+    .sort(
+      (a, b) => Number(b.idle) - Number(a.idle) || b.lastActivityEpoch - a.lastActivityEpoch,
+    );
 }

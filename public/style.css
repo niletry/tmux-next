@@ -140,10 +140,3 @@ header .count {
 .keys button:active { background: #39404e; }
 .keys button.sticky-on { background: var(--accent); color: #14161a; }
 
-#hidden-input {
-  position: absolute;
-  left: -9999px;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}

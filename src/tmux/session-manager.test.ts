@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { tmux } from "./run";
 import {
   WEB_SESSION_PREFIX,
   createWebSession,
@@ -52,12 +53,44 @@ test("destroy removes the session", async () => {
   expect(await exists(name)).toBe(false);
 });
 
-test("reap removes unattached web sessions and leaves other sessions alone", async () => {
-  const name = await createWebSession(BASE);
+test("reap removes web sessions this process does not own", async () => {
+  // Simulates a leftover from a previous server run: it carries the web prefix
+  // but was never handed out by createWebSession.
+  const stray = WEB_SESSION_PREFIX + "stray" + Math.random().toString(36).slice(2, 6);
+  await tmux(["new-session", "-d", "-t", BASE, "-s", stray]);
+  expect(await exists(stray)).toBe(true);
+
   const reaped = await reapOrphanWebSessions();
-  expect(reaped).toContain(name);
-  expect(await exists(name)).toBe(false);
+  expect(reaped).toContain(stray);
+  expect(await exists(stray)).toBe(false);
   expect(await exists(BASE)).toBe(true);
+});
+
+test("reap leaves a web session that is currently in use", async () => {
+  const inUse = await createWebSession(BASE);
+  try {
+    const reaped = await reapOrphanWebSessions();
+    expect(reaped).not.toContain(inUse);
+    expect(await exists(inUse)).toBe(true);
+  } finally {
+    await destroyWebSession(inUse);
+  }
+});
+
+test("reap collects a session whose control client leaked and left it attached", async () => {
+  const stray = WEB_SESSION_PREFIX + "leak" + Math.random().toString(36).slice(2, 6);
+  await tmux(["new-session", "-d", "-t", BASE, "-s", stray]);
+  // A leaked `tmux -C attach` holds the session attached, which is exactly the
+  // case an "unattached only" reaper could never collect.
+  const leaked = Bun.spawn(["tmux", "-C", "attach", "-t", stray], {
+    stdin: "pipe", stdout: "pipe", stderr: "pipe",
+  });
+  await Bun.sleep(400);
+
+  const reaped = await reapOrphanWebSessions();
+  expect(reaped).toContain(stray);
+  expect(await exists(stray)).toBe(false);
+  leaked.kill();
 });
 
 test("createWebSession rejects for a target that does not exist", async () => {

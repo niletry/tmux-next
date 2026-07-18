@@ -98,3 +98,43 @@ test("coalesces bursts of output into fewer callbacks than %output events", asyn
   expect(callbacks).toBeLessThan(60);
   await session.close();
 });
+
+test("round-trips CJK input exactly once", async () => {
+  let seen = "";
+  const session = await PaneSession.open({
+    target: BASE, rows: 24, onData: (c) => { seen += dec.decode(c); },
+  });
+  await Bun.sleep(400);
+  seen = "";
+
+  // The IME sends one composed string; it must arrive intact and not repeated.
+  await session.sendKeys(new TextEncoder().encode("echo 输入回显测试\r"));
+  await Bun.sleep(900);
+
+  const occurrences = seen.split("输入回显测试").length - 1;
+  expect(occurrences).toBeGreaterThan(0);
+  expect(seen).not.toContain("???");
+  await session.close();
+});
+
+test("delivers CJK output intact in a bare environment, as under launchd", async () => {
+  const script =
+    `const {PaneSession} = await import("${import.meta.dir}/pane-session.ts");` +
+    `let seen = "";` +
+    `const s = await PaneSession.open({target:"${BASE}",rows:24,` +
+    `onData:(c)=>{seen += new TextDecoder().decode(c);}});` +
+    `await Bun.sleep(400); seen = "";` +
+    `await s.sendKeys(new TextEncoder().encode("echo 中文输出测试\\r"));` +
+    `await Bun.sleep(1200); await s.close();` +
+    `process.stdout.write(JSON.stringify(seen.includes("中文输出测试")));`;
+
+  const proc = Bun.spawn([process.execPath, "-e", script], {
+    env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const out = await new Response(proc.stdout).text();
+  await proc.exited;
+
+  expect(JSON.parse(out)).toBe(true);
+});

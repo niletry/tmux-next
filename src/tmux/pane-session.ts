@@ -1,4 +1,5 @@
 import { ControlClient } from "./control-client";
+import { tmux } from "./run";
 import { createWebSession, destroyWebSession } from "./session-manager";
 
 export const TERMINAL_COLUMNS = 80;
@@ -145,7 +146,7 @@ export class PaneSession {
    */
   async #restoreWindowSize(): Promise<void> {
     if (!this.#windowId) return;
-    await Bun.$`tmux resize-window -A -t ${this.#windowId}`.quiet().nothrow();
-    await Bun.$`tmux set-window-option -t ${this.#windowId} -u window-size`.quiet().nothrow();
+    await tmux(["resize-window", "-A", "-t", this.#windowId]);
+    await tmux(["set-window-option", "-t", this.#windowId, "-u", "window-size"]);
   }
 }
