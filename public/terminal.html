@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>tmux</title>
+  <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="term-page">
+  <div class="term-bar">
+    <a href="./">‹ 会话</a>
+    <span class="title" id="title"></span>
+    <span class="status" id="status">连接中…</span>
+  </div>
+
+  <div id="term"></div>
+
+  <input id="hidden-input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
+
+  <div class="keys">
+    <button data-hex="1b">Esc</button>
+    <button data-hex="09">Tab</button>
+    <button data-hex="1b 5b 5a">⇧Tab</button>
+    <button id="ctrl">Ctrl</button>
+    <button data-hex="1b 5b 41">↑</button>
+    <button data-hex="1b 5b 42">↓</button>
+    <button data-hex="1b 5b 44">←</button>
+    <button data-hex="1b 5b 43">→</button>
+    <button data-hex="03">^C</button>
+    <button data-hex="0d">⏎</button>
+  </div>
+
+  <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="node_modules/@xterm/addon-webgl/lib/addon-webgl.js"></script>
+  <script src="terminal.js"></script>
+</body>
+</html>

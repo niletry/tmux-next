@@ -22,6 +22,7 @@ export class PaneSession {
   #client: ControlClient;
   #webSession: string;
   #paneId: string;
+  #windowId = "";
   #onData: (chunk: Uint8Array) => void;
   #frame: Uint8Array[] = [];
   #timer: ReturnType<typeof setTimeout> | null = null;
@@ -59,6 +60,9 @@ export class PaneSession {
       )[0]!;
 
       const session = new PaneSession(client, webSession, paneId, opts.onData);
+      session.#windowId = (
+        await client.command(`display-message -p -t ${webSession} '#{window_id}'`)
+      )[0]!;
 
       // Output produced before the capture command runs is already reflected in
       // the captured screen, so buffer and drop it; apply only what follows.
@@ -126,5 +130,22 @@ export class PaneSession {
     if (this.#timer) clearTimeout(this.#timer);
     this.#client.close();
     await destroyWebSession(this.#webSession);
+    await this.#restoreWindowSize();
+  }
+
+  /**
+   * Hands the window back to whatever clients remain.
+   *
+   * `window-size latest` only recomputes when a client attaches or resizes, so
+   * without this the window would sit at the phone's 80 columns — squeezing a
+   * desktop client that stayed attached the whole time.
+   *
+   * `resize-window -A` pins window-size to manual as a side effect, so the
+   * option is unset immediately afterwards to restore automatic sizing.
+   */
+  async #restoreWindowSize(): Promise<void> {
+    if (!this.#windowId) return;
+    await Bun.$`tmux resize-window -A -t ${this.#windowId}`.quiet().nothrow();
+    await Bun.$`tmux set-window-option -t ${this.#windowId} -u window-size`.quiet().nothrow();
   }
 }

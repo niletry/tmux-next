@@ -5,5 +5,9 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "test": "bun test"
+  },
+  "dependencies": {
+    "@xterm/addon-webgl": "0.18.0",
+    "@xterm/xterm": "5.5.0"
   }
 }
