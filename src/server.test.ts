@@ -1,0 +1,107 @@
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { startServer } from "./server";
+
+const BASE = "srv-test-" + Math.random().toString(36).slice(2, 8);
+let server: { stop(): void; port: number };
+
+const webSessions = async () =>
+  (await Bun.$`tmux list-sessions -F '#{session_name}'`.quiet().nothrow())
+    .stdout.toString().split("\n").filter((l) => l.startsWith("web-"));
+
+const openSocket = async (): Promise<WebSocket> => {
+  const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+  ws.binaryType = "arraybuffer";
+  await new Promise<void>((resolve) => {
+    ws.onopen = () => resolve();
+  });
+  return ws;
+};
+
+beforeAll(async () => {
+  await Bun.$`tmux new-session -d -s ${BASE} -x 100 -y 30`.quiet();
+  server = startServer(0);
+});
+
+afterAll(async () => {
+  server.stop();
+  await Bun.$`tmux kill-session -t ${BASE}`.quiet().nothrow();
+});
+
+test("serves the session list as JSON", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions`);
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { name: string }[];
+  expect(body.some((s) => s.name === BASE)).toBe(true);
+});
+
+test("serves the list page HTML at the root", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("text/html");
+});
+
+test("returns 404 for an unknown path", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/nope.txt`);
+  expect(res.status).toBe(404);
+});
+
+test("streams terminal data over the websocket after open", async () => {
+  const ws = await openSocket();
+  let received = "";
+  const dec = new TextDecoder();
+  ws.onmessage = (e) => {
+    if (e.data instanceof ArrayBuffer) received += dec.decode(new Uint8Array(e.data));
+  };
+
+  ws.send(JSON.stringify({ t: "open", target: BASE, rows: 24 }));
+  await Bun.sleep(1200);
+
+  expect(received.length).toBeGreaterThan(0);
+  ws.close();
+  await Bun.sleep(400);
+});
+
+test("reports an error for a session that does not exist", async () => {
+  const ws = await openSocket();
+  const message = await new Promise<string>((resolve) => {
+    ws.onmessage = (e) => {
+      if (typeof e.data === "string") resolve(e.data);
+    };
+    ws.send(JSON.stringify({ t: "open", target: "no-such-session-xyz", rows: 24 }));
+  });
+  expect(JSON.parse(message).t).toBe("error");
+  ws.close();
+  await Bun.sleep(200);
+});
+
+test("closing the websocket leaves no orphan web session", async () => {
+  const ws = await openSocket();
+  ws.send(JSON.stringify({ t: "open", target: BASE, rows: 24 }));
+  await Bun.sleep(900);
+  expect((await webSessions()).length).toBe(1);
+
+  ws.close();
+  await Bun.sleep(900);
+  expect(await webSessions()).toEqual([]);
+});
+
+test("keys sent over the websocket reach the pane", async () => {
+  const ws = await openSocket();
+  let received = "";
+  const dec = new TextDecoder();
+  ws.onmessage = (e) => {
+    if (e.data instanceof ArrayBuffer) received += dec.decode(new Uint8Array(e.data));
+  };
+  ws.send(JSON.stringify({ t: "open", target: BASE, rows: 24 }));
+  await Bun.sleep(900);
+  received = "";
+
+  const bytes = new TextEncoder().encode("echo WS_TYPED_3c8b\r");
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(" ");
+  ws.send(JSON.stringify({ t: "keys", hex }));
+  await Bun.sleep(900);
+
+  expect(received).toContain("WS_TYPED_3c8b");
+  ws.close();
+  await Bun.sleep(400);
+});
