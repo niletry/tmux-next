@@ -65,6 +65,8 @@ function connect() {
     statusEl.textContent = "已连接";
     reconnectDelay = 500;
     socket.send(JSON.stringify({ t: "open", target, rows: fit() }));
+    // A reconnect rebuilds the screen; keep the keyboard up if it was up.
+    restoreFocusSoon();
   };
 
   socket.onmessage = (event) => {
@@ -112,17 +114,72 @@ function focusTerminal() {
   term.focus();
 }
 
-termEl.addEventListener("touchend", focusTerminal);
+/**
+ * Whether the user wants the soft keyboard up.
+ *
+ * iOS hides the keyboard the moment the textarea loses focus, and a tap on any
+ * button or bar steals it. Rather than chase each case, the page tracks intent
+ * and restores focus whenever something took it away — except when the user
+ * asked for it to go away.
+ */
+const kbdBtn = document.getElementById("kbd");
+let keyboardWanted = false;
+
+function openKeyboard() {
+  keyboardWanted = true;
+  focusTerminal();
+  kbdBtn.classList.add("sticky-on");
+}
+
+function closeKeyboard() {
+  keyboardWanted = false;
+  term.blur();
+  kbdBtn.classList.remove("sticky-on");
+}
+
+termEl.addEventListener("touchend", openKeyboard);
+termEl.addEventListener("mousedown", openKeyboard);
+
+// Restoring focus inside the blur handler itself is ignored by Safari, so it
+// has to be deferred to the next task.
+function restoreFocusSoon() {
+  if (!keyboardWanted) return;
+  setTimeout(() => {
+    if (keyboardWanted) focusTerminal();
+  }, 0);
+}
+
+// Any tap on the page chrome must not count as leaving the terminal.
+for (const chrome of document.querySelectorAll(".keys, .term-bar")) {
+  chrome.addEventListener("pointerdown", (e) => {
+    // The back link is a real navigation; let it through.
+    if (e.target.closest("a")) return;
+    e.preventDefault();
+  });
+}
+
+if (term.textarea) {
+  term.textarea.addEventListener("blur", restoreFocusSoon);
+}
 
 // --- key toolbar -----------------------------------------------------------
 
 let ctrlArmed = false;
 const ctrlBtn = document.getElementById("ctrl");
 
-ctrlBtn.addEventListener("click", () => {
+// pointerdown throughout the toolbar: the container cancels the default
+// action to protect focus, which would also swallow a later click event.
+ctrlBtn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
   ctrlArmed = !ctrlArmed;
   ctrlBtn.classList.toggle("sticky-on", ctrlArmed);
-  focusTerminal();
+  if (keyboardWanted) focusTerminal();
+});
+
+kbdBtn.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (keyboardWanted) closeKeyboard();
+  else openKeyboard();
 });
 
 function disarmCtrl() {
@@ -152,7 +209,7 @@ for (const btn of document.querySelectorAll(".keys button[data-hex]")) {
     e.preventDefault();
     const bytes = btn.dataset.hex.split(" ").map((h) => parseInt(h, 16));
     sendBytes(new Uint8Array(bytes));
-    focusTerminal();
+    if (keyboardWanted) focusTerminal();
   });
 }
 
