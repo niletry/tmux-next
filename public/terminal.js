@@ -96,7 +96,42 @@ function sendBytes(bytes) {
   socket.send(JSON.stringify({ t: "keys", hex }));
 }
 
-term.onData((data) => sendBytes(encoder.encode(data)));
+// Records what xterm just emitted so the IME fallback below can tell whether a
+// given `input` event was already handled. xterm dispatches onData
+// synchronously from its own input handler, which runs before ours.
+let lastSent = { data: "", at: -Infinity };
+
+function send(data) {
+  lastSent = { data, at: performance.now() };
+  sendBytes(encoder.encode(data));
+}
+
+term.onData(send);
+
+/**
+ * Recovers IME text that xterm 5.5.0 drops on the floor.
+ *
+ * Its `_inputEvent` guard reads `(!e.composed || !this._keyDownSeen)`, and
+ * `composed` is always true for input events, so it degrades to
+ * `!_keyDownSeen`: any insertion preceded by a keydown is discarded. Chinese
+ * punctuation lands exactly there — pressing `,` under a pinyin IME fires a
+ * keydown (keyCode 229) that produces no data, then commits `，` through an
+ * input event that the guard then throws away. Han characters survive because
+ * they arrive via compositionend, and ASCII survives because keydown emits it
+ * directly; only the punctuation vanishes.
+ *
+ * Anything xterm did handle already reached `send` synchronously, so matching
+ * against `lastSent` keeps this from double-sending.
+ */
+if (term.textarea) {
+  term.textarea.addEventListener("input", (e) => {
+    if (e.inputType !== "insertText" || !e.data || e.isComposing) return;
+    if (e.data === lastSent.data && performance.now() - lastSent.at < 30) return;
+    send(e.data);
+    // xterm normally drains the textarea itself; it never saw this one.
+    term.textarea.value = "";
+  });
+}
 
 // --- soft keyboard ---------------------------------------------------------
 
