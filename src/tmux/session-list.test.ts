@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { tmux } from "./run";
-import { extractPreview, listSessions } from "./session-list";
+import { extractPreview, listSessions, rankDirectories, sessionNames } from "./session-list";
 
 // Taken verbatim from a real Claude Code session on this machine.
 const CLAUDE_SCREEN = [
@@ -165,5 +165,31 @@ test("killSession refuses a glob pattern", async () => {
     expect((await tmux(["has-session", "-t", `=${full}`])).ok).toBe(true);
   } finally {
     await tmux(["kill-session", "-t", `=${full}`]);
+  }
+});
+
+test("directories are ranked by how many sessions use them", () => {
+  expect(rankDirectories(["/a", "/b", "/a", "/c", "/a", "/b"])).toEqual(["/a", "/b", "/c"]);
+});
+
+test("ranking drops duplicates", () => {
+  expect(rankDirectories(["/a", "/a"])).toEqual(["/a"]);
+});
+
+test("ties are broken alphabetically so the order is stable", () => {
+  expect(rankDirectories(["/b", "/a"])).toEqual(["/a", "/b"]);
+});
+
+test("blank paths are ignored", () => {
+  expect(rankDirectories(["", "/a", "  "])).toEqual(["/a"]);
+});
+
+test("session names include every live session", async () => {
+  const marker = `probe-names-${crypto.randomUUID().slice(0, 8)}`;
+  await tmux(["new-session", "-d", "-s", marker, "sleep 30"]);
+  try {
+    expect(await sessionNames()).toContain(marker);
+  } finally {
+    await tmux(["kill-session", "-t", `=${marker}`]);
   }
 });

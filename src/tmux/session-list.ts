@@ -125,3 +125,44 @@ export async function listSessions(): Promise<SessionSummary[]> {
       (a, b) => Number(b.idle) - Number(a.idle) || b.lastActivityEpoch - a.lastActivityEpoch,
     );
 }
+
+/**
+ * Orders directories by how many sessions sit in them, most used first.
+ *
+ * The create dialog defaults to the first entry, and in practice one project
+ * dominates, so the common case needs no input at all. Ties fall back to
+ * alphabetical order to keep the list from reshuffling between polls.
+ */
+export function rankDirectories(paths: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const path of paths) {
+    const trimmed = path.trim();
+    if (trimmed) counts.set(trimmed, (counts.get(trimmed) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort(([aPath, aCount], [bPath, bCount]) => bCount - aCount || aPath.localeCompare(bPath))
+    .map(([path]) => path);
+}
+
+/** Directories of the current sessions, most used first. */
+export async function recentDirectories(): Promise<string[]> {
+  // A dedicated call rather than a field on LIST_FORMAT: a path could contain
+  // the separator, and only the session name is allowed to do that.
+  const listed = await tmux(["list-sessions", "-F", "#{pane_current_path}"]);
+  if (!listed.ok) return [];
+  return rankDirectories(listed.stdout.split("\n"));
+}
+
+/**
+ * Every live session name, web sessions included.
+ *
+ * Used to decide whether a requested name is taken. Cheaper than listSessions,
+ * which runs capture-pane per session, and deliberately unfiltered: colliding
+ * with one of this app's own attach points would fail just as hard.
+ */
+export async function sessionNames(): Promise<string[]> {
+  const listed = await tmux(["list-sessions", "-F", "#{session_name}"]);
+  if (!listed.ok) return [];
+  return listed.stdout.split("\n").filter(Boolean);
+}
