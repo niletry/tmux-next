@@ -215,7 +215,18 @@ for (const btn of document.querySelectorAll(".keys button[data-hex]")) {
 
 // --- viewport --------------------------------------------------------------
 
+/** Pins the layout to the visual viewport so the keyboard actually shrinks us. */
+function syncAppHeight() {
+  const vv = window.visualViewport;
+  const height = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty("--app-height", `${height}px`);
+  // iOS also scrolls the layout viewport under the keyboard; undo that so the
+  // bar and key row stay on screen.
+  if (vv && vv.offsetTop > 0) window.scrollTo(0, 0);
+}
+
 function resizeAndNotify() {
+  syncAppHeight();
   const rows = fit();
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ t: "resize", rows }));
@@ -226,9 +237,11 @@ function resizeAndNotify() {
 // viewport, so a window resize event alone never fires.
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", resizeAndNotify);
+  window.visualViewport.addEventListener("scroll", syncAppHeight);
 }
 window.addEventListener("resize", resizeAndNotify);
 window.addEventListener("orientationchange", () => setTimeout(resizeAndNotify, 300));
 
+syncAppHeight();
 fit();
 connect();

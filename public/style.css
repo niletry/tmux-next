@@ -119,7 +119,9 @@ header .count {
 .term-page {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  /* --app-height tracks the visual viewport so the soft keyboard shrinks us;
+     dvh only accounts for browser chrome, never the keyboard. */
+  height: var(--app-height, 100dvh);
   overflow: hidden;
 }
 
