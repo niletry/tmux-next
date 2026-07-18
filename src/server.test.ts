@@ -105,3 +105,57 @@ test("keys sent over the websocket reach the pane", async () => {
   ws.close();
   await Bun.sleep(400);
 });
+
+test("DELETE removes a session", async () => {
+  const victim = "srv-kill-" + Math.random().toString(36).slice(2, 8);
+  await Bun.$`tmux new-session -d -s ${victim} -x 80 -y 24`.quiet();
+
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions/${victim}`, {
+    method: "DELETE",
+  });
+  expect(res.status).toBe(204);
+
+  const still = await Bun.$`tmux has-session -t ${victim}`.quiet().nothrow();
+  expect(still.exitCode).not.toBe(0);
+});
+
+test("DELETE reports 404 for a session that does not exist", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions/no-such-session-xyz`, {
+    method: "DELETE",
+  });
+  expect(res.status).toBe(404);
+});
+
+test("DELETE refuses an internal web session with 403", async () => {
+  const { createWebSession, destroyWebSession } = await import("./tmux/session-manager");
+  const web = await createWebSession(BASE);
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions/${web}`, {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(403);
+  } finally {
+    await destroyWebSession(web);
+  }
+});
+
+test("a GET on the delete path does not kill anything", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions/${BASE}`);
+  expect(res.status).toBe(404);
+  const still = await Bun.$`tmux has-session -t ${BASE}`.quiet().nothrow();
+  expect(still.exitCode).toBe(0);
+});
+
+test("DELETE handles a session name that needs url encoding", async () => {
+  const victim = "srv kill spaced " + Math.random().toString(36).slice(2, 6);
+  await Bun.$`tmux new-session -d -s ${victim} -x 80 -y 24`.quiet();
+
+  const res = await fetch(
+    `http://127.0.0.1:${server.port}/api/sessions/${encodeURIComponent(victim)}`,
+    { method: "DELETE" },
+  );
+  expect(res.status).toBe(204);
+
+  const still = await Bun.$`tmux has-session -t ${victim}`.quiet().nothrow();
+  expect(still.exitCode).not.toBe(0);
+});

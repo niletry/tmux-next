@@ -42,16 +42,41 @@ header .count {
 }
 
 .card {
-  display: block;
+  position: relative;
   background: var(--card);
   border-radius: 12px;
   margin: 0 12px 12px;
-  padding: 14px;
-  text-decoration: none;
-  color: inherit;
 }
 
-.card:active { background: #252932; }
+.card-main {
+  display: block;
+  padding: 14px;
+  /* Room for the action button so long names never run under it. */
+  padding-right: 52px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 12px;
+}
+
+.card-main:active { background: #252932; }
+
+/* Small and off in the corner: ending a session is destructive, so it should
+   take aim rather than sit under a thumb scrolling the list. */
+.more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.more:active { background: #2a2f3a; color: var(--fg); }
 
 .row { display: flex; align-items: center; gap: 8px; }
 
@@ -140,3 +165,51 @@ header .count {
 .keys button:active { background: #39404e; }
 .keys button.sticky-on { background: var(--accent); color: #14161a; }
 
+
+/* ---- confirmation sheet ---- */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 10;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--card);
+  border-radius: 16px 16px 0 0;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+}
+
+.sheet h2 { margin: 0 0 4px; font-size: 17px; }
+
+.sheet-name {
+  margin: 0 0 10px;
+  font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.sheet-warn { margin: 0 0 12px; color: var(--dim); font-size: 14px; }
+
+.sheet .preview { max-height: 40vh; overflow-y: auto; }
+
+.sheet-actions { display: flex; gap: 10px; margin-top: 18px; }
+
+.btn {
+  flex: 1;
+  height: 46px;
+  border: 0;
+  border-radius: 10px;
+  background: #2a2f3a;
+  color: var(--fg);
+  font-size: 15px;
+}
+
+.btn.danger { background: #b3413c; color: #fff; }
+.btn:disabled { opacity: 0.6; }

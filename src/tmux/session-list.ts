@@ -62,6 +62,32 @@ const FIELD_SEP = "|";
 const LIST_FORMAT =
   "#{window_width}|#{window_height}|#{session_activity}|#{session_attached}|#{session_name}";
 
+export type KillResult = { ok: true } | { ok: false; reason: "missing" | "internal" };
+
+/**
+ * Kills a user session, taking every process inside it with it.
+ *
+ * The only destructive operation in the app. Web sessions are refused: they
+ * are this app's own attach points, and killing one would cut off whoever is
+ * connected through it. They are cleaned up by the reaper instead.
+ *
+ * The name reaches tmux as an argv entry, never a shell string, so a name
+ * containing shell metacharacters is inert.
+ *
+ * The `=` prefix forces an exact match. Without it tmux resolves a target by
+ * prefix and glob, so deleting a session called `web` would happily kill
+ * `webmux` instead — unacceptable for an irreversible operation.
+ */
+export async function killSession(name: string): Promise<KillResult> {
+  if (name.startsWith(WEB_SESSION_PREFIX)) return { ok: false, reason: "internal" };
+
+  const exact = `=${name}`;
+  if (!(await tmux(["has-session", "-t", exact])).ok) return { ok: false, reason: "missing" };
+
+  const killed = await tmux(["kill-session", "-t", exact]);
+  return killed.ok ? { ok: true } : { ok: false, reason: "missing" };
+}
+
 export async function listSessions(): Promise<SessionSummary[]> {
   const listed = await tmux(["list-sessions", "-F", LIST_FORMAT]);
   if (!listed.ok) return [];
@@ -79,7 +105,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
 
       // Visible screen only: -S pulls in stale wrapped scrollback (verified
       // against a session that had been squeezed to 2 columns).
-      const captured = await tmux(["capture-pane", "-p", "-t", name]);
+      const captured = await tmux(["capture-pane", "-p", "-t", `=${name}`]);
       const screen = captured.ok ? captured.stdout : "";
       return {
         name,

@@ -1,5 +1,5 @@
 import { PaneSession } from "./tmux/pane-session";
-import { listSessions } from "./tmux/session-list";
+import { killSession, listSessions } from "./tmux/session-list";
 import { reapOrphanWebSessions } from "./tmux/session-manager";
 
 type WsData = { session: PaneSession | null };
@@ -30,6 +30,17 @@ export function startServer(port: number): { stop(): void; port: number } {
 
       if (url.pathname === "/api/sessions") {
         return Response.json(await listSessions());
+      }
+
+      const kill = url.pathname.match(/^\/api\/sessions\/(.+)$/);
+      if (kill && req.method === "DELETE") {
+        const name = decodeURIComponent(kill[1]!);
+        const result = await killSession(name);
+        if (result.ok) return new Response(null, { status: 204 });
+        return Response.json(
+          { error: result.reason },
+          { status: result.reason === "missing" ? 404 : 403 },
+        );
       }
 
       // xterm.js ships as ES modules; serve them straight from node_modules.

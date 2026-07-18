@@ -16,8 +16,63 @@ function el(tag, className, text) {
   return node;
 }
 
+/**
+ * Ending a session kills everything running inside it, so it sits behind a
+ * deliberate two-step: a small button that is hard to hit by accident, then a
+ * dialog that names the session and shows what is on its screen.
+ */
+async function confirmAndKill(session) {
+  const dialog = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet");
+
+  sheet.append(el("h2", null, "结束会话"));
+  sheet.append(el("p", "sheet-name", session.name));
+  sheet.append(
+    el("p", "sheet-warn", "里面正在运行的进程会被杀掉，未保存的内容会丢失。"),
+  );
+  if (session.preview.length) {
+    sheet.append(el("p", "preview", session.preview.join("\n")));
+  }
+
+  const actions = el("div", "sheet-actions");
+  const cancel = el("button", "btn", "取消");
+  const confirm = el("button", "btn danger", "结束会话");
+  actions.append(cancel, confirm);
+  sheet.append(actions);
+  dialog.append(sheet);
+  document.body.append(dialog);
+
+  const close = () => dialog.remove();
+  cancel.addEventListener("click", close);
+  dialog.addEventListener("click", (e) => {
+    if (e.target === dialog) close();
+  });
+
+  confirm.addEventListener("click", async () => {
+    confirm.disabled = true;
+    confirm.textContent = "正在结束…";
+    try {
+      const res = await fetch(`api/sessions/${encodeURIComponent(session.name)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok && res.status !== 404) {
+        confirm.textContent = "失败: " + res.status;
+        confirm.disabled = false;
+        return;
+      }
+    } catch {
+      confirm.textContent = "失败，请重试";
+      confirm.disabled = false;
+      return;
+    }
+    close();
+    render();
+  });
+}
+
 function card(session) {
-  const link = el("a", "card");
+  const wrapper = el("div", "card");
+  const link = el("a", "card-main");
   link.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
 
   const row = el("div", "row");
@@ -40,7 +95,17 @@ function card(session) {
     link.append(pending);
   }
 
-  return link;
+  const more = el("button", "more", "⋯");
+  more.setAttribute("aria-label", `${session.name} 的操作`);
+  more.addEventListener("click", (e) => {
+    // The button sits on top of the card link; do not follow it.
+    e.preventDefault();
+    e.stopPropagation();
+    confirmAndKill(session);
+  });
+
+  wrapper.append(link, more);
+  return wrapper;
 }
 
 async function render() {

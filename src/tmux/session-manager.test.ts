@@ -24,6 +24,15 @@ afterAll(async () => {
   await reapOrphanWebSessions();
 });
 
+test("names a web session after the process that created it", async () => {
+  const name = await createWebSession(BASE);
+  try {
+    expect(name.startsWith(`${WEB_SESSION_PREFIX}${process.pid}-`)).toBe(true);
+  } finally {
+    await destroyWebSession(name);
+  }
+});
+
 test("creates a grouped session sharing the target's windows", async () => {
   const name = await createWebSession(BASE);
   expect(name.startsWith(WEB_SESSION_PREFIX)).toBe(true);
@@ -53,10 +62,10 @@ test("destroy removes the session", async () => {
   expect(await exists(name)).toBe(false);
 });
 
-test("reap removes web sessions this process does not own", async () => {
-  // Simulates a leftover from a previous server run: it carries the web prefix
-  // but was never handed out by createWebSession.
-  const stray = WEB_SESSION_PREFIX + "stray" + Math.random().toString(36).slice(2, 6);
+test("reap removes a web session whose owning process is gone", async () => {
+  // pid 999999 is not running, so this stands in for a leftover from a
+  // previous server run.
+  const stray = WEB_SESSION_PREFIX + "999999-" + Math.random().toString(36).slice(2, 6);
   await tmux(["new-session", "-d", "-t", BASE, "-s", stray]);
   expect(await exists(stray)).toBe(true);
 
@@ -64,6 +73,19 @@ test("reap removes web sessions this process does not own", async () => {
   expect(reaped).toContain(stray);
   expect(await exists(stray)).toBe(false);
   expect(await exists(BASE)).toBe(true);
+});
+
+test("reap leaves a web session owned by another live process alone", async () => {
+  // A second server instance, or a concurrent test run, must not be disturbed.
+  const other = WEB_SESSION_PREFIX + process.ppid + "-" + Math.random().toString(36).slice(2, 6);
+  await tmux(["new-session", "-d", "-t", BASE, "-s", other]);
+  try {
+    const reaped = await reapOrphanWebSessions();
+    expect(reaped).not.toContain(other);
+    expect(await exists(other)).toBe(true);
+  } finally {
+    await tmux(["kill-session", "-t", other]);
+  }
 });
 
 test("reap leaves a web session that is currently in use", async () => {
@@ -78,7 +100,7 @@ test("reap leaves a web session that is currently in use", async () => {
 });
 
 test("reap collects a session whose control client leaked and left it attached", async () => {
-  const stray = WEB_SESSION_PREFIX + "leak" + Math.random().toString(36).slice(2, 6);
+  const stray = WEB_SESSION_PREFIX + "999998-" + Math.random().toString(36).slice(2, 6);
   await tmux(["new-session", "-d", "-t", BASE, "-s", stray]);
   // A leaked `tmux -C attach` holds the session attached, which is exactly the
   // case an "unattached only" reaper could never collect.

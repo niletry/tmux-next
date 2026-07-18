@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { tmux } from "./run";
 import { extractPreview, listSessions } from "./session-list";
 
 // Taken verbatim from a real Claude Code session on this machine.
@@ -99,4 +100,70 @@ test("parses every field in a bare environment, as under launchd", async () => {
   expect(parsed.name).not.toContain("_");
   expect(typeof parsed.width).toBe("number");
   expect(parsed.width).toBeGreaterThan(0);
+});
+
+test("killSession removes a real session", async () => {
+  const { killSession } = await import("./session-list");
+  const victim = "kill-test-" + Math.random().toString(36).slice(2, 8);
+  await tmux(["new-session", "-d", "-s", victim, "-x", "80", "-y", "24"]);
+
+  const result = await killSession(victim);
+  expect(result).toEqual({ ok: true });
+  expect((await tmux(["has-session", "-t", victim])).ok).toBe(false);
+});
+
+test("killSession refuses to touch this app's own web sessions", async () => {
+  const { killSession } = await import("./session-list");
+  const { createWebSession, destroyWebSession } = await import("./session-manager");
+  const target = (await listSessions())[0]!.name;
+  const web = await createWebSession(target);
+  try {
+    const result = await killSession(web);
+    expect(result.ok).toBe(false);
+    expect((await tmux(["has-session", "-t", web])).ok).toBe(true);
+  } finally {
+    await destroyWebSession(web);
+  }
+});
+
+test("killSession reports a session that does not exist", async () => {
+  const { killSession } = await import("./session-list");
+  const result = await killSession("no-such-session-xyz");
+  expect(result.ok).toBe(false);
+  expect(result.reason).toBe("missing");
+});
+
+test("killSession handles a name containing shell metacharacters", async () => {
+  const { killSession } = await import("./session-list");
+  // Would be catastrophic if the name ever reached a shell.
+  const result = await killSession("nope; tmux kill-server");
+  expect(result.ok).toBe(false);
+  expect((await tmux(["list-sessions"])).ok).toBe(true);
+});
+
+test("killSession matches the name exactly, never by prefix", async () => {
+  const { killSession } = await import("./session-list");
+  const full = "exact-test-" + Math.random().toString(36).slice(2, 8);
+  await tmux(["new-session", "-d", "-s", full, "-x", "80", "-y", "24"]);
+  try {
+    // tmux resolves a bare target by prefix, so this would otherwise kill `full`.
+    const result = await killSession(full.slice(0, full.length - 3));
+    expect(result.ok).toBe(false);
+    expect((await tmux(["has-session", "-t", `=${full}`])).ok).toBe(true);
+  } finally {
+    await tmux(["kill-session", "-t", `=${full}`]);
+  }
+});
+
+test("killSession refuses a glob pattern", async () => {
+  const { killSession } = await import("./session-list");
+  const full = "glob-test-" + Math.random().toString(36).slice(2, 8);
+  await tmux(["new-session", "-d", "-s", full, "-x", "80", "-y", "24"]);
+  try {
+    const result = await killSession("glob-test-*");
+    expect(result.ok).toBe(false);
+    expect((await tmux(["has-session", "-t", `=${full}`])).ok).toBe(true);
+  } finally {
+    await tmux(["kill-session", "-t", `=${full}`]);
+  }
 });
