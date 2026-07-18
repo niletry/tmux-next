@@ -1,3 +1,5 @@
+import { openCreateSheet } from "./create-sheet.js";
+
 const listEl = document.getElementById("list");
 const countEl = document.getElementById("count");
 
@@ -121,6 +123,8 @@ async function render() {
     listEl.replaceChildren(el("p", "empty", "无法连接到服务"));
   }
 }
+
+document.getElementById("new-session").addEventListener("click", openCreateSheet);
 
 render();
 setInterval(render, 5000);

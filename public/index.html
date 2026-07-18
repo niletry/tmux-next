@@ -8,7 +8,10 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="list-page">
-  <header>tmux 会话 <span class="count" id="count"></span></header>
+  <header>
+    tmux 会话 <span class="count" id="count"></span>
+    <button class="new" id="new-session" aria-label="新建会话">＋</button>
+  </header>
   <main id="list"><p class="empty">加载中…</p></main>
   <script type="module" src="list.js"></script>
 </body>
