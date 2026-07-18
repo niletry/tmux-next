@@ -1,0 +1,44 @@
+example.internal:8443 {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+
+	# tmux-next: WebSocket 用 cookie 认证（浏览器 WS 握手不带 Basic Auth）
+	@tmuxws path /tmux/ws
+	handle @tmuxws {
+		@notmuxcookie not header Cookie *ttyd_auth=COOKIE_TOKEN_REDACTED*
+		respond @notmuxcookie 403
+		uri strip_prefix /tmux
+		reverse_proxy 127.0.0.1:7682
+	}
+
+	redir /tmux /tmux/
+
+	# tmux-next: 其余走 Basic Auth，并种下 WS 用的 cookie
+	handle_path /tmux/* {
+		basic_auth {
+			lcm BCRYPT_HASH_REDACTED
+		}
+		header +Set-Cookie "ttyd_auth=COOKIE_TOKEN_REDACTED; Path=/; Secure; HttpOnly; SameSite=Strict"
+		reverse_proxy 127.0.0.1:7682
+	}
+
+	# WebSocket: authenticate by cookie (browsers send cookies on WS handshakes,
+	# but do NOT send Basic Auth on WS — that is why the terminal kept dropping).
+	@ws path /ws*
+	handle @ws {
+		@noauthcookie not header Cookie *ttyd_auth=COOKIE_TOKEN_REDACTED*
+		respond @noauthcookie 403
+		reverse_proxy 127.0.0.1:7681
+	}
+
+	# Everything else: Basic Auth, and on success plant the auth cookie so the
+	# subsequent WebSocket handshake carries it.
+	handle {
+		basic_auth {
+			lcm BCRYPT_HASH_REDACTED
+		}
+		header +Set-Cookie "ttyd_auth=COOKIE_TOKEN_REDACTED; Path=/; Secure; HttpOnly; SameSite=Strict"
+		reverse_proxy 127.0.0.1:7681
+	}
+}
