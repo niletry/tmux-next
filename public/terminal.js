@@ -1,5 +1,7 @@
 "use strict";
 
+import { createGesture, createPager } from "./scroll-gesture.js";
+
 // The tmux window is locked to 80 columns server side, so the browser's job is
 // to pick a font size that makes 80 columns fit, and report how many rows fit.
 const COLUMNS = 80;
@@ -26,6 +28,12 @@ try {
   console.warn("webgl renderer unavailable", e);
 }
 
+/** Height of one row in CSS pixels, falling back before the renderer reports. */
+function cellHeight() {
+  const cell = term._core?._renderService?.dimensions?.css?.cell;
+  return cell && cell.height > 0 ? cell.height : term.options.fontSize * 1.2;
+}
+
 /** Sizes the font so exactly COLUMNS columns fit, then derives the row count. */
 function fit() {
   const width = termEl.clientWidth;
@@ -39,9 +47,7 @@ function fit() {
   const fontSize = Math.max(6, Math.floor(width / COLUMNS / ratio));
   if (fontSize !== term.options.fontSize) term.options.fontSize = fontSize;
 
-  const cell = term._core?._renderService?.dimensions?.css?.cell;
-  const cellHeight = cell && cell.height > 0 ? cell.height : fontSize * 1.2;
-  const rows = Math.max(8, Math.floor(height / cellHeight));
+  const rows = Math.max(8, Math.floor(height / cellHeight()));
 
   if (rows !== term.rows) term.resize(COLUMNS, rows);
   return rows;
@@ -100,9 +106,13 @@ function sendBytes(bytes) {
 // given `input` event was already handled. xterm dispatches onData
 // synchronously from its own input handler, which runs before ours.
 let lastSent = { data: "", at: -Infinity };
+// Bumped on every emission, which lets the scroll code below detect whether a
+// synthetic wheel event actually produced a mouse sequence.
+let sendCount = 0;
 
 function send(data) {
   lastSent = { data, at: performance.now() };
+  sendCount++;
   sendBytes(encoder.encode(data));
 }
 
@@ -172,8 +182,98 @@ function closeKeyboard() {
   kbdBtn.classList.remove("sticky-on");
 }
 
-termEl.addEventListener("touchend", openKeyboard);
 termEl.addEventListener("mousedown", openKeyboard);
+
+// --- scrolling --------------------------------------------------------------
+
+/**
+ * Drags scroll the *program*, not a scrollback buffer.
+ *
+ * tmux repaints the whole screen in place and never lets a line fall off the
+ * top, so xterm's scrollback is permanently empty and its native touch
+ * scrolling has nothing to move. Full-screen programs (Claude Code, vim, less)
+ * keep their history to themselves, so the only way to reach it is to hand them
+ * a scroll they understand.
+ *
+ * Synthesising a WheelEvent rather than writing escape bytes lets xterm encode
+ * it in whatever mouse protocol the program negotiated. It also fails safely:
+ * xterm only binds a wheel listener while a program asks for mouse reporting,
+ * so a program that ignores the mouse produces no output at all rather than
+ * having stray bytes dumped into it — which is exactly the signal the PgUp
+ * fallback keys off.
+ */
+const PAGE_UP = new Uint8Array([0x1b, 0x5b, 0x35, 0x7e]);
+const PAGE_DOWN = new Uint8Array([0x1b, 0x5b, 0x36, 0x7e]);
+
+/** Sends one line of wheel and reports whether the program took it. */
+function wheelLine(up) {
+  const before = sendCount;
+  (term.element || termEl).dispatchEvent(
+    new WheelEvent("wheel", {
+      // Whole lines: xterm drops a wheel event whose delta rounds to zero rows,
+      // and pixel deltas have to survive a line-height division to get there.
+      deltaMode: WheelEvent.DOM_DELTA_LINE,
+      deltaY: up ? -1 : 1,
+      bubbles: true,
+      cancelable: true,
+    })
+  );
+  return sendCount !== before;
+}
+
+function scrollLines(lines) {
+  const up = lines > 0;
+  let refused = 0;
+  for (let i = 0; i < Math.abs(lines); i++) {
+    if (!wheelLine(up)) refused++;
+  }
+  if (!refused) return;
+
+  // The program ignores the mouse; page keys are the next best thing, but one
+  // per line would jump a page per line, so they accumulate into whole pages.
+  const pages = pager.take(up ? refused : -refused);
+  for (let i = 0; i < Math.abs(pages); i++) {
+    sendBytes(pages > 0 ? PAGE_UP : PAGE_DOWN);
+  }
+}
+
+let gesture = null;
+let pager = null;
+
+termEl.addEventListener(
+  "touchstart",
+  (e) => {
+    // Multi-touch is a pinch or a system gesture; leave it alone.
+    if (e.touches.length !== 1) {
+      gesture = null;
+      return;
+    }
+    gesture = createGesture({ lineHeight: cellHeight() });
+    pager = createPager({ pageLines: Math.max(1, term.rows - 2) });
+    gesture.start(e.touches[0].clientY);
+  },
+  { passive: true }
+);
+
+termEl.addEventListener(
+  "touchmove",
+  (e) => {
+    if (!gesture || e.touches.length !== 1) return;
+    const lines = gesture.move(e.touches[0].clientY);
+    if (!lines) return;
+    // Not passive: without this Safari rubber-bands the page instead.
+    e.preventDefault();
+    scrollLines(lines);
+  },
+  { passive: false }
+);
+
+// Only a tap raises the keyboard — a swipe used to raise it on every scroll.
+termEl.addEventListener("touchend", () => {
+  const tapped = gesture && gesture.end().tap;
+  gesture = null;
+  if (tapped) openKeyboard();
+});
 
 // Restoring focus inside the blur handler itself is ignored by Safari, so it
 // has to be deferred to the next task.
