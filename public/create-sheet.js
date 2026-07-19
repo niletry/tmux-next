@@ -1,4 +1,4 @@
-import { filterEntries, shortPath } from "./dir-filter.js";
+import { filterEntries, splitPath } from "./dir-filter.js";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -86,7 +86,13 @@ export function openCreateSheet() {
       up.addEventListener("click", () => browse(parent));
       crumb.append(up);
     }
-    crumb.append(el("span", "crumb-path", shortPath(current, home)));
+    // `lead`, not `parent`: the enclosing parameter already holds the path the
+    // up button navigates to, which is a different thing from the dimmed text.
+    const { parent: lead, leaf } = splitPath(current, home);
+    const path = el("span", "crumb-path");
+    if (lead) path.append(el("span", "crumb-lead", lead));
+    path.append(el("span", "crumb-leaf", leaf));
+    crumb.append(path);
   }
 
   async function browse(path) {

@@ -262,10 +262,22 @@ header .new:active { opacity: 0.7; }
   font-size: 13px;
 }
 
+/*
+ * The crumb, not the chips, is what always says where the session will land:
+ * chips go dark as soon as you browse below a favourite. So the last segment
+ * is styled as the answer and the lead-up recedes to context.
+ */
 .crumb-path {
   font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--dim);
   overflow-wrap: anywhere;
+}
+
+.crumb-lead { color: var(--dim); }
+
+.crumb-leaf {
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .field {

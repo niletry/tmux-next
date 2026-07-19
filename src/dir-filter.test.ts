@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 // @ts-expect-error - plain browser module, no types
-import { filterEntries, shortPath } from "../public/dir-filter.js";
+import { filterEntries, shortPath, splitPath } from "../public/dir-filter.js";
 
 const ENTRIES = [
   { name: "orbit-spec", path: "/v/orbit-spec" },
@@ -50,4 +50,27 @@ test("a path outside home keeps its full form", () => {
 test("a home-prefixed sibling is not abbreviated", () => {
   // /home/samuel must not render as ~a
   expect(shortPath("/home/samuel/x", "/home/sam")).toBe("/home/samuel/x");
+});
+
+test("the crumb splits off the directory you are actually in", () => {
+  expect(splitPath("/home/sam/projects/tmux-next/src", "/home/sam")).toEqual({
+    parent: "~/projects/tmux-next/",
+    leaf: "src",
+  });
+});
+
+test("home itself is all leaf, with nothing leading it", () => {
+  expect(splitPath("/home/sam", "/home/sam")).toEqual({ parent: "", leaf: "~" });
+});
+
+test("a directory directly under root keeps the slash on the parent", () => {
+  expect(splitPath("/Volumes", "/home/sam")).toEqual({ parent: "/", leaf: "Volumes" });
+});
+
+test("root itself has no parent to dim", () => {
+  expect(splitPath("/", "/home/sam")).toEqual({ parent: "", leaf: "/" });
+});
+
+test("a trailing slash does not produce an empty leaf", () => {
+  expect(splitPath("/mnt/data/", "/home/sam")).toEqual({ parent: "/Volumes/", leaf: "life" });
 });
