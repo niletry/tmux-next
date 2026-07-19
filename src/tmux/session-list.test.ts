@@ -193,3 +193,18 @@ test("session names include every live session", async () => {
     await tmux(["kill-session", "-t", `=${marker}`]);
   }
 });
+
+test("a listed session carries the text on its screen", async () => {
+  // Asserting preview.length <= 4 is what let a permanently empty preview
+  // through: an empty array satisfies it. This pins actual content instead.
+  const name = `probe-preview-${crypto.randomUUID().slice(0, 8)}`;
+  const marker = "PREVIEW_MARKER_7c1d";
+  await tmux(["new-session", "-d", "-s", name, `echo ${marker}; sleep 30`]);
+  try {
+    const listed = await listSessions();
+    const found = listed.find((s) => s.name === name);
+    expect(found?.preview.join("\n")).toContain(marker);
+  } finally {
+    await tmux(["kill-session", "-t", `=${name}`]);
+  }
+});

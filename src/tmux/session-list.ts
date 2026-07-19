@@ -105,7 +105,13 @@ export async function listSessions(): Promise<SessionSummary[]> {
 
       // Visible screen only: -S pulls in stale wrapped scrollback (verified
       // against a session that had been squeezed to 2 columns).
-      const captured = await tmux(["capture-pane", "-p", "-t", `=${name}`]);
+      //
+      // The trailing `:` matters. capture-pane resolves -t as a *pane*, and a
+      // bare `=name` is not a valid pane spec — it fails with "can't find pane"
+      // and silently leaves every preview empty. `=name:` names the current
+      // pane of that session while `=` still forces an exact session match, so
+      // a session called `web` cannot capture `webmux` instead.
+      const captured = await tmux(["capture-pane", "-p", "-t", `=${name}:`]);
       const screen = captured.ok ? captured.stdout : "";
       return {
         name,
