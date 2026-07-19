@@ -1,3 +1,9 @@
+# 结构参考，不是可直接使用的配置。
+#
+# COOKIE_TOKEN_REDACTED 与 BCRYPT_HASH_REDACTED 是占位符：真值是活的凭据，
+# cookie 那串能绕过 basic_auth 直达 7681/7682 两个终端，等于完整 shell 访问权。
+# 真值只存在于本机 /opt/homebrew/etc/Caddyfile，不进版本库。
+
 example.internal:8443 {
 	tls {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
