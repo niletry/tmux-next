@@ -8,6 +8,10 @@ const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
 const termEl = document.getElementById("term");
 document.getElementById("title").textContent = target || "";
+// The tab title too, not just the in-page bar: with several sessions open the
+// tab strip is the only thing that tells them apart, and "tmux" repeated four
+// times tells you nothing. Home-screen bookmarks pick this up as well.
+document.title = target || "tmux";
 
 const term = new Terminal({
   // Starting grid only; fit() replaces both before the socket opens.
