@@ -73,10 +73,14 @@ const PUBLIC_DIR = new URL("../public/", import.meta.url).pathname;
 const MODULES_DIR = new URL("../", import.meta.url).pathname;
 const REAP_INTERVAL_MS = 60_000;
 
-export function startServer(port: number): { stop(): void; port: number } {
+export function startServer(
+  port: number,
+  hostname: string = "127.0.0.1",
+): { stop(): void; port: number } {
   const server = Bun.serve<WsData, {}>({
-    // Loopback only. TLS and auth are Caddy's job.
-    hostname: "127.0.0.1",
+    // Loopback by default: this service has no auth of its own, and expects a
+    // reverse proxy in front to provide TLS and authentication.
+    hostname,
     port,
     idleTimeout: 120,
 
