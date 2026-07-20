@@ -124,6 +124,11 @@ control mode 把 tmux 变成一个讲结构化协议的进程：输出按 pane �
 
 ## 文档
 
+- [SECURITY.md](SECURITY.md) — **先读这个**：这个服务没有内置认证，暴露它等于暴露一个 shell
 - [docs/deploy.md](docs/deploy.md) — 反向代理、TLS、launchd 服务
 - [docs/Caddyfile.reference](docs/Caddyfile.reference) — Caddy 配置结构参考（凭据已替换为占位符）
 - `docs/superpowers/` — 设计文档与实现计划
+
+## 许可
+
+[MIT](LICENSE)

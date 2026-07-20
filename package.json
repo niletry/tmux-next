@@ -2,6 +2,7 @@
   "name": "tmux-next",
   "version": "0.1.0",
   "description": "A phone-friendly web client for tmux sessions, built on tmux control mode",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "bin": {
@@ -10,7 +11,9 @@
   "files": [
     "src",
     "public",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
   ],
   "engines": {
     "bun": ">=1.0.0"
