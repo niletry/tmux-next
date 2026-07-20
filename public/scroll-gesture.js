@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Turns a vertical touch drag into a count of lines to scroll.
  *
@@ -10,6 +11,10 @@
  *
  * Used only on the fallback path: a program that ignores mouse reporting gets
  * PgUp/PgDn instead, and sending one key per line would jump a page per line.
+ */
+/**
+ * @param {{ pageLines: number }} opts
+ * @returns {{ take(lines: number): number }}
  */
 export function createPager({ pageLines }) {
   let banked = 0;
@@ -24,6 +29,10 @@ export function createPager({ pageLines }) {
   };
 }
 
+/**
+ * @param {{ lineHeight: number, tapSlop?: number }} opts
+ * @returns {{ start(y: number): void, move(y: number): number, end(): { tap: boolean } }}
+ */
 export function createGesture({ lineHeight, tapSlop = 10 }) {
   let startY = 0;
   let emitted = 0;

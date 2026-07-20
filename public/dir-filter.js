@@ -1,9 +1,24 @@
+// @ts-check
 /**
  * Pure helpers for the directory picker, kept apart from the DOM so the
  * matching and shortening rules can be tested without a browser.
+ *
+ * Type-checked: these are imported by tests, so the annotations below are
+ * verified rather than decorative. The DOM-heavy modules in this directory
+ * are not checked — see tsconfig.json.
  */
 
-/** Filters directory entries by a case-insensitive substring of their name. */
+/**
+ * @typedef {{ name: string, path: string }} DirEntry
+ */
+
+/**
+ * Filters directory entries by a case-insensitive substring of their name.
+ *
+ * @param {DirEntry[]} entries
+ * @param {string} query
+ * @returns {DirEntry[]}
+ */
 export function filterEntries(entries, query) {
   const needle = query.trim().toLowerCase();
   if (!needle) return entries;
@@ -15,6 +30,10 @@ export function filterEntries(entries, query) {
  *
  * The separator check keeps `/home/samuel` from being shown as `~a` when home
  * is `/home/sam`.
+ *
+ * @param {string} path
+ * @param {string} home
+ * @returns {string}
  */
 export function shortPath(path, home) {
   if (path === home) return "~";
@@ -32,6 +51,10 @@ export function shortPath(path, home) {
  *
  * The parent keeps its trailing separator so the two halves concatenate back
  * into the original, and a leaf is never empty: `~` and `/` are their own leaf.
+ *
+ * @param {string} path
+ * @param {string} home
+ * @returns {{ parent: string, leaf: string }}
  */
 export function splitPath(path, home) {
   const shown = shortPath(path, home);

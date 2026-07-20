@@ -129,8 +129,9 @@ test("killSession refuses to touch this app's own web sessions", async () => {
 test("killSession reports a session that does not exist", async () => {
   const { killSession } = await import("./session-list");
   const result = await killSession("no-such-session-xyz");
-  expect(result.ok).toBe(false);
-  expect(result.reason).toBe("missing");
+  // Narrowed rather than asserted: `reason` only exists on the failure arm, so
+  // reading it off the union is exactly the mistake the types should catch.
+  expect(result).toEqual({ ok: false, reason: "missing" });
 });
 
 test("killSession handles a name containing shell metacharacters", async () => {

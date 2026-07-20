@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-// @ts-expect-error - plain browser module, no types
+// A browser module, but a `// @ts-check`ed one — its JSDoc types are real.
 import { filterEntries, shortPath, splitPath } from "../public/dir-filter.js";
 
 const ENTRIES = [

@@ -77,7 +77,10 @@ export function startServer(
   port: number,
   hostname: string = "127.0.0.1",
 ): { stop(): void; port: number } {
-  const server = Bun.serve<WsData, {}>({
+  // Only the WebSocket data type is named. The second parameter is the union
+  // of declared route paths, and this server dispatches inside fetch() rather
+  // than declaring routes, so its default of `never` is correct.
+  const server = Bun.serve<WsData>({
     // Loopback by default: this service has no auth of its own, and expects a
     // reverse proxy in front to provide TLS and authentication.
     hostname,
@@ -201,8 +204,19 @@ export function startServer(
     void reapOrphanWebSessions();
   }, REAP_INTERVAL_MS);
 
+  // Bun types `port` as optional because a unix-socket server has none. This
+  // one always binds TCP, and callers rely on the value — passing port 0 and
+  // reading back the one the OS chose is how the tests get a free port — so an
+  // absent port is a broken listener, not a case to paper over.
+  if (server.port === undefined) {
+    clearInterval(reaper);
+    server.stop(true);
+    throw new Error("server did not bind a TCP port");
+  }
+  const boundPort = server.port;
+
   return {
-    port: server.port,
+    port: boundPort,
     stop() {
       clearInterval(reaper);
       server.stop(true);

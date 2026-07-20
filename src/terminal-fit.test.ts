@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-// @ts-expect-error - plain browser module, no types
+// A browser module, but a `// @ts-check`ed one — its JSDoc types are real.
 import { MAX_FONT_PX, MIN_COLUMNS, computeGeometry } from "../public/terminal-fit.js";
 
 // Menlo/SFMono advance width, the value xterm measures in practice.

@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Chooses the font size and grid for a terminal of a given pixel size.
  *
@@ -26,6 +27,14 @@ export const MAX_FONT_PX = 12;
 const MIN_FONT_PX = 6;
 const MIN_ROWS = 8;
 
+/**
+ * @param {object} box
+ * @param {number} box.width       element width in CSS pixels
+ * @param {number} box.height      element height in CSS pixels
+ * @param {number} box.ratio       cell width / font size, measured not guessed
+ * @param {number} box.lineHeight  cell height / font size
+ * @returns {{ cols: number, rows: number, fontSize: number }}
+ */
 export function computeGeometry({ width, height, ratio, lineHeight }) {
   // The size that would make exactly MIN_COLUMNS fill the width.
   const wanted = Math.floor(width / MIN_COLUMNS / ratio);

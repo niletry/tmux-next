@@ -6,6 +6,17 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["bun-types"]
-  }
+    "noEmit": true,
+
+    // The modules in public/ are plain JS on purpose — the browser loads them
+    // with no build step. allowJs lets the tests import them; checking is
+    // opted into per file with `// @ts-check`, because the DOM-heavy modules
+    // would need a large annotation pass that buys little, while the pure
+    // logic ones are worth checking and cheap to annotate.
+    "allowJs": true,
+    "checkJs": false,
+
+    "types": ["bun"]
+  },
+  "include": ["src/**/*.ts", "public/**/*.js"]
 }
