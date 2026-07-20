@@ -72,5 +72,5 @@ test("root itself has no parent to dim", () => {
 });
 
 test("a trailing slash does not produce an empty leaf", () => {
-  expect(splitPath("/mnt/data/", "/home/sam")).toEqual({ parent: "/Volumes/", leaf: "life" });
+  expect(splitPath("/mnt/data/", "/home/sam")).toEqual({ parent: "/mnt/", leaf: "data" });
 });

@@ -29,11 +29,13 @@ const post = (body: unknown) =>
     body: JSON.stringify(body),
   });
 
-test("a directory outside the allowed roots is refused", async () => {
-  // /etc exists and is a directory, so only the root check can reject it.
-  const res = await post({ dir: "/etc" });
-  expect(res.status).toBe(400);
-  expect(await res.json()).toEqual({ error: "baddir" });
+test("a session can be created in any real directory", async () => {
+  // There is no allow-list: someone who can POST here can already attach to a
+  // session and cd anywhere, so refusing /etc only pretended to be a boundary.
+  const res = await post({ dir: "/tmp", name: `anydir-${crypto.randomUUID().slice(0, 8)}` });
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { name: string };
+  await Bun.$`tmux kill-session -t ${"=" + body.name + ":"}`.quiet().nothrow();
 });
 
 test("a directory that does not exist is refused", async () => {
@@ -80,21 +82,32 @@ test("browsing lists directories under an allowed root", async () => {
   expect(Array.isArray(body.entries)).toBe(true);
 });
 
-test("browsing outside the allowed roots is refused", async () => {
+test("browsing reaches directories outside home", async () => {
   const res = await fetch(api(`/api/dirs?path=${encodeURIComponent("/etc")}`));
-  expect(res.status).toBe(403);
+  expect(res.status).toBe(200);
 });
 
-test("browsing cannot climb out with ..", async () => {
-  const escape = join(homedir(), "..", "..", "etc");
-  const res = await fetch(api(`/api/dirs?path=${encodeURIComponent(escape)}`));
-  expect(res.status).toBe(403);
+test("browsing follows .. instead of refusing it", async () => {
+  const climbed = join(homedir(), "..", "..", "etc");
+  const res = await fetch(api(`/api/dirs?path=${encodeURIComponent(climbed)}`));
+  expect(res.status).toBe(200);
+  // realpath resolves the symlink macOS puts at /etc, which is the point of
+  // resolving at all: the session starts where the path actually lands.
+  const body = (await res.json()) as { path: string };
+  expect(body.path).toBe(realpathSync("/etc"));
 });
 
-test("browsing a root reports no parent", async () => {
-  const res = await fetch(api(`/api/dirs?path=${encodeURIComponent(homedir())}`));
-  const body = (await res.json()) as { parent: string | null };
-  expect(body.parent).toBe(null);
+test("only the filesystem root reports no parent", async () => {
+  const home = await (await fetch(api(`/api/dirs?path=${encodeURIComponent(homedir())}`))).json();
+  expect((home as { parent: string | null }).parent).not.toBe(null);
+
+  const root = await (await fetch(api(`/api/dirs?path=${encodeURIComponent("/")}`))).json();
+  expect((root as { parent: string | null }).parent).toBe(null);
+});
+
+test("browsing a path that does not exist is a 404, not a refusal", async () => {
+  const res = await fetch(api(`/api/dirs?path=${encodeURIComponent("/no/such/dir/xyz")}`));
+  expect(res.status).toBe(404);
 });
 
 test("browsing hides dot directories", async () => {
@@ -118,12 +131,12 @@ test("the recent directories endpoint returns home and a ranked list", async () 
   expect(Array.isArray(body.recent)).toBe(true);
 });
 
-test("the temp directory is outside the roots, so tests cannot create there", async () => {
-  // Guards the guard: if tmpdir() ever fell inside a root, the refusal tests
-  // above would pass for the wrong reason.
-  const base = realpathSync(mkdtempSync(join(tmpdir(), "outside-")));
+test("a file is still refused — only directories can host a session", async () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "notadir-")));
   try {
-    expect((await post({ dir: base })).status).toBe(400);
+    const file = join(base, "note.txt");
+    await Bun.write(file, "hi");
+    expect((await post({ dir: file })).status).toBe(400);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

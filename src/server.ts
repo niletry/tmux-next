@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { sanitiseGeometry } from "./geometry";
-import { allowedRoots, listDirectories, resolveWithinRoots } from "./paths";
+import { listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand } from "./tmux/session-create";
 import {
@@ -34,8 +34,9 @@ const CREATE_STATUS: Record<string, number> = {
 /**
  * Creates or reuses a session, then hands the name back for the client to open.
  *
- * The directory goes through the same root check as browsing: limiting only the
- * listing endpoint would be pointless when a POST could name any path at all.
+ * The directory is resolved the same way browsing resolves one, so a session
+ * starts in the canonical path rather than in whatever `..` and symlinks the
+ * caller happened to send.
  */
 async function createSessionResponse(req: Request): Promise<Response> {
   let body: { dir?: unknown; name?: unknown; skipPermissions?: unknown };
@@ -52,7 +53,7 @@ async function createSessionResponse(req: Request): Promise<Response> {
     return Response.json({ error: "invalid" }, { status: 400 });
   }
 
-  const dir = await resolveWithinRoots(body.dir, allowedRoots());
+  const dir = await resolveDirectory(body.dir);
   if (!dir.ok) return Response.json({ error: "baddir" }, { status: 400 });
 
   const result = await createSession(
@@ -101,11 +102,12 @@ export function startServer(port: number): { stop(): void; port: number } {
         return Response.json({ home: homedir(), recent: await recentDirectories() });
       }
 
-      // Browsing for a directory the sessions don't already cover.
+      // Browsing for a directory the sessions don't already cover. Any path on
+      // the machine is fair game; a failure here means it is missing or not a
+      // directory, not that it was off limits.
       if (url.pathname === "/api/dirs") {
-        const roots = allowedRoots();
-        const listing = await listDirectories(url.searchParams.get("path") ?? roots[0]!, roots);
-        if (!listing.ok) return Response.json({ error: "forbidden" }, { status: 403 });
+        const listing = await listDirectories(url.searchParams.get("path") ?? homedir());
+        if (!listing.ok) return Response.json({ error: "notfound" }, { status: 404 });
         return Response.json(listing);
       }
 

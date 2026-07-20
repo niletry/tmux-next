@@ -1,48 +1,29 @@
 import { readdir, realpath, stat } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join, sep } from "node:path";
-
-/**
- * Directories the app is willing to look at.
- *
- * The service listens on loopback and leaves auth to Caddy, but the browse
- * endpoint still hands out directory structure, so it has no business covering
- * the whole filesystem. Every existing session lives under one of these two.
- *
- * The home directory comes from the environment rather than being written out,
- * while the external volume is specific to this machine and is a constant.
- */
-export function allowedRoots(): string[] {
-  return [homedir(), "/mnt/data"];
-}
-
-/** Whether an already-resolved path sits inside one of `roots`. */
-export function isWithinRoots(path: string, roots: string[]): boolean {
-  return roots.some((root) => path === root || path.startsWith(root + sep));
-}
+import { dirname, join } from "node:path";
 
 export type ResolveResult = { ok: true; path: string } | { ok: false };
 
 /**
- * Canonicalises a path and confirms it is a directory inside `roots`.
+ * Canonicalises a path and confirms it is a directory.
  *
- * Resolving first is what makes the check sound: `realpath` collapses `..` and
- * follows symlinks, so a link pointing out of a root is judged by where it
- * lands rather than by where it sits. Comparing on a separator boundary keeps
- * `/home/samuel` from passing as `/home/sam`.
+ * There is deliberately no allow-list of roots. An earlier version fenced
+ * browsing to the home directory and one named volume, which read as a
+ * security boundary but was not one: anyone who can reach this endpoint can
+ * also attach to a session and run `ls` anywhere. Fencing the browser while
+ * leaving a shell open only made the app less useful — new machines and new
+ * drives needed a code change — without making it safer.
+ *
+ * `realpath` still runs, because the caller needs the canonical path: it
+ * collapses `..` and follows symlinks so the directory reported back is the
+ * one a session would actually start in.
  */
-export async function resolveWithinRoots(
-  input: string,
-  roots: string[],
-): Promise<ResolveResult> {
+export async function resolveDirectory(input: string): Promise<ResolveResult> {
   let resolved: string;
   try {
     resolved = await realpath(input);
   } catch {
     return { ok: false };
   }
-
-  if (!isWithinRoots(resolved, roots)) return { ok: false };
 
   try {
     if (!(await stat(resolved)).isDirectory()) return { ok: false };
@@ -66,11 +47,11 @@ const REFUSED: Listing = { ok: false, path: null, parent: null, entries: [] };
  * Dot directories are omitted: on a phone a list padded with `.git` and
  * `.cache` buries the handful of entries actually worth tapping.
  *
- * `parent` is null once `path` is a root, so browsing cannot climb past the
- * boundary — the UI has no back button to offer there.
+ * `parent` is null at the filesystem root, which is the only thing that bounds
+ * the climb now that there are no configured roots.
  */
-export async function listDirectories(path: string, roots: string[]): Promise<Listing> {
-  const resolved = await resolveWithinRoots(path, roots);
+export async function listDirectories(path: string): Promise<Listing> {
+  const resolved = await resolveDirectory(path);
   if (!resolved.ok) return REFUSED;
 
   let names: string[];
@@ -81,14 +62,12 @@ export async function listDirectories(path: string, roots: string[]): Promise<Li
     return REFUSED;
   }
 
-  // A root's own parent lies outside, which is what stops browsing there.
   const parent = dirname(resolved.path);
-  const reachable = parent !== resolved.path && isWithinRoots(parent, roots);
 
   return {
     ok: true,
     path: resolved.path,
-    parent: reachable ? parent : null,
+    parent: parent === resolved.path ? null : parent,
     entries: names
       .sort((a, b) => a.localeCompare(b))
       .map((name) => ({ name, path: join(resolved.path, name) })),
