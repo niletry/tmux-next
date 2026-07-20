@@ -18,6 +18,27 @@ const UNTARGETABLE = /[.:]/;
 /** Constant by construction: tmux runs this through `sh -c`. */
 export const LAUNCH_COMMAND = "exec \"$SHELL\" -lc claude";
 
+/**
+ * The same launch with Claude Code's confirmations turned off.
+ *
+ * A second constant rather than a flag spliced into the first: these strings
+ * reach `sh -c`, and the one rule that keeps this safe is that nothing derived
+ * from a request is ever part of them. Choosing between two fixed strings keeps
+ * that rule intact where building one would not.
+ */
+export const LAUNCH_COMMAND_SKIP_PERMISSIONS =
+  "exec \"$SHELL\" -lc \"claude --dangerously-skip-permissions\"";
+
+/**
+ * Picks the launch command for a request.
+ *
+ * Strictly `=== true`, never truthiness: the value is untrusted JSON, and a
+ * stray `"false"` string would otherwise let Claude Code act without asking.
+ */
+export function launchCommand(skipPermissions: unknown): string {
+  return skipPermissions === true ? LAUNCH_COMMAND_SKIP_PERMISSIONS : LAUNCH_COMMAND;
+}
+
 export type NameCheck =
   | { ok: true; name: string | null }
   | { ok: false; reason: "empty" | "reserved" | "invalid" };

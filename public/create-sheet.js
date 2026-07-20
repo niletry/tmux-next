@@ -44,13 +44,22 @@ export function openCreateSheet() {
   nameField.autocapitalize = "none";
   nameField.autocomplete = "off";
 
+  // Deliberately unchecked every time and never remembered: this hands Claude
+  // Code the machine without asking again, so it should be a decision made per
+  // session rather than a setting that quietly stays on.
+  const skipRow = el("label", "check");
+  const skipBox = document.createElement("input");
+  skipBox.type = "checkbox";
+  skipRow.append(skipBox, el("span", null, "跳过权限确认"));
+  skipRow.append(el("b", "check-warn", "Claude 将无需确认直接执行"));
+
   const error = el("p", "sheet-error");
   const actions = el("div", "sheet-actions");
   const cancel = el("button", "btn", "取消");
   const submit = el("button", "btn primary", "创建");
   actions.append(cancel, submit);
 
-  sheet.append(favourites, crumb, filter, list, nameField, error, actions);
+  sheet.append(favourites, crumb, filter, list, nameField, skipRow, error, actions);
   backdrop.append(sheet);
   document.body.append(backdrop);
 
@@ -133,12 +142,17 @@ export function openCreateSheet() {
     error.textContent = "";
 
     const name = nameField.value.trim();
+    const payload = { dir: current };
+    if (name) payload.name = name;
+    // Only ever sent as true; the server treats anything else as off anyway.
+    if (skipBox.checked) payload.skipPermissions = true;
+
     let res;
     try {
       res = await fetch("api/sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(name ? { dir: current, name } : { dir: current }),
+        body: JSON.stringify(payload),
       });
     } catch {
       error.textContent = "无法连接到服务";

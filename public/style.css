@@ -317,5 +317,20 @@ header .new:active { opacity: 0.7; }
 .dir-row:active { background: #22262f; }
 .dir-empty { margin: 12px 4px; color: var(--dim); font-size: 14px; }
 
+/* Roomy enough to be a comfortable tap target on a phone. */
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 6px 2px;
+  font-size: 14px;
+}
+
+.check input { width: 18px; height: 18px; accent-color: var(--accent); flex: 0 0 auto; }
+
+/* Dim rather than alarm-red: a warning shown every time stops being read. */
+.check-warn { margin-left: auto; color: var(--dim); font-weight: 400; font-size: 12px; }
+
 .sheet-error { margin: 0 0 4px; color: #e2706b; font-size: 14px; min-height: 18px; }
 .btn.primary { background: var(--accent); color: #14161a; }

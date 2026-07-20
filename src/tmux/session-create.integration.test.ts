@@ -115,3 +115,40 @@ test("the launch command resolves claude through a login shell", async () => {
   await shell.exited;
   expect(out.trim()).toMatch(/claude$/);
 });
+
+test("the skip-permissions launch reaches tmux as the pane's command", async () => {
+  // Asserting the constant's text only proves the string; this proves the flag
+  // survives tmux's own `sh -c` handling and lands on the pane.
+  const { base, dir } = scratch();
+  const name = `skipflag-${crypto.randomUUID().slice(0, 8)}`;
+  try {
+    const { LAUNCH_COMMAND_SKIP_PERMISSIONS } = await import("./session-create");
+    const result = await createSession(dir, name, [], LAUNCH_COMMAND_SKIP_PERMISSIONS);
+    expect(result.ok).toBe(true);
+    if (result.ok) made.push(result.name);
+
+    const shown = await tmux([
+      "display-message", "-p", "-t", `=${name}:`, "#{pane_start_command}",
+    ]);
+    expect(shown.stdout).toContain("--dangerously-skip-permissions");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("the default launch carries no such flag", async () => {
+  const { base, dir } = scratch();
+  const name = `noflag-${crypto.randomUUID().slice(0, 8)}`;
+  try {
+    const result = await createSession(dir, name, [], LAUNCH_COMMAND);
+    expect(result.ok).toBe(true);
+    if (result.ok) made.push(result.name);
+
+    const shown = await tmux([
+      "display-message", "-p", "-t", `=${name}:`, "#{pane_start_command}",
+    ]);
+    expect(shown.stdout).not.toContain("dangerously");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});

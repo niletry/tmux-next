@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { sanitiseGeometry } from "./geometry";
 import { allowedRoots, listDirectories, resolveWithinRoots } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
-import { createSession } from "./tmux/session-create";
+import { createSession, launchCommand } from "./tmux/session-create";
 import {
   killSession,
   listSessions,
@@ -38,7 +38,7 @@ const CREATE_STATUS: Record<string, number> = {
  * listing endpoint would be pointless when a POST could name any path at all.
  */
 async function createSessionResponse(req: Request): Promise<Response> {
-  let body: { dir?: unknown; name?: unknown };
+  let body: { dir?: unknown; name?: unknown; skipPermissions?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -55,7 +55,12 @@ async function createSessionResponse(req: Request): Promise<Response> {
   const dir = await resolveWithinRoots(body.dir, allowedRoots());
   if (!dir.ok) return Response.json({ error: "baddir" }, { status: 400 });
 
-  const result = await createSession(dir.path, body.name, await sessionNames());
+  const result = await createSession(
+    dir.path,
+    body.name,
+    await sessionNames(),
+    launchCommand(body.skipPermissions),
+  );
   if (!result.ok) {
     return Response.json({ error: result.reason }, { status: CREATE_STATUS[result.reason] ?? 400 });
   }
