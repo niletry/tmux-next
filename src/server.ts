@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { sanitiseGeometry } from "./geometry";
 import { allowedRoots, listDirectories, resolveWithinRoots } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession } from "./tmux/session-create";
@@ -12,10 +13,14 @@ import { reapOrphanWebSessions } from "./tmux/session-manager";
 
 type WsData = { session: PaneSession | null };
 
+/**
+ * Dimensions are typed as unknown on purpose: they arrive as untrusted JSON and
+ * must go through sanitiseGeometry before reaching a tmux command.
+ */
 type ClientMessage =
-  | { t: "open"; target: string; rows: number }
+  | { t: "open"; target: string; rows: unknown; cols?: unknown }
   | { t: "keys"; hex: string }
-  | { t: "resize"; rows: number };
+  | { t: "resize"; rows: unknown; cols?: unknown };
 
 /** Reasons the caller can fix, versus ones that mean the request was refused. */
 const CREATE_STATUS: Record<string, number> = {
@@ -136,9 +141,11 @@ export function startServer(port: number): { stop(): void; port: number } {
           await ws.data.session?.close();
           ws.data.session = null;
           try {
+            const { cols, rows } = sanitiseGeometry(msg.cols, msg.rows);
             ws.data.session = await PaneSession.open({
               target: msg.target,
-              rows: msg.rows,
+              rows,
+              cols,
               onData: (chunk) => {
                 ws.send(chunk);
               },
@@ -151,13 +158,21 @@ export function startServer(port: number): { stop(): void; port: number } {
 
         if (!ws.data.session) return;
 
-        if (msg.t === "keys") {
-          const bytes = Uint8Array.from(
-            msg.hex.split(" ").filter(Boolean).map((h) => parseInt(h, 16)),
-          );
-          await ws.data.session.sendKeys(bytes);
-        } else if (msg.t === "resize") {
-          await ws.data.session.resize(msg.rows);
+        // Belt and braces. PaneSession already swallows the close race, but an
+        // unhandled rejection anywhere in here takes the whole server down for
+        // every other connection — too high a price for one bad message.
+        try {
+          if (msg.t === "keys") {
+            const bytes = Uint8Array.from(
+              msg.hex.split(" ").filter(Boolean).map((h) => parseInt(h, 16)),
+            );
+            await ws.data.session.sendKeys(bytes);
+          } else if (msg.t === "resize") {
+            const { cols, rows } = sanitiseGeometry(msg.cols, msg.rows);
+            await ws.data.session.resize(rows, cols);
+          }
+        } catch (e) {
+          console.error("websocket message failed", e);
         }
       },
 

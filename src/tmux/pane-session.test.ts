@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { PaneSession, TERMINAL_COLUMNS } from "./pane-session";
+import { DEFAULT_COLUMNS, PaneSession } from "./pane-session";
 
 const BASE = "ps-test-" + Math.random().toString(36).slice(2, 8);
 const dec = new TextDecoder();
@@ -28,12 +28,38 @@ test("seeds the current screen on open", async () => {
   await session.close();
 });
 
-test("locks the window to 80 columns while connected", async () => {
+const windowWidth = async () =>
+  Number(
+    (await Bun.$`tmux display-message -p -t ${BASE} '#{window_width}'`.quiet())
+      .stdout.toString().trim(),
+  );
+
+test("falls back to the default width when the client names none", async () => {
   const session = await PaneSession.open({ target: BASE, rows: 24, onData: () => {} });
   await Bun.sleep(400);
-  const width = (await Bun.$`tmux display-message -p -t ${BASE} '#{window_width}'`.quiet())
-    .stdout.toString().trim();
-  expect(Number(width)).toBe(TERMINAL_COLUMNS);
+  expect(await windowWidth()).toBe(DEFAULT_COLUMNS);
+  await session.close();
+});
+
+test("gives a wide client the width it asks for", async () => {
+  // The whole point of the desktop path: 80 columns was a hardcoded lock, and
+  // a browser window with room for more should get more.
+  const session = await PaneSession.open({
+    target: BASE, rows: 24, cols: 160, onData: () => {},
+  });
+  await Bun.sleep(400);
+  expect(await windowWidth()).toBe(160);
+  await session.close();
+});
+
+test("a resize can change the width, not just the height", async () => {
+  const session = await PaneSession.open({
+    target: BASE, rows: 24, cols: 100, onData: () => {},
+  });
+  await Bun.sleep(400);
+  await session.resize(30, 132);
+  await Bun.sleep(400);
+  expect(await windowWidth()).toBe(132);
   await session.close();
 });
 
@@ -61,6 +87,29 @@ test("sendKeys delivers raw bytes to the pane", async () => {
   await Bun.sleep(700);
   expect(seen).toContain("TYPED_5a1f");
   await session.close();
+});
+
+test("a command still in flight when the session closes does not reject", async () => {
+  // The crash behind the 502s: closing the socket rejects every pending
+  // command, and the rejection for a fire-and-forget resize had no handler,
+  // so it took the whole process down and launchd restarted it.
+  const session = await PaneSession.open({ target: BASE, rows: 24, onData: () => {} });
+  await Bun.sleep(300);
+
+  const inFlight = session.resize(30, 120);
+  await session.close();
+
+  await expect(inFlight).resolves.toBeUndefined();
+});
+
+test("keystrokes racing a close are dropped rather than thrown", async () => {
+  const session = await PaneSession.open({ target: BASE, rows: 24, onData: () => {} });
+  await Bun.sleep(300);
+
+  const inFlight = session.sendKeys(new TextEncoder().encode("echo racing\r"));
+  await session.close();
+
+  await expect(inFlight).resolves.toBeUndefined();
 });
 
 test("close destroys the grouped session it created", async () => {

@@ -2,9 +2,7 @@
 
 import { createGesture, createPager } from "./scroll-gesture.js";
 
-// The tmux window is locked to 80 columns server side, so the browser's job is
-// to pick a font size that makes 80 columns fit, and report how many rows fit.
-const COLUMNS = 80;
+import { MIN_COLUMNS, computeGeometry } from "./terminal-fit.js";
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
@@ -12,7 +10,8 @@ const termEl = document.getElementById("term");
 document.getElementById("title").textContent = target || "";
 
 const term = new Terminal({
-  cols: COLUMNS,
+  // Starting grid only; fit() replaces both before the socket opens.
+  cols: MIN_COLUMNS,
   rows: 24,
   scrollback: 5000,
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -34,23 +33,26 @@ function cellHeight() {
   return cell && cell.height > 0 ? cell.height : term.options.fontSize * 1.2;
 }
 
-/** Sizes the font so exactly COLUMNS columns fit, then derives the row count. */
+/** Picks a font size and grid that fill the element, and reports the geometry. */
 function fit() {
   const width = termEl.clientWidth;
   const height = termEl.clientHeight;
-  if (width < 40 || height < 40) return term.rows;
+  if (width < 40 || height < 40) return { cols: term.cols, rows: term.rows };
 
   // Measure the real cell width instead of guessing the aspect ratio.
   const probe = term._core?._renderService?.dimensions?.css?.cell;
   const ratio = probe && probe.width > 0 ? probe.width / term.options.fontSize : 0.6;
 
-  const fontSize = Math.max(6, Math.floor(width / COLUMNS / ratio));
+  const { cols, rows, fontSize } = computeGeometry({
+    width,
+    height,
+    ratio,
+    lineHeight: cellHeight() / term.options.fontSize,
+  });
+
   if (fontSize !== term.options.fontSize) term.options.fontSize = fontSize;
-
-  const rows = Math.max(8, Math.floor(height / cellHeight()));
-
-  if (rows !== term.rows) term.resize(COLUMNS, rows);
-  return rows;
+  if (cols !== term.cols || rows !== term.rows) term.resize(cols, rows);
+  return { cols, rows };
 }
 
 let socket = null;
@@ -70,7 +72,8 @@ function connect() {
   socket.onopen = () => {
     statusEl.textContent = "已连接";
     reconnectDelay = 500;
-    socket.send(JSON.stringify({ t: "open", target, rows: fit() }));
+    const { cols, rows } = fit();
+    socket.send(JSON.stringify({ t: "open", target, rows, cols }));
     // A reconnect rebuilds the screen; keep the keyboard up if it was up.
     restoreFocusSoon();
   };
@@ -362,9 +365,9 @@ function syncAppHeight() {
 
 function resizeAndNotify() {
   syncAppHeight();
-  const rows = fit();
+  const { cols, rows } = fit();
   if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ t: "resize", rows }));
+    socket.send(JSON.stringify({ t: "resize", rows, cols }));
   }
 }
 
