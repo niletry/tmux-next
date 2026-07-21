@@ -391,6 +391,40 @@
 
   .warn strong { color: var(--ink); }
 
+  /* 上手步骤：编号是真实顺序，不是装饰 */
+  .steps { display: grid; gap: 1.1rem; counter-reset: step; }
+
+  .step {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.9rem;
+    align-items: baseline;
+  }
+
+  .step::before {
+    counter-increment: step;
+    content: counter(step);
+    font: 600 0.85rem var(--mono);
+    color: var(--accent);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    width: 1.7rem;
+    height: 1.7rem;
+    display: grid;
+    place-items: center;
+    align-self: start;
+  }
+
+  .step p { color: var(--muted); }
+  .step strong { color: var(--ink); font-weight: 600; }
+
+  .req-details summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-size: 0.94rem;
+    padding: 0.3rem 0;
+  }
+
   footer {
     border-top: 1px solid var(--line);
     padding: 2.5rem 0 4rem;
@@ -447,17 +481,78 @@
   <hr class="rule">
 
   <section class="stack col">
-    <p class="eyebrow">为什么</p>
+    <p class="eyebrow">它解决什么</p>
     <h2>终端是唯一没跟着你走的东西</h2>
     <p>
-      邮件、日历、聊天早就在手机上了。可你让 Claude Code 跑一个重构，
-      它需要五分钟，而这五分钟里你只能守着笔记本——不是因为有事要做，
-      是因为<strong>你不知道它什么时候需要你</strong>。
+      邮件、日历、聊天早就在手机上了。可你让 Claude Code 跑一个重构，它要五分钟——
+      这五分钟你只能守着电脑，不是因为有事做，是因为<strong>你不知道它什么时候需要你</strong>。
     </p>
     <p>
-      tmux 本来就是解药：进程留在服务器上，随时可以再连回去。
-      缺的只是一个能装进口袋的客户端。
+      tmux 本来就是解药：进程留在机器上，随时能连回去。缺的只是一个能装进口袋的客户端。
+      <strong>tmux-next 就是这个客户端</strong>——手机上列出所有会话、看到谁在等你、点进去接着聊。
     </p>
+  </section>
+
+  <section class="stack-lg">
+    <div class="stack col">
+      <p class="eyebrow">快速开始</p>
+      <h2>装上就能用，没有构建步骤</h2>
+    </div>
+
+    <div class="cmd"><span class="prompt">$ </span>bunx tmux-next
+<span class="note"># 需要 tmux 3.2+ 和 Bun。不支持 node——入口是未编译的 TypeScript。</span></div>
+
+    <div class="steps col">
+      <div class="step">
+        <p>跑起来后打开 <code>http://127.0.0.1:7682/</code>，<strong>本机所有 tmux 会话</strong>就列在那儿——
+        每个带最后几行输出，等你回复的排最前。</p>
+      </div>
+      <div class="step">
+        <p>点一个会话<strong>进到终端</strong>。软键盘没有的键（Esc / Ctrl / 方向键…）做成了工具条，
+        拖动能滚全屏程序的历史。</p>
+      </div>
+      <div class="step">
+        <p><strong>想从手机连</strong>？在前面架一个反向代理做 TLS 和认证——
+        因为这个服务<strong>没有内置认证</strong>，见下方。</p>
+      </div>
+    </div>
+
+    <div class="warn col">
+      这个服务<strong>没有任何内置认证</strong>，默认只绑 loopback，假设前面有反向代理负责 TLS 和身份验证。
+      直接暴露到网络等于把一个免密 shell 交给任何能连上端口的人。反代还得<strong>单独处理 WebSocket</strong>——
+      浏览器发起 WS 握手时不带 Basic Auth 头。完整配置见
+      <a href="https://github.com/niletry/tmux-next/blob/master/SECURITY.md" style="color:var(--accent)">SECURITY.md</a>
+      与 <a href="https://github.com/niletry/tmux-next/blob/master/docs/deploy.md" style="color:var(--accent)">deploy.md</a>。
+    </div>
+
+    <details class="req-details col">
+      <summary>想改代码，或看完整前置条件</summary>
+      <dl class="req" style="margin-top:1rem">
+        <dt>tmux 3.2+</dt>
+        <dd>每次 resize 走 <code>refresh-client&nbsp;-C&nbsp;列,行</code>，逗号写法是 3.2 引入的；更早的版本启动时会被拒绝。</dd>
+        <dt>Bun 1.0+</dt>
+        <dd>直接跑 TypeScript，入口没有编译产物——所以不支持 node。</dd>
+        <dt>macOS / Linux</dt>
+        <dd>依赖 tmux 与 POSIX shell。</dd>
+      </dl>
+      <div class="cmd" style="margin-top:0.8rem"><span class="prompt">$ </span>git clone https://github.com/niletry/tmux-next.git
+<span class="prompt">$ </span>cd tmux-next &amp;&amp; bun install &amp;&amp; bun run src/index.ts</div>
+    </details>
+
+    <div class="cards" style="margin-top:0.5rem">
+      <a class="card" href="https://github.com/niletry/tmux-next" style="text-decoration:none">
+        <h3 style="color:var(--accent)">GitHub →</h3>
+        <p>源码、CI、issue。MIT。</p>
+      </a>
+      <a class="card" href="https://www.npmjs.com/package/tmux-next" style="text-decoration:none">
+        <h3 style="color:var(--accent)">npm →</h3>
+        <p><code>bunx tmux-next</code> 就从这里拉。</p>
+      </a>
+      <a class="card" href="https://github.com/niletry/tmux-next/blob/master/README.md" style="text-decoration:none">
+        <h3 style="color:var(--accent)">文档 →</h3>
+        <p>部署、开机自启、设计说明。</p>
+      </a>
+    </div>
   </section>
 
   <section>
@@ -577,56 +672,6 @@
       <div class="fig"><b>0</b><span>个前端框架</span></div>
       <div class="fig"><b>0</b><span>个构建步骤</span></div>
       <div class="fig"><b>~4k</b><span>行 TypeScript / JS</span></div>
-    </div>
-  </section>
-
-  <section class="stack-lg">
-    <div class="stack col">
-      <p class="eyebrow">装起来</p>
-      <h2>用 Bun 跑，没有构建步骤</h2>
-    </div>
-
-    <dl class="req col">
-      <dt>tmux 3.2+</dt>
-      <dd>每次 resize 走 <code>refresh-client&nbsp;-C&nbsp;列,行</code>，逗号写法是 3.2 引入的；更早的版本启动时会被拒绝。</dd>
-      <dt>Bun 1.0+</dt>
-      <dd>直接跑 TypeScript，入口没有编译产物——所以不支持 node。</dd>
-      <dt>macOS / Linux</dt>
-      <dd>依赖 tmux 与 POSIX shell。</dd>
-    </dl>
-
-    <div class="cmd"><span class="prompt">$ </span>bunx tmux-next
-<span class="note"># 或者克隆下来改：</span>
-<span class="prompt">$ </span>git clone https://github.com/niletry/tmux-next.git
-<span class="prompt">$ </span>cd tmux-next &amp;&amp; bun install &amp;&amp; bun run src/index.ts</div>
-
-    <p class="lede col" style="font-size:0.98rem">
-      两种方式都打开 <code>http://127.0.0.1:7682/</code>，列出本机所有 tmux session。
-    </p>
-
-    <div class="warn col">
-      <strong>从手机访问前，先读这个。</strong>
-      这个服务<strong>没有任何内置认证</strong>，默认只绑 loopback。它假设前面有一个反向代理负责
-      TLS 和身份验证。直接暴露到网络，等于把一个免密 shell 交给任何能连上端口的人。
-      反代还得单独处理 WebSocket——浏览器发起 WS 握手时不带 Basic Auth 头。
-      完整说明见仓库的
-      <a href="https://github.com/niletry/tmux-next/blob/master/SECURITY.md" style="color:var(--accent)">SECURITY.md</a>
-      与 <a href="https://github.com/niletry/tmux-next/blob/master/docs/deploy.md" style="color:var(--accent)">deploy.md</a>。
-    </div>
-
-    <div class="cards" style="margin-top:0.5rem">
-      <a class="card" href="https://github.com/niletry/tmux-next" style="text-decoration:none">
-        <h3 style="color:var(--accent)">GitHub →</h3>
-        <p>源码、CI、issue。MIT。</p>
-      </a>
-      <a class="card" href="https://www.npmjs.com/package/tmux-next" style="text-decoration:none">
-        <h3 style="color:var(--accent)">npm →</h3>
-        <p><code>bunx tmux-next</code> 就从这里拉。</p>
-      </a>
-      <a class="card" href="https://github.com/niletry/tmux-next/blob/master/README.md" style="text-decoration:none">
-        <h3 style="color:var(--accent)">文档 →</h3>
-        <p>部署、开机自启、设计说明。</p>
-      </a>
     </div>
   </section>
 
