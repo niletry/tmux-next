@@ -3,6 +3,7 @@
 import { createGesture, createPager } from "./scroll-gesture.js";
 
 import { MIN_COLUMNS, computeGeometry } from "./terminal-fit.js";
+import { createCopyGate } from "./copy-on-select.js";
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
@@ -29,6 +30,40 @@ try {
 } catch (e) {
   // Falls back to the DOM renderer; not fatal.
   console.warn("webgl renderer unavailable", e);
+}
+
+// --- select to copy --------------------------------------------------------
+
+/**
+ * Copies a selection to the clipboard the moment it is made.
+ *
+ * A full-screen program like Claude Code turns on mouse reporting, so a plain
+ * drag is handed to the program; selecting text is Shift+drag, the same as
+ * every terminal. What was missing is the copy itself — xterm never puts a
+ * selection on the clipboard on its own — so this wires that up. The gate
+ * keeps xterm's repeated selection-change events from writing the clipboard
+ * over and over.
+ */
+const copyGate = createCopyGate();
+
+term.onSelectionChange(() => {
+  const text = term.getSelection();
+  if (!copyGate.shouldCopy(text)) return;
+  navigator.clipboard?.writeText(text).then(
+    () => flashStatus("已复制"),
+    () => flashStatus("复制失败：需要 HTTPS"),
+  );
+});
+
+let statusResetTimer = null;
+function flashStatus(message) {
+  const previous = statusEl.textContent;
+  statusEl.textContent = message;
+  if (statusResetTimer) clearTimeout(statusResetTimer);
+  statusResetTimer = setTimeout(() => {
+    // Only restore if nothing else changed it in the meantime.
+    if (statusEl.textContent === message) statusEl.textContent = previous;
+  }, 1500);
 }
 
 /** Height of one row in CSS pixels, falling back before the renderer reports. */
