@@ -105,8 +105,17 @@ test("parses every field in a bare environment, as under launchd", async () => {
     `process.stdout.write(JSON.stringify(s ? {name: s.name, width: s.windowWidth} : null));`;
 
   try {
+    // A bare PATH is the point — that's what launchd hands the service — but
+    // the locale is inherited, not stripped. Stripping it made run.ts fall
+    // back to en_US.UTF-8, which a Linux CI runner has not generated (it ships
+    // C.UTF-8), so the failure was a missing locale rather than the field
+    // parsing this test is actually about.
     const proc = Bun.spawn([process.execPath, "-e", script], {
-      env: { PATH: `${tmuxDir}:/usr/bin:/bin` },
+      env: {
+        PATH: `${tmuxDir}:/usr/bin:/bin`,
+        LANG: process.env.LANG ?? "C.UTF-8",
+        LC_ALL: process.env.LC_ALL ?? process.env.LANG ?? "C.UTF-8",
+      },
       stdout: "pipe",
       stderr: "pipe",
     });
