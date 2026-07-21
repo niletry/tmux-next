@@ -120,13 +120,21 @@ test("parses every field in a bare environment, as under launchd", async () => {
       stderr: "pipe",
     });
     const out = await new Response(proc.stdout).text();
-    await proc.exited;
+    const err = await new Response(proc.stderr).text();
+    const code = await proc.exited;
 
-    const parsed = JSON.parse(out);
-    expect(parsed).not.toBeNull();
-    expect(parsed.name).not.toContain("_");
-    expect(parsed.name).toBe(name);
-    expect(parsed.width).toBeGreaterThan(0);
+    // Surface what the subprocess actually did — a bare `JSON.parse("")` here
+    // hid the real cause behind an unrelated parse error.
+    let parsed: { name: string; width: number } | null;
+    try {
+      parsed = JSON.parse(out);
+    } catch {
+      throw new Error(`subprocess exit ${code}; stdout=${JSON.stringify(out)}; stderr=${err}`);
+    }
+    expect(parsed, `subprocess found no session; stderr=${err}`).not.toBeNull();
+    expect(parsed!.name).not.toContain("_");
+    expect(parsed!.name).toBe(name);
+    expect(parsed!.width).toBeGreaterThan(0);
   } finally {
     await tmux(["kill-session", "-t", `=${name}`]);
   }
