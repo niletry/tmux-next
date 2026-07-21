@@ -1,6 +1,37 @@
 import { test, expect } from "bun:test";
 // A browser module, but a `// @ts-check`ed one — its JSDoc types are real.
-import { createCopyGate } from "../public/copy-on-select.js";
+import { createCopyGate, decodeOsc52 } from "../public/copy-on-select.js";
+
+const osc52 = (text: string, targets = "c") => `${targets};${btoa(text)}`;
+
+test("decodes the text an OSC 52 set request carries", () => {
+  expect(decodeOsc52(osc52("hello"))).toBe("hello");
+});
+
+test("decodes UTF-8, not just ASCII", () => {
+  // tmux base64-encodes the raw UTF-8 bytes; a naive atob would mangle CJK.
+  const text = "选中的中文";
+  const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+  expect(decodeOsc52(`c;${b64}`)).toBe(text);
+});
+
+test("ignores a clipboard query rather than treating ? as text", () => {
+  // OSC 52 with a `?` payload asks the terminal for the clipboard; it is not
+  // something to copy.
+  expect(decodeOsc52("c;?")).toBe(null);
+});
+
+test("returns null for a payload with no target separator", () => {
+  expect(decodeOsc52("garbage")).toBe(null);
+});
+
+test("returns null for non-base64 rather than throwing", () => {
+  expect(decodeOsc52("c;not valid base64 @#$")).toBe(null);
+});
+
+test("an empty selection decodes to null", () => {
+  expect(decodeOsc52("c;")).toBe(null);
+});
 
 test("a fresh non-empty selection copies", () => {
   const gate = createCopyGate();

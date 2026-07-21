@@ -3,7 +3,7 @@
 import { createGesture, createPager } from "./scroll-gesture.js";
 
 import { MIN_COLUMNS, computeGeometry } from "./terminal-fit.js";
-import { createCopyGate } from "./copy-on-select.js";
+import { createCopyGate, decodeOsc52 } from "./copy-on-select.js";
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
@@ -34,25 +34,42 @@ try {
 
 // --- select to copy --------------------------------------------------------
 
+/** Writes text to the system clipboard, flashing the result in the status bar. */
+function copyToClipboard(text) {
+  if (!text) return;
+  navigator.clipboard?.writeText(text).then(
+    () => flashStatus("已复制"),
+    () => flashStatus("复制失败：需要 HTTPS"),
+  );
+}
+
 /**
- * Copies a selection to the clipboard the moment it is made.
+ * Two paths reach the same clipboard write, one per way a selection is made.
  *
- * A full-screen program like Claude Code turns on mouse reporting, so a plain
- * drag is handed to the program; selecting text is Shift+drag, the same as
- * every terminal. What was missing is the copy itself — xterm never puts a
- * selection on the clipboard on its own — so this wires that up. The gate
- * keeps xterm's repeated selection-change events from writing the clipboard
- * over and over.
+ * When mouse reporting is off, or with Shift held, xterm owns the selection and
+ * onSelectionChange fires. When a program has mouse reporting on (Claude Code
+ * does), a plain drag is handled by tmux instead, which answers by sending the
+ * selection as an OSC 52 sequence — xterm normally drops it, so we register a
+ * handler and route it to the same place. Between them, both plain-drag and
+ * Shift-drag copy for real.
+ *
+ * The two never fire for one gesture: a drag either reaches xterm's selection
+ * or tmux's, not both. The gate still guards against xterm's repeated
+ * selection-change events during a single drag.
  */
 const copyGate = createCopyGate();
 
 term.onSelectionChange(() => {
   const text = term.getSelection();
-  if (!copyGate.shouldCopy(text)) return;
-  navigator.clipboard?.writeText(text).then(
-    () => flashStatus("已复制"),
-    () => flashStatus("复制失败：需要 HTTPS"),
-  );
+  if (copyGate.shouldCopy(text)) copyToClipboard(text);
+});
+
+term.parser.registerOscHandler(52, (data) => {
+  const text = decodeOsc52(data);
+  if (text) copyToClipboard(text);
+  // Returning true marks it handled, so xterm does not fall through to its own
+  // OSC 52 behaviour or log an unhandled sequence.
+  return true;
 });
 
 let statusResetTimer = null;
