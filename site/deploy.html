@@ -257,6 +257,102 @@ curl -so /dev/null -w "%{http_code}\n" \
     <a href="https://github.com/niletry/tmux-next/blob/master/docs/deploy.md">deploy.md</a>。</p>
   </div>
 
+  <h2><span class="n">6</span>进阶：换成登录页 + 会过期的 token</h2>
+
+  <p>
+    上面的 Basic Auth 有两个已知的粗糙之处：登录框是<strong>浏览器画的原生弹窗</strong>，
+    没法自定义；那串 cookie 口令是<strong>静态的、永不过期</strong>，一旦泄漏就得手动改配置。
+    如果想要一个像样的登录页，加上会自动过期的 token，可以用
+    <a href="https://github.com/greenpau/caddy-security">caddy-security</a> 插件——
+    它一并解决这两点。
+  </p>
+
+  <div class="box">
+    <p>它不在标准 Caddy 里，需要用 <a href="https://github.com/caddyserver/xcaddy">xcaddy</a>
+    构建一个带它的版本：</p>
+  </div>
+
+  <pre>xcaddy build --with github.com/greenpau/caddy-security</pre>
+
+  <p>然后配置分三块。先生成一个签名密钥（JWT 用它签发和校验，泄漏等于伪造登录）：</p>
+
+  <pre>openssl rand -hex 32</pre>
+
+  <p><strong>① 全局块</strong>——定义用户库、登录门户、授权策略：</p>
+
+  <pre>{
+    <span class="c"># 这两行让插件的中间件排到正确的位置（照抄，与站点用不用 basicauth 无关）</span>
+    order authenticate before respond
+    order authorize before basicauth
+
+    security {
+        <span class="c"># 用户库：密码用 bcrypt 哈希，不存明文</span>
+        local identity store localdb {
+            realm local
+            path /path/to/users.json
+            user <span class="s">你的用户名</span> {
+                name <span class="s">你的名字</span>
+                email <span class="s">you@example.com</span>
+                password <span class="s">"bcrypt:10:$2a$10$…你的密码哈希"</span>
+                roles authp/user
+            }
+        }
+
+        <span class="c"># 登录门户：签发会过期的 JWT</span>
+        authentication portal myportal {
+            crypto default token lifetime 28800   <span class="c"># token 有效期，秒（这里 8 小时）</span>
+            crypto key sign-verify <span class="s">你的签名密钥</span>
+            enable identity store localdb
+            <span class="c"># 让 JWT cookie 在 auth. 和 tmux. 两个子域间共享</span>
+            cookie domain <span class="s">example.com</span>
+        }
+
+        <span class="c"># 授权策略：校验 JWT，未登录就跳到登录门户</span>
+        authorization policy tmuxpolicy {
+            <span class="c"># 跨子域必须写绝对 URL，指向登录门户</span>
+            set auth url <span class="s">https://auth.example.com/auth/</span>
+            crypto key verify <span class="s">你的签名密钥</span>
+            allow roles authp/user
+        }
+    }
+}</pre>
+
+  <p><strong>② 登录门户的站点块</strong>——它托管那个自定义登录页：</p>
+
+  <pre>auth.example.com {
+    route /auth* {
+        authenticate with myportal
+    }
+}</pre>
+
+  <p><strong>③ tmux-next 的站点块</strong>——用策略保护，未登录自动跳去登录页：</p>
+
+  <pre>tmux.example.com {
+    <span class="c"># 未登录访问任何路径（含 WebSocket）都要求先有合法 JWT</span>
+    authorize with tmuxpolicy
+    reverse_proxy 127.0.0.1:7682
+}</pre>
+
+  <div class="box">
+    <p><strong>为什么这次 WebSocket 不用单独处理了？</strong>因为 JWT 存在 cookie 里，
+    浏览器发起 WebSocket 握手时<strong>会</strong>带上 cookie——和第 4 步靠 cookie 放行是同一个道理，
+    只是这次 cookie 里装的是签过名、会过期的 JWT，而不是一个静态口令。<code>authorize</code>
+    对所有路径统一校验，<code>/ws</code> 也在内，不用再写一段。</p>
+  </div>
+
+  <div class="box warn">
+    <p><strong>两个密钥别弄混，也别泄漏。</strong>签名密钥（<code>crypto key</code>）泄漏等于别人能伪造任意登录；
+    密码哈希用 <code>caddy hash-password</code> 生成、以 <code>bcrypt:10:</code> 开头填进
+    <code>password</code>。<code>token lifetime</code> 到期后需要重新登录——这正是它比静态 cookie 强的地方：
+    抓到一个 token 也只在有效期内能用。</p>
+  </div>
+
+  <p>
+    caddy-security 还能接 GitHub / Google 登录（OAuth）、加两步验证（TOTP / Yubikey）。
+    考虑到这服务给的是 shell，2FA 很值得开。完整选项见
+    <a href="https://docs.authcrunch.com/">它的文档</a>。
+  </p>
+
   <footer>
     <p>tmux-next · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a> · <a href="/">首页</a></p>
   </footer>
