@@ -1,5 +1,5 @@
-<title>tmux-next — take your terminal with you</title>
-<meta name="description" content="A self-hosted tmux web client: watch Claude Code running in tmux, from your phone.">
+<title>tmux-next — 把终端带走</title>
+<meta name="description" content="一个自托管的 tmux web 客户端：在手机上盯着跑在 tmux 里的 Claude Code。">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -12,7 +12,7 @@
     --accent: #2f5fe0;
     --accent-soft: #dfe6fb;
 
-    /* Terminal internals: lifted straight from the product's style.css. */
+    /* 终端内部：直接取自产品的 style.css，不另立一套 */
     --term-bg: #14161a;
     --term-card: #1d2026;
     --term-fg: #e6e8ec;
@@ -21,7 +21,7 @@
     --term-idle: #9ece6a;
 
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", sans-serif;
+    --sans: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", sans-serif;
 
     --measure: 34rem;
   }
@@ -74,8 +74,7 @@
 
   .col { max-width: var(--measure); }
 
-  /* ---------- language switch ---------- */
-
+  /* ---------- 语言切换 ---------- */
   .lang {
     display: flex;
     gap: 0.6rem;
@@ -87,12 +86,12 @@
   .lang a.on { color: var(--ink); font-weight: 600; }
   .lang a:hover { color: var(--accent); }
 
-  /* ---------- type ---------- */
+  /* ---------- 版式 ---------- */
 
   h1, h2, h3 { font-family: var(--mono); font-weight: 600; text-wrap: balance; margin: 0; }
 
   h1 {
-    font-size: clamp(2rem, 6vw, 3.5rem);
+    font-size: clamp(2rem, 6.5vw, 3.75rem);
     line-height: 1.06;
     letter-spacing: -0.035em;
   }
@@ -127,7 +126,7 @@
     border-radius: 3px;
   }
 
-  /* ---------- skeleton ---------- */
+  /* ---------- 骨架 ---------- */
 
   section { padding: clamp(3.5rem, 9vw, 6.5rem) 0; }
 
@@ -136,9 +135,11 @@
 
   .rule { border: 0; border-top: 1px solid var(--line); margin: 0; }
 
-  /* ---------- hero ---------- */
+  /* ---------- 首屏 ---------- */
 
-  .hero { padding-top: clamp(2rem, 7vh, 4rem); }
+  .hero { padding-top: clamp(3rem, 10vh, 6rem); }
+
+  .hero h1 span { color: var(--accent); }
 
   .hero-grid {
     display: grid;
@@ -150,7 +151,7 @@
     .hero-grid { grid-template-columns: 1fr 20rem; }
   }
 
-  /* ---------- terminal mock ---------- */
+  /* ---------- 终端仿真 ---------- */
 
   .screen {
     background: var(--term-bg);
@@ -177,6 +178,7 @@
 
   @keyframes blink { 50% { opacity: 0; } }
 
+  /* 手机外框 */
   .phone {
     background: var(--term-bg);
     border-radius: 26px;
@@ -236,8 +238,24 @@
   .row .prev { color: var(--term-dim); font-size: 11px; white-space: pre-wrap; }
   .row .pend { color: var(--term-accent); font-size: 11px; }
 
-  /* ---------- screenshots ---------- */
+  .keys {
+    display: flex;
+    gap: 4px;
+    padding: 0.5rem 0.6rem;
+    background: var(--term-card);
+    overflow-x: auto;
+  }
 
+  .keys span {
+    flex: 0 0 auto;
+    background: #2f3542;
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-size: 11px;
+    color: var(--term-fg);
+  }
+
+  /* 演示切换 */
   .tabs { display: flex; gap: 0.4rem; margin-bottom: 0.85rem; }
 
   .tab {
@@ -260,6 +278,7 @@
 
   .pane[hidden] { display: none; }
 
+  /* 真实截图。边框和阴影与仿真终端一致，两者并置时读起来是同一件东西。 */
   .shot {
     display: block;
     width: 100%;
@@ -269,7 +288,9 @@
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.28), 0 14px 34px -12px rgb(20 30 60 / 0.45);
   }
 
+  /* 终端那张是竖幅，铺满宽度会高得离谱，限一下并居中。 */
   .shot-tall { max-width: 26rem; margin-inline: auto; }
+
   .shot-note { margin-top: 1.1rem; font-size: 0.95rem; }
 
   .btn-github {
@@ -282,7 +303,7 @@
     text-decoration: none;
   }
 
-  /* ---------- install ---------- */
+  /* ---------- 安装 ---------- */
 
   .cmd {
     font: 13px/1.7 var(--mono);
@@ -321,42 +342,42 @@
 <div class="wrap">
 
   <nav class="lang">
-    <a href="/" class="on">EN</a>
-    <a href="/zh">中文</a>
+    <a href="/">EN</a>
+    <a href="/zh" class="on">中文</a>
   </nav>
 
   <section class="hero">
     <div class="hero-grid">
       <div class="stack">
-        <p class="eyebrow">Self-hosted · tmux web client</p>
-        <h1>Use your tmux from your phone</h1>
+        <p class="eyebrow">自托管 · tmux web 客户端</p>
+        <h1>在手机上用你的 tmux</h1>
         <p class="lede col">
-          tmux-next is a self-hosted web client. It lists every tmux session on your
-          machine, shows the latest screen of each, and lets you tap in and keep
-          working from your phone — made for watching Claude Code run inside them.
+          tmux-next 是一个自托管的网页客户端。它列出你机器上所有的 tmux 会话，
+          显示每个会话的最新画面，让你在手机上点进去继续操作——特别适合盯着跑在
+          里面的 Claude Code。
         </p>
-        <div class="screen" aria-label="Terminal replay: a turn finishes and the status turns to waiting-for-you">
+        <div class="screen" aria-label="终端回放：一轮结束，状态变为等待回复">
           <div id="replay"><span class="caret"></span></div>
         </div>
       </div>
 
       <div class="phone" aria-hidden="true">
         <div class="phone-inner">
-          <div class="bar"><b>tmux sessions</b><span class="grow">4</span></div>
+          <div class="bar"><b>tmux 会话</b><span class="grow">4 个</span></div>
           <div class="rows">
             <div class="row">
-              <div class="row-top"><i class="dot"></i><span class="name">PROJ-1042</span><span class="when">2 min</span></div>
-              <div class="prev">Let me know which one.
+              <div class="row-top"><i class="dot"></i><span class="name">PROJ-1042</span><span class="when">2 分钟</span></div>
+              <div class="prev">要哪个说一声。
 ✻ Cogitated for 1m 21s</div>
-              <div class="pend">❯ rebase onto latest master</div>
+              <div class="pend">❯ rebase 到最新 master</div>
             </div>
             <div class="row">
-              <div class="row-top"><span class="name">billing-ci</span><span class="when">1 hr</span></div>
+              <div class="row-top"><span class="name">billing-ci</span><span class="when">1 小时</span></div>
               <div class="prev">✓ 12 passed, 0 failed</div>
             </div>
             <div class="row">
-              <div class="row-top"><span class="name">orbit-spec</span><span class="when">3 hr</span></div>
-              <div class="prev">Reading src/server.ts…</div>
+              <div class="row-top"><span class="name">orbit-spec</span><span class="when">3 小时</span></div>
+              <div class="prev">正在读 src/server.ts…</div>
             </div>
           </div>
         </div>
@@ -368,56 +389,53 @@
 
   <section>
     <div class="stack" style="margin-bottom:1.6rem">
-      <p class="eyebrow">What it looks like</p>
-      <h2>Two screens</h2>
+      <p class="eyebrow">长什么样</p>
+      <h2>两个界面</h2>
     </div>
 
-    <div class="tabs" role="tablist" aria-label="Switch screen">
-      <button class="tab" role="tab" id="t-list" aria-controls="p-list" aria-selected="true">Session list</button>
-      <button class="tab" role="tab" id="t-term" aria-controls="p-term" aria-selected="false">Terminal</button>
+    <div class="tabs" role="tablist" aria-label="界面切换">
+      <button class="tab" role="tab" id="t-list" aria-controls="p-list" aria-selected="true">会话列表</button>
+      <button class="tab" role="tab" id="t-term" aria-controls="p-term" aria-selected="false">终端</button>
     </div>
 
     <div class="pane" id="p-list" role="tabpanel" aria-labelledby="t-list">
       <img class="shot" src="img/list.png" width="1568" height="621"
-           alt="Session list: three sessions, each showing its last few lines; the one waiting for a reply has a green dot.">
+           alt="会话列表：三个会话，每个显示最后几行输出；等待回复的带绿点。">
       <p class="lede col shot-note">
-        Every session in one place, each with its last few lines. The ones waiting for
-        your reply sit at the top, so you catch them at a glance.
+        所有会话列在一起，每个带最后几行输出。等你回复的会话排在最前面，一眼就能看到。
       </p>
     </div>
 
     <div class="pane" id="p-term" role="tabpanel" aria-labelledby="t-term" hidden>
       <img class="shot shot-tall" src="img/terminal.png" width="1036" height="1161"
-           alt="Terminal screen: a single session full-width, with a soft-keyboard toolbar along the bottom.">
+           alt="终端页：单个会话全屏，底部是软键盘工具条。">
       <p class="lede col shot-note">
-        Tap in for the full terminal. The keys a soft keyboard lacks — Esc, Ctrl, the
-        arrows — are a toolbar along the bottom.
+        点进会话就是完整终端。软键盘没有的键（Esc、Ctrl、方向键）做成了底部工具条。
       </p>
     </div>
   </section>
 
   <section class="stack-lg">
     <div class="stack col">
-      <p class="eyebrow">Install</p>
-      <h2>One command, no build step</h2>
+      <p class="eyebrow">安装</p>
+      <h2>一行命令跑起来</h2>
     </div>
 
     <div class="cmd"><span class="prompt">$ </span>bunx tmux-next</div>
 
     <p class="lede col" style="font-size:1rem">
-      Needs <strong>tmux 3.2+</strong> and <strong>Bun</strong>. Once it's running, open
-      <code>http://127.0.0.1:7682/</code> to see every tmux session on the machine.
+      需要 <strong>tmux 3.2+</strong> 和 <strong>Bun</strong>。跑起来后打开
+      <code>http://127.0.0.1:7682/</code>，就能看到本机所有 tmux 会话。
     </p>
 
     <div class="warn col">
-      To reach it from your phone, put a reverse proxy in front for HTTPS and login —
-      the service has <strong>no auth of its own</strong>, and exposing it to the internet
-      hands out a shell on your machine. Follow the
-      <a href="/deploy" style="color:var(--accent)">Caddy deployment guide</a>.
+      想从手机连，需要在前面架一个反向代理来做 HTTPS 和登录认证——因为这个服务本身
+      <strong>没有内置认证</strong>，直接暴露到公网等于把机器的 shell 交出去。
+      照着 <a href="/deploy" style="color:var(--accent)">用 Caddy 部署的指引</a> 一步步做即可。
     </div>
 
     <div style="margin-top:0.5rem">
-      <a class="btn-github" href="https://github.com/niletry/tmux-next">View on GitHub →</a>
+      <a class="btn-github" href="https://github.com/niletry/tmux-next">在 GitHub 上查看 →</a>
     </div>
   </section>
 
@@ -428,18 +446,18 @@
 </div>
 
 <script>
-  // Hero replay: a turn finishes, the idle dot lights up. The moment this exists for.
+  // 首屏回放：一轮结束，绿点亮起。这是这个产品存在的那一刻。
   (function () {
     var el = document.getElementById("replay");
     var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     var lines = [
-      { t: '<span class="dim">  Fixed the resize race, tests added in pane-session.</span>' },
-      { t: '<span class="dim">  Want me to update the README too?</span>' },
+      { t: '<span class="dim">  好，我把 resize 的竞态修掉了，测试补在 pane-session。</span>' },
+      { t: '<span class="dim">  要我顺手把 README 也更新吗？</span>' },
       { t: '' },
       { t: '<span class="idle">✻ Cogitated for 1m 21s</span>' },
       { t: '' },
-      { t: '<span class="idle">●</span> <span class="dim">now at the top of the list — waiting for you</span>' }
+      { t: '<span class="idle">●</span> <span class="dim">列表里它现在排在最前面 — 等你回复</span>' }
     ];
 
     if (reduce) {
@@ -461,7 +479,7 @@
     setTimeout(step, 400);
   })();
 
-  // Screenshot tabs
+  // 界面切换
   (function () {
     var tabs = [document.getElementById("t-list"), document.getElementById("t-term")];
     var panes = [document.getElementById("p-list"), document.getElementById("p-term")];

@@ -1,5 +1,5 @@
-<title>用 Caddy 部署 tmux-next（带认证）</title>
-<meta name="description" content="给 tmux-next 加上 HTTPS 和登录认证：一份用 Caddy 的部署指引，含 WebSocket 认证的处理。">
+<title>Deploy tmux-next with Caddy (with auth)</title>
+<meta name="description" content="Add HTTPS and login auth to tmux-next: a Caddy deployment guide, including how the WebSocket is authenticated.">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
@@ -142,182 +142,187 @@
 
   <div class="top">
     <a href="/">← tmux-next</a>
-    <a href="https://github.com/niletry/tmux-next">GitHub</a>
+    <span><a href="/deploy" style="color:var(--ink);font-weight:600">EN</a> · <a href="/deploy-zh">中文</a> · <a href="https://github.com/niletry/tmux-next">GitHub</a></span>
   </div>
 
-  <h1>用 Caddy 部署，并加上登录认证</h1>
+  <h1>Deploy with Caddy, and add a login</h1>
 
   <p class="lede">
-    tmux-next 本身没有任何认证，只绑在 <code>127.0.0.1</code> 上。想从手机或外网访问，
-    需要在前面放一个反向代理来做两件事：HTTPS，和登录认证。这份指引用
-    <a href="https://caddyserver.com/">Caddy</a>——它能自动申请和续期证书，配置也短。
+    tmux-next has no auth of its own and binds only to <code>127.0.0.1</code>. To reach it
+    from your phone or the internet, put a reverse proxy in front to do two things: HTTPS,
+    and a login. This guide uses <a href="https://caddyserver.com/">Caddy</a> — it obtains
+    and renews certificates automatically, and the config is short.
   </p>
 
   <div class="box warn">
-    <p><strong>先想清楚风险。</strong>能访问到这个服务的人，就能在你的机器上执行命令——
-    它给的是 shell。把访问权限当成 SSH 访问来对待：认证必须有，密码要强，只走 HTTPS。</p>
+    <p><strong>Understand the risk first.</strong> Anyone who can reach this service can run
+    commands on your machine — it hands out a shell. Treat access to it like SSH access:
+    auth is mandatory, the password must be strong, HTTPS only.</p>
   </div>
 
-  <h2><span class="n">1</span>准备</h2>
+  <h2><span class="n">1</span>Before you start</h2>
 
   <ul>
-    <li>一个指向你机器的域名，比如 <code>tmux.example.com</code>（Caddy 会为它自动签发证书）。</li>
-    <li>已安装 Caddy。</li>
-    <li>tmux-next 已在本机跑起来，监听 <code>127.0.0.1:7682</code>（默认端口）。</li>
+    <li>A domain pointing at your machine, e.g. <code>tmux.example.com</code> (Caddy will get a certificate for it automatically).</li>
+    <li>Caddy installed.</li>
+    <li>tmux-next already running locally, listening on <code>127.0.0.1:7682</code> (the default port).</li>
   </ul>
 
-  <h2><span class="n">2</span>生成两样东西</h2>
+  <h2><span class="n">2</span>Generate two things</h2>
 
-  <p>一个是登录密码的哈希，一个是给 WebSocket 用的随机口令（下一步解释为什么需要它）：</p>
+  <p>A hash of your login password, and a random secret for the WebSocket (the next step explains why it is needed):</p>
 
-  <pre><span class="c"># 密码哈希——把它填进 Caddyfile，别存明文密码</span>
-caddy hash-password --plaintext '你的强密码'
+  <pre><span class="c"># password hash — put this in the Caddyfile, never a plaintext password</span>
+caddy hash-password --plaintext 'your-strong-password'
 
-<span class="c"># WebSocket 用的随机口令——生成一个，记下来</span>
+<span class="c"># random secret for the WebSocket — generate one and keep it</span>
 openssl rand -hex 24</pre>
 
   <p>
-    第一条会输出一串 <code>$2a$…</code> 的 bcrypt 哈希；第二条会输出一串随机十六进制。
-    两个待会都要用。
+    The first prints a <code>$2a$…</code> bcrypt hash; the second prints a random hex string.
+    You will use both shortly.
   </p>
 
-  <h2><span class="n">3</span>写 Caddyfile</h2>
+  <h2><span class="n">3</span>Write the Caddyfile</h2>
 
-  <p>下面是一份完整可用的配置。把三处占位符换成你自己的值：</p>
+  <p>Here is a complete, working config. Replace the three placeholders with your own values:</p>
 
   <pre>tmux.example.com {
-    <span class="c"># WebSocket：单独用 cookie 认证，原因见下一步</span>
+    <span class="c"># WebSocket: authenticated by cookie instead — see the next step for why</span>
     <span class="k">@ws</span> path /ws
     handle <span class="k">@ws</span> {
-        <span class="k">@noauth</span> not header Cookie *tn_auth=<span class="s">你的随机口令</span>*
+        <span class="k">@noauth</span> not header Cookie *tn_auth=<span class="s">your-random-secret</span>*
         respond <span class="k">@noauth</span> 403
         reverse_proxy 127.0.0.1:7682
     }
 
-    <span class="c"># 其余所有请求：Basic Auth，通过后种下 cookie</span>
+    <span class="c"># everything else: Basic Auth, and on success plant the cookie</span>
     handle {
         basic_auth {
-            <span class="s">你的用户名</span> <span class="s">$2a$…你的密码哈希</span>
+            <span class="s">your-username</span> <span class="s">$2a$…your-password-hash</span>
         }
-        header +Set-Cookie <span class="s">"tn_auth=你的随机口令; Path=/; Secure; HttpOnly; SameSite=Strict"</span>
+        header +Set-Cookie <span class="s">"tn_auth=your-random-secret; Path=/; Secure; HttpOnly; SameSite=Strict"</span>
         reverse_proxy 127.0.0.1:7682
     }
 }</pre>
 
   <div class="box">
-    <p><strong>三处占位符：</strong><code>tmux.example.com</code> 换成你的域名；
-    <code>你的随机口令</code> 两处都换成第 2 步 <code>openssl</code> 生成的那串（必须一致）；
-    <code>你的用户名</code> 和 <code>$2a$…</code> 换成登录名和第 2 步的密码哈希。</p>
+    <p><strong>The three placeholders:</strong> <code>tmux.example.com</code> becomes your domain;
+    both copies of <code>your-random-secret</code> become the string from <code>openssl</code> in step 2
+    (they must match); <code>your-username</code> and <code>$2a$…</code> become your login name and the
+    password hash from step 2.</p>
   </div>
 
-  <h2><span class="n">4</span>为什么 WebSocket 要单独处理</h2>
+  <h2><span class="n">4</span>Why the WebSocket needs its own rule</h2>
 
   <p>
-    这是最容易踩坑、也最容易留下安全漏洞的地方。终端的实时数据走 WebSocket
-    （路径 <code>/ws</code>），而<strong>浏览器发起 WebSocket 握手时不会带 Basic Auth 头</strong>。
-    结果就是：如果你只用 Basic Auth 保护整站，页面看起来锁住了，
-    但 <code>/ws</code> 会因为收不到认证而连不上——或者更糟，你为了让它能连而放开了 <code>/ws</code>，
-    于是终端对任何人敞开。
+    This is the easiest thing to get wrong, and the easiest way to leave a hole. The terminal's
+    live data goes over a WebSocket (the <code>/ws</code> path), and <strong>a browser sends no Basic
+    Auth header on a WebSocket handshake</strong>. So if you protect the whole site with Basic Auth
+    alone, the pages look locked, but <code>/ws</code> can't connect because it never receives the
+    credentials — or worse, you open <code>/ws</code> up to make it work, and the terminal is wide
+    open to anyone.
   </p>
 
   <p>
-    上面的配置绕开了这个问题：普通请求通过 Basic Auth 后，响应里种一个 cookie；
-    之后浏览器发起 WebSocket 握手时<strong>会</strong>带上这个 cookie，
-    <code>/ws</code> 那段就凭 cookie 放行。所以那串随机口令必须保密——
-    它等价于一把钥匙，<code>Secure</code> 和 <code>HttpOnly</code> 标记确保它只走 HTTPS、
-    也不被脚本读到。
+    The config above sidesteps that: once a normal request passes Basic Auth, the response
+    plants a cookie; a browser <strong>does</strong> send cookies on a WebSocket handshake, so the
+    <code>/ws</code> block admits it by cookie. That is why the random secret must stay secret — it
+    is effectively a key, and the <code>Secure</code> and <code>HttpOnly</code> flags keep it to HTTPS
+    and out of reach of scripts.
   </p>
 
-  <h2><span class="n">5</span>启动并验证</h2>
+  <h2><span class="n">5</span>Start it and verify</h2>
 
   <pre>caddy reload --config /path/to/Caddyfile</pre>
 
-  <p>然后从命令行验证三个关键点（把域名换成你的）：</p>
+  <p>Then check three things from the command line (swap in your domain):</p>
 
-  <pre><span class="c"># 页面要求认证 → 期望 401</span>
+  <pre><span class="c"># pages require auth → expect 401</span>
 curl -so /dev/null -w "%{http_code}\n" https://tmux.example.com/
 
-<span class="c"># WebSocket 没带 cookie → 期望 403</span>
+<span class="c"># WebSocket with no cookie → expect 403</span>
 curl -so /dev/null -w "%{http_code}\n" https://tmux.example.com/ws
 
-<span class="c"># 带上正确 cookie → 期望 400（说明已穿过认证、到达服务）</span>
+<span class="c"># with the right cookie → expect 400 (passed auth, reached the service)</span>
 curl -so /dev/null -w "%{http_code}\n" \
-  -H "Cookie: tn_auth=你的随机口令" https://tmux.example.com/ws</pre>
+  -H "Cookie: tn_auth=your-random-secret" https://tmux.example.com/ws</pre>
 
   <p>
-    <code>401</code> 和 <code>403</code> 证明两道门都锁着；带 cookie 的请求返回 <code>400</code>
-    是正常的——那是服务在说「这不是一个合法的 WebSocket 握手」，但请求确实到了它，
-    说明认证放行了。三个都对，就可以在手机上打开域名登录了。
+    <code>401</code> and <code>403</code> prove both doors are locked; the cookie request returning
+    <code>400</code> is expected — that's the service saying "this isn't a valid WebSocket handshake,"
+    but the request reached it, which means auth let it through. All three correct, and you can open
+    the domain on your phone and log in.
   </p>
 
   <div class="box">
-    <p><strong>换机器 / 换域名？</strong>这份配置不依赖任何特定系统。
-    只要 tmux-next 在某处监听 <code>127.0.0.1:7682</code>、Caddy 能解析到你的域名，
-    照抄即可。开机自启（launchd / systemd）等更多细节见仓库的
-    <a href="https://github.com/niletry/tmux-next/blob/master/docs/deploy.md">deploy.md</a>。</p>
+    <p><strong>Different machine or domain?</strong> This config doesn't depend on any particular
+    system. As long as tmux-next listens on <code>127.0.0.1:7682</code> somewhere and Caddy can
+    resolve your domain, copy it as is. For start-on-boot (launchd / systemd) and more, see
+    <a href="https://github.com/niletry/tmux-next/blob/master/docs/deploy.md">deploy.md</a> in the repo.</p>
   </div>
 
-  <h2><span class="n">6</span>进阶：换成登录页 + 会过期的 token</h2>
+  <h2><span class="n">6</span>Advanced: a login page and tokens that expire</h2>
 
   <p>
-    上面的 Basic Auth 有两个已知的粗糙之处：登录框是<strong>浏览器画的原生弹窗</strong>，
-    没法自定义；那串 cookie 口令是<strong>静态的、永不过期</strong>，一旦泄漏就得手动改配置。
-    如果想要一个像样的登录页，加上会自动过期的 token，可以用
-    <a href="https://github.com/greenpau/caddy-security">caddy-security</a> 插件——
-    它一并解决这两点。
+    The Basic Auth above is rough in two known ways: the login box is the <strong>browser's native
+    popup</strong>, which can't be styled; and the cookie secret is <strong>static and never expires</strong>,
+    so a leak means editing the config by hand. For a proper login page plus tokens that expire on
+    their own, use the <a href="https://github.com/greenpau/caddy-security">caddy-security</a> plugin —
+    it solves both.
   </p>
 
   <div class="box">
-    <p>它不在标准 Caddy 里，需要用 <a href="https://github.com/caddyserver/xcaddy">xcaddy</a>
-    构建一个带它的版本：</p>
+    <p>It isn't in standard Caddy; build a version that includes it with
+    <a href="https://github.com/caddyserver/xcaddy">xcaddy</a>:</p>
   </div>
 
   <pre>xcaddy build --with github.com/greenpau/caddy-security</pre>
 
-  <p>然后配置分三块。先生成一个签名密钥（JWT 用它签发和校验，泄漏等于伪造登录）：</p>
+  <p>The config is then three parts. First generate a signing key (the JWT is signed and verified with it; a leak means anyone can forge a login):</p>
 
   <pre>openssl rand -hex 32</pre>
 
-  <p><strong>① 全局块</strong>——定义用户库、登录门户、授权策略：</p>
+  <p><strong>1. The global block</strong> — defines the user store, the login portal, and the authorization policy:</p>
 
   <pre>{
-    <span class="c"># 这两行让插件的中间件排到正确的位置（照抄，与站点用不用 basicauth 无关）</span>
+    <span class="c"># these two order the plugin's middleware correctly (copy as is, unrelated to whether the site uses basicauth)</span>
     order authenticate before respond
     order authorize before basicauth
 
     security {
-        <span class="c"># 用户库：密码用 bcrypt 哈希，不存明文</span>
+        <span class="c"># user store: passwords are bcrypt hashes, never plaintext</span>
         local identity store localdb {
             realm local
             path /path/to/users.json
-            user <span class="s">你的用户名</span> {
-                name <span class="s">你的名字</span>
+            user <span class="s">your-username</span> {
+                name <span class="s">Your Name</span>
                 email <span class="s">you@example.com</span>
-                password <span class="s">"bcrypt:10:$2a$10$…你的密码哈希"</span>
+                password <span class="s">"bcrypt:10:$2a$10$…your-password-hash"</span>
                 roles authp/user
             }
         }
 
-        <span class="c"># 登录门户：签发会过期的 JWT</span>
+        <span class="c"># login portal: issues a JWT that expires</span>
         authentication portal myportal {
-            crypto default token lifetime 28800   <span class="c"># token 有效期，秒（这里 8 小时）</span>
-            crypto key sign-verify <span class="s">你的签名密钥</span>
+            crypto default token lifetime 28800   <span class="c"># token lifetime in seconds (8 hours here)</span>
+            crypto key sign-verify <span class="s">your-signing-key</span>
             enable identity store localdb
-            <span class="c"># 让 JWT cookie 在 auth. 和 tmux. 两个子域间共享</span>
+            <span class="c"># share the JWT cookie across the auth. and tmux. subdomains</span>
             cookie domain <span class="s">example.com</span>
         }
 
-        <span class="c"># 授权策略：校验 JWT，未登录就跳到登录门户</span>
+        <span class="c"># authorization policy: verify the JWT, send anyone without one to the portal</span>
         authorization policy tmuxpolicy {
-            <span class="c"># 跨子域必须写绝对 URL，指向登录门户</span>
+            <span class="c"># across subdomains this must be an absolute URL to the portal</span>
             set auth url <span class="s">https://auth.example.com/auth/</span>
-            crypto key verify <span class="s">你的签名密钥</span>
+            crypto key verify <span class="s">your-signing-key</span>
             allow roles authp/user
         }
     }
 }</pre>
 
-  <p><strong>② 登录门户的站点块</strong>——它托管那个自定义登录页：</p>
+  <p><strong>2. The portal site block</strong> — this hosts the custom login page:</p>
 
   <pre>auth.example.com {
     route /auth* {
@@ -325,36 +330,38 @@ curl -so /dev/null -w "%{http_code}\n" \
     }
 }</pre>
 
-  <p><strong>③ tmux-next 的站点块</strong>——用策略保护，未登录自动跳去登录页：</p>
+  <p><strong>3. The tmux-next site block</strong> — protected by the policy, redirecting to the login page when unauthenticated:</p>
 
   <pre>tmux.example.com {
-    <span class="c"># 未登录访问任何路径（含 WebSocket）都要求先有合法 JWT</span>
+    <span class="c"># every path (WebSocket included) requires a valid JWT first</span>
     authorize with tmuxpolicy
     reverse_proxy 127.0.0.1:7682
 }</pre>
 
   <div class="box">
-    <p><strong>为什么这次 WebSocket 不用单独处理了？</strong>因为 JWT 存在 cookie 里，
-    浏览器发起 WebSocket 握手时<strong>会</strong>带上 cookie——和第 4 步靠 cookie 放行是同一个道理，
-    只是这次 cookie 里装的是签过名、会过期的 JWT，而不是一个静态口令。<code>authorize</code>
-    对所有路径统一校验，<code>/ws</code> 也在内，不用再写一段。</p>
+    <p><strong>Why no separate WebSocket rule this time?</strong> The JWT lives in a cookie, and a
+    browser <strong>does</strong> send cookies on a WebSocket handshake — same idea as the cookie in
+    step 4, except the cookie now holds a signed, expiring JWT rather than a static secret.
+    <code>authorize</code> checks every path uniformly, <code>/ws</code> included, so there's nothing
+    extra to write.</p>
   </div>
 
   <div class="box warn">
-    <p><strong>两个密钥别弄混，也别泄漏。</strong>签名密钥（<code>crypto key</code>）泄漏等于别人能伪造任意登录；
-    密码哈希用 <code>caddy hash-password</code> 生成、以 <code>bcrypt:10:</code> 开头填进
-    <code>password</code>。<code>token lifetime</code> 到期后需要重新登录——这正是它比静态 cookie 强的地方：
-    抓到一个 token 也只在有效期内能用。</p>
+    <p><strong>Keep the two keys straight, and secret.</strong> A leaked signing key
+    (<code>crypto key</code>) lets anyone forge any login; the password hash is made with
+    <code>caddy hash-password</code> and goes into <code>password</code> prefixed with
+    <code>bcrypt:10:</code>. When the <code>token lifetime</code> is up you log in again — which is
+    exactly why it beats a static cookie: a captured token only works until it expires.</p>
   </div>
 
   <p>
-    caddy-security 还能接 GitHub / Google 登录（OAuth）、加两步验证（TOTP / Yubikey）。
-    考虑到这服务给的是 shell，2FA 很值得开。完整选项见
-    <a href="https://docs.authcrunch.com/">它的文档</a>。
+    caddy-security can also do GitHub / Google login (OAuth) and two-factor auth (TOTP / Yubikey).
+    Given this service hands out a shell, 2FA is well worth it. Full options are in
+    <a href="https://docs.authcrunch.com/">its documentation</a>.
   </p>
 
   <footer>
-    <p>tmux-next · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a> · <a href="/">首页</a></p>
+    <p>tmux-next · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a> · <a href="/">Home</a></p>
   </footer>
 
 </div>
