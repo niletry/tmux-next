@@ -44,6 +44,14 @@
 
 ### 装与跑
 
+用 [Bun](https://bun.sh) 直接跑（**不支持 node** —— 入口是未编译的 TypeScript，没有构建步骤）：
+
+```bash
+bunx tmux-next
+```
+
+或者克隆下来改：
+
 ```bash
 git clone https://github.com/niletry/tmux-next.git
 cd tmux-next
@@ -51,7 +59,7 @@ bun install          # 两个包，都只是前端用的 xterm.js
 bun run src/index.ts
 ```
 
-打开 `http://127.0.0.1:7682/`，会列出你本机所有 tmux session。
+两种方式都打开 `http://127.0.0.1:7682/`，会列出你本机所有 tmux session。
 
 ```
 tmux-next [options]

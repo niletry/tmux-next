@@ -3,8 +3,24 @@
   "version": "0.1.0",
   "description": "A phone-friendly web client for tmux sessions, built on tmux control mode",
   "license": "MIT",
-  "private": true,
   "type": "module",
+  "homepage": "https://github.com/niletry/tmux-next",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/niletry/tmux-next.git"
+  },
+  "bugs": {
+    "url": "https://github.com/niletry/tmux-next/security/advisories/new"
+  },
+  "keywords": [
+    "tmux",
+    "terminal",
+    "web-terminal",
+    "xterm",
+    "mobile",
+    "bun",
+    "claude-code"
+  ],
   "bin": {
     "tmux-next": "./src/index.ts"
   },
@@ -13,7 +29,9 @@
     "public",
     "README.md",
     "LICENSE",
-    "SECURITY.md"
+    "SECURITY.md",
+    "!**/*.test.ts",
+    "!**/*.integration.test.ts"
   ],
   "engines": {
     "bun": ">=1.0.0"
