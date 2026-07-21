@@ -281,80 +281,15 @@
 
   .shot-note { margin-top: 1.1rem; font-size: 0.95rem; }
 
-  /* ---------- 能力 ---------- */
-
-  .cards {
-    display: grid;
-    gap: 1px;
-    background: var(--line);
-    border: 1px solid var(--line);
+  .btn-github {
+    display: inline-block;
+    font: 600 0.95rem var(--mono);
+    background: var(--accent);
+    color: var(--paper);
+    padding: 0.7rem 1.3rem;
     border-radius: 10px;
-    overflow: hidden;
+    text-decoration: none;
   }
-
-  @media (min-width: 48rem) { .cards { grid-template-columns: repeat(3, 1fr); } }
-
-  .card {
-    background: var(--paper);
-    padding: 1.5rem 1.4rem;
-    display: grid;
-    gap: 0.55rem;
-    align-content: start;
-  }
-
-  .card p { color: var(--muted); font-size: 0.94rem; }
-
-  /* ---------- 决策 ---------- */
-
-  .notes { display: grid; gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
-
-  .note {
-    background: var(--paper);
-    padding: 1.5rem 0;
-    display: grid;
-    gap: 0.5rem;
-  }
-
-  @media (min-width: 48rem) {
-    .note { grid-template-columns: 14rem 1fr; gap: 2rem; align-items: start; }
-  }
-
-  .note p { color: var(--muted); max-width: var(--measure); }
-
-  /* ---------- 数字 ---------- */
-
-  .figs {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.75rem 1rem;
-  }
-
-  @media (min-width: 48rem) { .figs { grid-template-columns: repeat(4, 1fr); } }
-
-  .fig { display: grid; gap: 0.2rem; }
-
-  .fig b {
-    font: 600 clamp(1.6rem, 4vw, 2.3rem)/1 var(--mono);
-    letter-spacing: -0.03em;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .fig span { font-size: 0.85rem; color: var(--muted); }
-
-  /* ---------- 架构图 ---------- */
-
-  .flow {
-    font: 12px/1.7 var(--mono);
-    color: var(--muted);
-    background: var(--paper-2);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 1.1rem 1.2rem;
-    overflow-x: auto;
-    white-space: pre;
-  }
-
-  .flow b { color: var(--ink); font-weight: 600; }
 
   /* ---------- 安装 ---------- */
 
@@ -370,60 +305,15 @@
   }
 
   .cmd .prompt { color: var(--term-dim); user-select: none; }
-  .cmd .note { color: var(--term-dim); }
-
-  .req {
-    display: grid;
-    gap: 0.5rem 1rem;
-    grid-template-columns: auto 1fr;
-    font-size: 0.94rem;
-  }
-
-  .req dt { font-family: var(--mono); font-weight: 600; color: var(--ink); }
-  .req dd { margin: 0; color: var(--muted); }
 
   .warn {
     border-left: 3px solid var(--accent);
     padding: 0.1rem 0 0.1rem 1rem;
     color: var(--muted);
-    font-size: 0.94rem;
+    font-size: 0.95rem;
   }
 
   .warn strong { color: var(--ink); }
-
-  /* 上手步骤：编号是真实顺序，不是装饰 */
-  .steps { display: grid; gap: 1.1rem; counter-reset: step; }
-
-  .step {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.9rem;
-    align-items: baseline;
-  }
-
-  .step::before {
-    counter-increment: step;
-    content: counter(step);
-    font: 600 0.85rem var(--mono);
-    color: var(--accent);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    width: 1.7rem;
-    height: 1.7rem;
-    display: grid;
-    place-items: center;
-    align-self: start;
-  }
-
-  .step p { color: var(--muted); }
-  .step strong { color: var(--ink); font-weight: 600; }
-
-  .req-details summary {
-    cursor: pointer;
-    color: var(--accent);
-    font-size: 0.94rem;
-    padding: 0.3rem 0;
-  }
 
   footer {
     border-top: 1px solid var(--line);
@@ -443,11 +333,11 @@
     <div class="hero-grid">
       <div class="stack">
         <p class="eyebrow">自托管 · tmux web 客户端</p>
-        <h1>它跑完了，<br><span>而你不在电脑前。</span></h1>
+        <h1>在手机上用你的 tmux</h1>
         <p class="lede col">
-          Claude Code 想一轮要几分钟。tmux-next 把那几分钟还给你——
-          在手机上看到每个会话的最后几行输出，谁在等你回复一眼就知道，
-          点进去接着聊。
+          tmux-next 是一个自托管的网页客户端。它列出你机器上所有的 tmux 会话，
+          显示每个会话的最新画面，让你在手机上点进去继续操作——特别适合盯着跑在
+          里面的 Claude Code。
         </p>
         <div class="screen" aria-label="终端回放：一轮结束，状态变为等待回复">
           <div id="replay"><span class="caret"></span></div>
@@ -480,85 +370,10 @@
 
   <hr class="rule">
 
-  <section class="stack col">
-    <p class="eyebrow">它解决什么</p>
-    <h2>终端是唯一没跟着你走的东西</h2>
-    <p>
-      邮件、日历、聊天早就在手机上了。可你让 Claude Code 跑一个重构，它要五分钟——
-      这五分钟你只能守着电脑，不是因为有事做，是因为<strong>你不知道它什么时候需要你</strong>。
-    </p>
-    <p>
-      tmux 本来就是解药：进程留在机器上，随时能连回去。缺的只是一个能装进口袋的客户端。
-      <strong>tmux-next 就是这个客户端</strong>——手机上列出所有会话、看到谁在等你、点进去接着聊。
-    </p>
-  </section>
-
-  <section class="stack-lg">
-    <div class="stack col">
-      <p class="eyebrow">快速开始</p>
-      <h2>装上就能用，没有构建步骤</h2>
-    </div>
-
-    <div class="cmd"><span class="prompt">$ </span>bunx tmux-next
-<span class="note"># 需要 tmux 3.2+ 和 Bun。不支持 node——入口是未编译的 TypeScript。</span></div>
-
-    <div class="steps col">
-      <div class="step">
-        <p>跑起来后打开 <code>http://127.0.0.1:7682/</code>，<strong>本机所有 tmux 会话</strong>就列在那儿——
-        每个带最后几行输出，等你回复的排最前。</p>
-      </div>
-      <div class="step">
-        <p>点一个会话<strong>进到终端</strong>。软键盘没有的键（Esc / Ctrl / 方向键…）做成了工具条，
-        拖动能滚全屏程序的历史。</p>
-      </div>
-      <div class="step">
-        <p><strong>想从手机连</strong>？在前面架一个反向代理做 TLS 和认证——
-        因为这个服务<strong>没有内置认证</strong>，见下方。</p>
-      </div>
-    </div>
-
-    <div class="warn col">
-      这个服务<strong>没有任何内置认证</strong>，默认只绑 loopback，假设前面有反向代理负责 TLS 和身份验证。
-      直接暴露到网络等于把一个免密 shell 交给任何能连上端口的人。反代还得<strong>单独处理 WebSocket</strong>——
-      浏览器发起 WS 握手时不带 Basic Auth 头。完整配置见
-      <a href="https://github.com/niletry/tmux-next/blob/master/SECURITY.md" style="color:var(--accent)">SECURITY.md</a>
-      与 <a href="https://github.com/niletry/tmux-next/blob/master/docs/deploy.md" style="color:var(--accent)">deploy.md</a>。
-    </div>
-
-    <details class="req-details col">
-      <summary>想改代码，或看完整前置条件</summary>
-      <dl class="req" style="margin-top:1rem">
-        <dt>tmux 3.2+</dt>
-        <dd>每次 resize 走 <code>refresh-client&nbsp;-C&nbsp;列,行</code>，逗号写法是 3.2 引入的；更早的版本启动时会被拒绝。</dd>
-        <dt>Bun 1.0+</dt>
-        <dd>直接跑 TypeScript，入口没有编译产物——所以不支持 node。</dd>
-        <dt>macOS / Linux</dt>
-        <dd>依赖 tmux 与 POSIX shell。</dd>
-      </dl>
-      <div class="cmd" style="margin-top:0.8rem"><span class="prompt">$ </span>git clone https://github.com/niletry/tmux-next.git
-<span class="prompt">$ </span>cd tmux-next &amp;&amp; bun install &amp;&amp; bun run src/index.ts</div>
-    </details>
-
-    <div class="cards" style="margin-top:0.5rem">
-      <a class="card" href="https://github.com/niletry/tmux-next" style="text-decoration:none">
-        <h3 style="color:var(--accent)">GitHub →</h3>
-        <p>源码、CI、issue。MIT。</p>
-      </a>
-      <a class="card" href="https://www.npmjs.com/package/tmux-next" style="text-decoration:none">
-        <h3 style="color:var(--accent)">npm →</h3>
-        <p><code>bunx tmux-next</code> 就从这里拉。</p>
-      </a>
-      <a class="card" href="https://github.com/niletry/tmux-next/blob/master/README.md" style="text-decoration:none">
-        <h3 style="color:var(--accent)">文档 →</h3>
-        <p>部署、开机自启、设计说明。</p>
-      </a>
-    </div>
-  </section>
-
   <section>
     <div class="stack" style="margin-bottom:1.6rem">
       <p class="eyebrow">长什么样</p>
-      <h2>两个界面，就这些</h2>
+      <h2>两个界面</h2>
     </div>
 
     <div class="tabs" role="tablist" aria-label="界面切换">
@@ -568,10 +383,9 @@
 
     <div class="pane" id="p-list" role="tabpanel" aria-labelledby="t-list">
       <img class="shot" src="img/list.png" width="1568" height="621"
-           alt="会话列表：三个会话，每个显示最后几行输出；等待回复的带绿点，未发送的输入单独一行。">
+           alt="会话列表：三个会话，每个显示最后几行输出；等待回复的带绿点。">
       <p class="lede col shot-note">
-        绿点是「在等你回复」。Claude Code 打完一轮会输出 <code>✻ Cogitated for …</code>，
-        列表据此把等你的会话排到最前面——不用一个个点进去看。
+        所有会话列在一起，每个带最后几行输出。等你回复的会话排在最前面，一眼就能看到。
       </p>
     </div>
 
@@ -579,104 +393,37 @@
       <img class="shot shot-tall" src="img/terminal.png" width="1036" height="1161"
            alt="终端页：单个会话全屏，底部是软键盘工具条。">
       <p class="lede col shot-note">
-        软键盘上没有的键做成工具条。宽度跟着窗口走——手机上是 80 列、字号缩小，
-        桌面上字号封顶、多出来的宽度换成列数。
+        点进会话就是完整终端。软键盘没有的键（Esc、Ctrl、方向键）做成了底部工具条。
       </p>
     </div>
-
   </section>
 
   <section class="stack-lg">
     <div class="stack col">
-      <p class="eyebrow">能做什么</p>
-      <h2>三件事</h2>
-    </div>
-    <div class="cards">
-      <div class="card">
-        <h3>看到状态，不用点开</h3>
-        <p>每个会话显示最后几行输出、还没发出去的输入、最后活跃时间。等你回复的排在最前。</p>
-      </div>
-      <div class="card">
-        <h3>从手机开新会话</h3>
-        <p>点选目录一路往下钻，可以起名，也可以选择让 Claude 跳过权限确认直接跑。</p>
-      </div>
-      <div class="card">
-        <h3>断了就重建</h3>
-        <p>锁屏、进地铁、换 Wi-Fi。不缓冲也不重放——重连时从 tmux 重新抓一次完整画面。</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="stack-lg">
-    <div class="stack col">
-      <p class="eyebrow">怎么做到的</p>
-      <h2>用 control mode，不是起一个 PTY</h2>
-      <p class="lede">
-        tmux 有一个讲结构化协议的模式。用它，输出就是按 pane 分发的，
-        于是浏览器里看到的是程序本身的画面——没有 tmux 的分屏边框，没有状态栏。
-      </p>
+      <p class="eyebrow">安装</p>
+      <h2>一行命令跑起来</h2>
     </div>
 
-    <div class="flow">浏览器 <b>xterm.js</b>
-   │  WebSocket
-   ▼
-<b>Bun 服务</b>  127.0.0.1
-   │  tmux -C attach   <span style="opacity:.7">（control mode）</span>
-   ▼
-<b>tmux server</b> ──┬── 你的会话  PROJ-1042
-                └── 你的会话  billing-ci
+    <div class="cmd"><span class="prompt">$ </span>bunx tmux-next</div>
 
-每个浏览器连接建一个 <b>web-&lt;uuid&gt;</b> grouped session
-当作可销毁的挂载点，断开即销毁。</div>
+    <p class="lede col" style="font-size:1rem">
+      需要 <strong>tmux 3.2+</strong> 和 <strong>Bun</strong>。跑起来后打开
+      <code>http://127.0.0.1:7682/</code>，就能看到本机所有 tmux 会话。
+    </p>
 
-    <div class="notes">
-      <div class="note">
-        <h3>尺寸是共享的</h3>
-        <p>
-          window 尺寸是 window 的属性，同一个 window 无法对两个客户端渲染成两种宽度。
-          这是 tmux 的事实，不是缺陷。断开时调 <code>resize-window -A</code> 把尺寸还给剩下的客户端。
-        </p>
-      </div>
-      <div class="note">
-        <h3>一条规则覆盖两种屏幕</h3>
-        <p>
-          先算「让 80 列铺满需要多大字号」，没超上限就用它——手机因此永远是 80 列。
-          超过上限（约 576px 宽）字号钉死，多余宽度换成列数。没有设备嗅探，切换点是算出来的。
-        </p>
-      </div>
-      <div class="note">
-        <h3>拖动滚的是程序</h3>
-        <p>
-          tmux 原地重绘屏幕，从不让行滚出顶部，所以 xterm 的滚动缓冲永远是空的。
-          手势被翻译成合成的 <code>WheelEvent</code>，由 xterm 按程序协商好的鼠标协议编码；
-          程序不理会鼠标时一个字节都不会发出去，而这个「零输出」正好被当作信号，退化成 PgUp/PgDn。
-        </p>
-      </div>
-      <div class="note">
-        <h3>命令是常量</h3>
-        <p>
-          启动命令会经过 <code>sh -c</code>，所以任何来自请求的东西都不允许拼进去。
-          目录作为独立 argv 传递，「跳过权限确认」是在两个固定字符串之间二选一，而不是拼接。
-        </p>
-      </div>
+    <div class="warn col">
+      想从手机连，需要在前面架一个反向代理来做 HTTPS 和登录认证——因为这个服务本身
+      <strong>没有内置认证</strong>，直接暴露到公网等于把机器的 shell 交出去。
+      配置方法见 GitHub 上的文档。
     </div>
-  </section>
 
-  <section class="stack-lg">
-    <div class="stack col">
-      <p class="eyebrow">规模</p>
-      <h2>小到可以整个读完</h2>
-    </div>
-    <div class="figs">
-      <div class="fig"><b>214</b><span>个测试，大多真的起 tmux</span></div>
-      <div class="fig"><b>0</b><span>个前端框架</span></div>
-      <div class="fig"><b>0</b><span>个构建步骤</span></div>
-      <div class="fig"><b>~4k</b><span>行 TypeScript / JS</span></div>
+    <div style="margin-top:0.5rem">
+      <a class="btn-github" href="https://github.com/niletry/tmux-next">在 GitHub 上查看 →</a>
     </div>
   </section>
 
   <footer>
-    <p>tmux-next · Bun + tmux control mode + xterm.js · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a></p>
+    <p>tmux-next · MIT · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a> · <a href="https://www.npmjs.com/package/tmux-next" style="color:var(--muted)">npm</a></p>
   </footer>
 
 </div>
