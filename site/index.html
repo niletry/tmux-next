@@ -356,6 +356,41 @@
 
   .flow b { color: var(--ink); font-weight: 600; }
 
+  /* ---------- 安装 ---------- */
+
+  .cmd {
+    font: 13px/1.7 var(--mono);
+    color: var(--term-fg);
+    background: var(--term-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  .cmd .prompt { color: var(--term-dim); user-select: none; }
+  .cmd .note { color: var(--term-dim); }
+
+  .req {
+    display: grid;
+    gap: 0.5rem 1rem;
+    grid-template-columns: auto 1fr;
+    font-size: 0.94rem;
+  }
+
+  .req dt { font-family: var(--mono); font-weight: 600; color: var(--ink); }
+  .req dd { margin: 0; color: var(--muted); }
+
+  .warn {
+    border-left: 3px solid var(--accent);
+    padding: 0.1rem 0 0.1rem 1rem;
+    color: var(--muted);
+    font-size: 0.94rem;
+  }
+
+  .warn strong { color: var(--ink); }
+
   footer {
     border-top: 1px solid var(--line);
     padding: 2.5rem 0 4rem;
@@ -538,15 +573,65 @@
       <h2>小到可以整个读完</h2>
     </div>
     <div class="figs">
-      <div class="fig"><b>201</b><span>个测试，大多真的起 tmux</span></div>
+      <div class="fig"><b>214</b><span>个测试，大多真的起 tmux</span></div>
       <div class="fig"><b>0</b><span>个前端框架</span></div>
       <div class="fig"><b>0</b><span>个构建步骤</span></div>
-      <div class="fig"><b>~3.9k</b><span>行 TypeScript / JS</span></div>
+      <div class="fig"><b>~4k</b><span>行 TypeScript / JS</span></div>
+    </div>
+  </section>
+
+  <section class="stack-lg">
+    <div class="stack col">
+      <p class="eyebrow">装起来</p>
+      <h2>用 Bun 跑，没有构建步骤</h2>
+    </div>
+
+    <dl class="req col">
+      <dt>tmux 3.2+</dt>
+      <dd>每次 resize 走 <code>refresh-client&nbsp;-C&nbsp;列,行</code>，逗号写法是 3.2 引入的；更早的版本启动时会被拒绝。</dd>
+      <dt>Bun 1.0+</dt>
+      <dd>直接跑 TypeScript，入口没有编译产物——所以不支持 node。</dd>
+      <dt>macOS / Linux</dt>
+      <dd>依赖 tmux 与 POSIX shell。</dd>
+    </dl>
+
+    <div class="cmd"><span class="prompt">$ </span>bunx tmux-next
+<span class="note"># 或者克隆下来改：</span>
+<span class="prompt">$ </span>git clone https://github.com/niletry/tmux-next.git
+<span class="prompt">$ </span>cd tmux-next &amp;&amp; bun install &amp;&amp; bun run src/index.ts</div>
+
+    <p class="lede col" style="font-size:0.98rem">
+      两种方式都打开 <code>http://127.0.0.1:7682/</code>，列出本机所有 tmux session。
+    </p>
+
+    <div class="warn col">
+      <strong>从手机访问前，先读这个。</strong>
+      这个服务<strong>没有任何内置认证</strong>，默认只绑 loopback。它假设前面有一个反向代理负责
+      TLS 和身份验证。直接暴露到网络，等于把一个免密 shell 交给任何能连上端口的人。
+      反代还得单独处理 WebSocket——浏览器发起 WS 握手时不带 Basic Auth 头。
+      完整说明见仓库的
+      <a href="https://github.com/niletry/tmux-next/blob/master/SECURITY.md" style="color:var(--accent)">SECURITY.md</a>
+      与 <a href="https://github.com/niletry/tmux-next/blob/master/docs/deploy.md" style="color:var(--accent)">deploy.md</a>。
+    </div>
+
+    <div class="cards" style="margin-top:0.5rem">
+      <a class="card" href="https://github.com/niletry/tmux-next" style="text-decoration:none">
+        <h3 style="color:var(--accent)">GitHub →</h3>
+        <p>源码、CI、issue。MIT。</p>
+      </a>
+      <a class="card" href="https://www.npmjs.com/package/tmux-next" style="text-decoration:none">
+        <h3 style="color:var(--accent)">npm →</h3>
+        <p><code>bunx tmux-next</code> 就从这里拉。</p>
+      </a>
+      <a class="card" href="https://github.com/niletry/tmux-next/blob/master/README.md" style="text-decoration:none">
+        <h3 style="color:var(--accent)">文档 →</h3>
+        <p>部署、开机自启、设计说明。</p>
+      </a>
     </div>
   </section>
 
   <footer>
-    <p>tmux-next · Bun + tmux control mode + xterm.js</p>
+    <p>tmux-next · Bun + tmux control mode + xterm.js · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a></p>
   </footer>
 
 </div>
