@@ -99,20 +99,25 @@ test("parses every field in a bare environment, as under launchd", async () => {
   // real tmux reachable by including its directory, but strip LANG/LC_* so the
   // no-locale rewrite this test guards against is actually in force.
   const tmuxDir = (await Bun.$`dirname $(command -v tmux)`.text()).trim();
+  // The subprocess reports its own outcome as JSON on stdout — including any
+  // failure — so the reason survives CI's log grouping, which swallows a
+  // thrown assertion message.
   const script =
+    `try {` +
     `const {listSessions} = await import("${import.meta.dir}/session-list.ts");` +
     `const s = (await listSessions()).find((x) => x.name === ${JSON.stringify(name)});` +
-    `process.stdout.write(JSON.stringify(s ? {name: s.name, width: s.windowWidth} : null));`;
+    `process.stdout.write(JSON.stringify({ok: true, s: s ? {name: s.name, width: s.windowWidth} : null}));` +
+    `} catch (e) { process.stdout.write(JSON.stringify({ok: false, error: String(e)})); }`;
 
   try {
-    // A bare PATH is the point — that's what launchd hands the service — but
-    // the locale is inherited, not stripped. Stripping it made run.ts fall
-    // back to en_US.UTF-8, which a Linux CI runner has not generated (it ships
-    // C.UTF-8), so the failure was a missing locale rather than the field
-    // parsing this test is actually about.
+    // A bare PATH and HOME, matching what launchd actually hands the service —
+    // not a fully empty environment, which launchd never produces. The locale
+    // is inherited rather than stripped: dropping it made run.ts fall back to
+    // en_US.UTF-8, a locale the Linux CI runner has not generated.
     const proc = Bun.spawn([process.execPath, "-e", script], {
       env: {
         PATH: `${tmuxDir}:/usr/bin:/bin`,
+        HOME: process.env.HOME!,
         LANG: process.env.LANG ?? "C.UTF-8",
         LC_ALL: process.env.LC_ALL ?? process.env.LANG ?? "C.UTF-8",
       },
@@ -123,18 +128,18 @@ test("parses every field in a bare environment, as under launchd", async () => {
     const err = await new Response(proc.stderr).text();
     const code = await proc.exited;
 
-    // Surface what the subprocess actually did — a bare `JSON.parse("")` here
-    // hid the real cause behind an unrelated parse error.
-    let parsed: { name: string; width: number } | null;
+    let result: { ok: boolean; s?: { name: string; width: number } | null; error?: string };
     try {
-      parsed = JSON.parse(out);
+      result = JSON.parse(out);
     } catch {
       throw new Error(`subprocess exit ${code}; stdout=${JSON.stringify(out)}; stderr=${err}`);
     }
-    expect(parsed, `subprocess found no session; stderr=${err}`).not.toBeNull();
-    expect(parsed!.name).not.toContain("_");
-    expect(parsed!.name).toBe(name);
-    expect(parsed!.width).toBeGreaterThan(0);
+    if (!result.ok) throw new Error(`subprocess threw: ${result.error}`);
+
+    expect(result.s, "subprocess found no matching session").not.toBeNull();
+    expect(result.s!.name).not.toContain("_");
+    expect(result.s!.name).toBe(name);
+    expect(result.s!.width).toBeGreaterThan(0);
   } finally {
     await tmux(["kill-session", "-t", `=${name}`]);
   }
