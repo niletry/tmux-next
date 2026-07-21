@@ -99,10 +99,11 @@ test("parses every field in a bare environment, as under launchd", async () => {
   // Reproduce the bare launchd environment without hardcoding a PATH: keep the
   // real tmux reachable by including its directory, but strip LANG/LC_* so the
   // no-locale rewrite this test guards against is actually in force.
-  // `command -v tmux` gives the full path; dirname it in JS rather than in the
-  // shell. Bun.$ does not do `$(...)` command substitution, so nesting it there
-  // passed the literal string to dirname and failed only on CI.
-  const tmuxPath = (await Bun.$`command -v tmux`.text()).trim();
+  // Bun.which resolves tmux on PATH with no shell at all — earlier attempts
+  // via Bun.$ tripped over its built-in shell (no `$(...)`, then no `command`
+  // builtin), which differed between macOS and the CI runner.
+  const tmuxPath = Bun.which("tmux");
+  if (!tmuxPath) throw new Error("tmux not found on PATH");
   const tmuxDir = dirname(tmuxPath);
   // The subprocess reports its own outcome as JSON on stdout — including any
   // failure — so the reason survives CI's log grouping, which swallows a
