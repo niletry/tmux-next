@@ -1,5 +1,9 @@
 # tmux-next
 
+[![CI](https://github.com/niletry/tmux-next/actions/workflows/ci.yml/badge.svg)](https://github.com/niletry/tmux-next/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/tmux-next)](https://www.npmjs.com/package/tmux-next)
+[![license](https://img.shields.io/npm/l/tmux-next)](LICENSE)
+
 **在手机上盯着跑在 tmux 里的 Claude Code。**
 
 一个自托管的 tmux web 客户端。列出本机所有 session、看到每个的最后几行输出、点进去接着聊——锁屏、进地铁、换 Wi-Fi 回来，画面自动重建。
