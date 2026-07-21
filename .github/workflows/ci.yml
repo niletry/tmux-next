@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# A newer push supersedes an in-flight run on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+
+    # Non-interactive tmux still needs a UTF-8 locale, or capture-pane mangles
+    # the CJK that several tests assert on. The runner defaults to C.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tmux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tmux
+          # The suite refuses to run below tmux 3.2 (the `refresh-client -C`
+          # comma form); fail loudly here if the runner ever ships older.
+          tmux -V
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Type-check
+        run: bun run typecheck
+
+      # Kept apart from typecheck so a red test does not read as a type error.
+      # The tests start real tmux sessions and clean up after themselves.
+      - name: Test
+        run: bun test
