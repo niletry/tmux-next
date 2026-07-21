@@ -99,21 +99,24 @@ test("a nonexistent directory fails instead of creating a stray session", async 
 });
 
 /**
- * The launch command is otherwise never exercised: the tests above swap it out
- * so they don't start a real Claude Code. This checks the part that actually
- * matters — that a login shell finds `claude` even from a bare environment,
- * which is why the command uses one.
+ * What matters about the launch command is the shape `exec "$SHELL" -lc <cmd>`:
+ * a login shell that resolves <cmd> off PATH, so `claude` is found even from
+ * the bare environment launchd hands the service.
+ *
+ * The mechanism is what's under test, not that `claude` is installed — a clean
+ * CI box has no claude — so the probe resolves a command every POSIX system
+ * has (`env`) through that exact shape, and asserts the shell found it on PATH.
  */
-test("the launch command resolves claude through a login shell", async () => {
-  const probe = LAUNCH_COMMAND.replace("exec ", "").replace("-lc claude", "-lc 'command -v claude'");
+test("the launch shape resolves a command through a login shell's PATH", async () => {
+  const probe = LAUNCH_COMMAND.replace("exec ", "").replace("-lc claude", "-lc 'command -v env'");
   const shell = Bun.spawn(["sh", "-c", probe], {
     stdout: "pipe",
     stderr: "pipe",
-    env: { PATH: "/usr/bin:/bin", SHELL: process.env.SHELL ?? "/bin/zsh", HOME: process.env.HOME! },
+    env: { PATH: "/usr/bin:/bin", SHELL: process.env.SHELL ?? "/bin/sh", HOME: process.env.HOME! },
   });
   const out = await new Response(shell.stdout).text();
   await shell.exited;
-  expect(out.trim()).toMatch(/claude$/);
+  expect(out.trim()).toMatch(/\/env$/);
 });
 
 test("the skip-permissions launch reaches tmux as the pane's command", async () => {

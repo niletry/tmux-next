@@ -50,13 +50,18 @@ test("survives a screen with nothing but chrome", () => {
   expect(result.pendingInput).toBe(null);
 });
 
-test("lists the real sessions on this machine", async () => {
-  const sessions = await listSessions();
-  expect(sessions.length).toBeGreaterThan(0);
-  for (const s of sessions) {
-    expect(s.name).toBeTruthy();
-    expect(s.windowWidth).toBeGreaterThan(0);
-    expect(s.preview.length).toBeLessThanOrEqual(4);
+test("lists a session with its geometry and a bounded preview", async () => {
+  // Creates its own session rather than trusting the machine to have one — on
+  // a clean box (CI) there are none, and asserting length > 0 failed there.
+  const name = `list-shape-${crypto.randomUUID().slice(0, 8)}`;
+  await tmux(["new-session", "-d", "-s", name, "-x", "80", "-y", "24", "sleep 30"]);
+  try {
+    const mine = (await listSessions()).find((s) => s.name === name);
+    expect(mine).toBeDefined();
+    expect(mine!.windowWidth).toBeGreaterThan(0);
+    expect(mine!.preview.length).toBeLessThanOrEqual(4);
+  } finally {
+    await tmux(["kill-session", "-t", `=${name}`]);
   }
 });
 
@@ -69,13 +74,17 @@ test("sorts sessions waiting on the user first", async () => {
 
 test("excludes this app's own web sessions from the list", async () => {
   const { createWebSession, destroyWebSession } = await import("./session-manager");
-  const target = (await listSessions())[0]!.name;
+  // A dedicated target, not whatever happened to be first: on a clean box
+  // there is no first session to grab.
+  const target = `web-exclude-${crypto.randomUUID().slice(0, 8)}`;
+  await tmux(["new-session", "-d", "-s", target, "-x", "80", "-y", "24", "sleep 30"]);
   const web = await createWebSession(target);
   try {
     const names = (await listSessions()).map((s) => s.name);
     expect(names).not.toContain(web);
   } finally {
     await destroyWebSession(web);
+    await tmux(["kill-session", "-t", `=${target}`]);
   }
 });
 
@@ -83,23 +92,35 @@ test("parses every field in a bare environment, as under launchd", async () => {
   // Regression: tmux rewrites a tab in a format string to `_` when no locale
   // is set, which silently collapsed every field into the session name. The
   // service only hits this once launchd starts it with an empty environment.
+  const name = `bare-env-${crypto.randomUUID().slice(0, 8)}`;
+  await tmux(["new-session", "-d", "-s", name, "-x", "80", "-y", "24", "sleep 30"]);
+
+  // Reproduce the bare launchd environment without hardcoding a PATH: keep the
+  // real tmux reachable by including its directory, but strip LANG/LC_* so the
+  // no-locale rewrite this test guards against is actually in force.
+  const tmuxDir = (await Bun.$`dirname $(command -v tmux)`.text()).trim();
   const script =
     `const {listSessions} = await import("${import.meta.dir}/session-list.ts");` +
-    `const s = (await listSessions())[0];` +
-    `process.stdout.write(JSON.stringify({name: s.name, width: s.windowWidth}));`;
+    `const s = (await listSessions()).find((x) => x.name === ${JSON.stringify(name)});` +
+    `process.stdout.write(JSON.stringify(s ? {name: s.name, width: s.windowWidth} : null));`;
 
-  const proc = Bun.spawn([process.execPath, "-e", script], {
-    env: { PATH: "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const out = await new Response(proc.stdout).text();
-  await proc.exited;
+  try {
+    const proc = Bun.spawn([process.execPath, "-e", script], {
+      env: { PATH: `${tmuxDir}:/usr/bin:/bin` },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
 
-  const parsed = JSON.parse(out);
-  expect(parsed.name).not.toContain("_");
-  expect(typeof parsed.width).toBe("number");
-  expect(parsed.width).toBeGreaterThan(0);
+    const parsed = JSON.parse(out);
+    expect(parsed).not.toBeNull();
+    expect(parsed.name).not.toContain("_");
+    expect(parsed.name).toBe(name);
+    expect(parsed.width).toBeGreaterThan(0);
+  } finally {
+    await tmux(["kill-session", "-t", `=${name}`]);
+  }
 });
 
 test("killSession removes a real session", async () => {
@@ -115,7 +136,8 @@ test("killSession removes a real session", async () => {
 test("killSession refuses to touch this app's own web sessions", async () => {
   const { killSession } = await import("./session-list");
   const { createWebSession, destroyWebSession } = await import("./session-manager");
-  const target = (await listSessions())[0]!.name;
+  const target = `web-refuse-${crypto.randomUUID().slice(0, 8)}`;
+  await tmux(["new-session", "-d", "-s", target, "-x", "80", "-y", "24", "sleep 30"]);
   const web = await createWebSession(target);
   try {
     const result = await killSession(web);
@@ -123,6 +145,7 @@ test("killSession refuses to touch this app's own web sessions", async () => {
     expect((await tmux(["has-session", "-t", web])).ok).toBe(true);
   } finally {
     await destroyWebSession(web);
+    await tmux(["kill-session", "-t", `=${target}`]);
   }
 });
 
@@ -136,10 +159,18 @@ test("killSession reports a session that does not exist", async () => {
 
 test("killSession handles a name containing shell metacharacters", async () => {
   const { killSession } = await import("./session-list");
-  // Would be catastrophic if the name ever reached a shell.
-  const result = await killSession("nope; tmux kill-server");
-  expect(result.ok).toBe(false);
-  expect((await tmux(["list-sessions"])).ok).toBe(true);
+  // A live session proves the server survived; list-sessions exits non-zero
+  // when no server is running, which on a clean box is not the same as harm.
+  const guard = `meta-guard-${crypto.randomUUID().slice(0, 8)}`;
+  await tmux(["new-session", "-d", "-s", guard, "-x", "80", "-y", "24", "sleep 30"]);
+  try {
+    // Would be catastrophic if the name ever reached a shell.
+    const result = await killSession("nope; tmux kill-server");
+    expect(result.ok).toBe(false);
+    expect((await tmux(["has-session", "-t", `=${guard}`])).ok).toBe(true);
+  } finally {
+    await tmux(["kill-session", "-t", `=${guard}`]);
+  }
 });
 
 test("killSession matches the name exactly, never by prefix", async () => {
