@@ -299,17 +299,86 @@ function scrollLines(lines) {
 let gesture = null;
 let pager = null;
 
+// --- copy on mobile --------------------------------------------------------
+
+/**
+ * The current visible screen as plain text, read from xterm's buffer.
+ *
+ * A canvas/WebGL renderer draws the text and leaves nothing to select, so
+ * instead of fighting that, a long press lifts the screen into a plain HTML
+ * overlay the browser can select natively. Trailing blank lines are dropped so
+ * the overlay is only as tall as the content.
+ */
+function visibleScreenText() {
+  const buf = term.buffer.active;
+  const lines = [];
+  for (let y = buf.viewportY; y < buf.viewportY + term.rows; y++) {
+    const line = buf.getLine(y);
+    lines.push(line ? line.translateToString(true) : "");
+  }
+  while (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines.join("\n");
+}
+
+/** Freezes the screen into a selectable overlay; native selection copies it. */
+function showCopyOverlay() {
+  const text = visibleScreenText();
+  if (!text) return;
+  if (navigator.vibrate) navigator.vibrate(12);
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "copy-overlay";
+  const box = document.createElement("div");
+  box.className = "copy-box";
+  const hint = document.createElement("div");
+  hint.className = "copy-hint";
+  hint.textContent = "长按选中要复制的文字 · 点空白处关闭";
+  const pre = document.createElement("pre");
+  pre.className = "copy-text";
+  pre.textContent = text;
+  box.append(hint, pre);
+  backdrop.append(box);
+  // A tap on the backdrop (not the text) dismisses it.
+  backdrop.addEventListener("pointerdown", (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
+  document.body.append(backdrop);
+}
+
+let longPressTimer = null;
+let longPressStartY = 0;
+let longPressed = false;
+
+function cancelLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
 termEl.addEventListener(
   "touchstart",
   (e) => {
     // Multi-touch is a pinch or a system gesture; leave it alone.
     if (e.touches.length !== 1) {
       gesture = null;
+      cancelLongPress();
       return;
     }
     gesture = createGesture({ lineHeight: cellHeight() });
     pager = createPager({ pageLines: Math.max(1, term.rows - 2) });
     gesture.start(e.touches[0].clientY);
+
+    // A finger held still long enough opens the copy overlay. Moving before it
+    // fires cancels it, so a drag scrolls exactly as before.
+    longPressed = false;
+    longPressStartY = e.touches[0].clientY;
+    cancelLongPress();
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      longPressed = true;
+      showCopyOverlay();
+    }, 450);
   },
   { passive: true }
 );
@@ -318,6 +387,8 @@ termEl.addEventListener(
   "touchmove",
   (e) => {
     if (!gesture || e.touches.length !== 1) return;
+    // Any real movement means a scroll, not a long press.
+    if (Math.abs(e.touches[0].clientY - longPressStartY) > 10) cancelLongPress();
     const lines = gesture.move(e.touches[0].clientY);
     if (!lines) return;
     // Not passive: without this Safari rubber-bands the page instead.
@@ -327,11 +398,13 @@ termEl.addEventListener(
   { passive: false }
 );
 
-// Only a tap raises the keyboard — a swipe used to raise it on every scroll.
+// Only a tap raises the keyboard — a swipe used to raise it on every scroll,
+// and a long press opens the copy overlay instead.
 termEl.addEventListener("touchend", () => {
+  cancelLongPress();
   const tapped = gesture && gesture.end().tap;
   gesture = null;
-  if (tapped) openKeyboard();
+  if (tapped && !longPressed) openKeyboard();
 });
 
 // Restoring focus inside the blur handler itself is ignored by Safari, so it
