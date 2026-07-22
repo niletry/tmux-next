@@ -113,6 +113,7 @@ function fit() {
 
 let socket = null;
 let reconnectDelay = 500;
+let killing = false;
 
 function wsUrl() {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
@@ -144,6 +145,9 @@ function connect() {
   };
 
   socket.onclose = () => {
+    // Killing the session tears our own web session down, closing this socket.
+    // Don't reconnect into a session that no longer exists.
+    if (killing) return;
     statusEl.textContent = "已断开，重连中…";
     // Nothing is buffered across connections: the server rebuilds the screen
     // from capture-pane on every open, so a reconnect is a full redraw.
@@ -151,6 +155,53 @@ function connect() {
     reconnectDelay = Math.min(reconnectDelay * 2, 10000);
   };
 }
+
+// --- end the session -------------------------------------------------------
+
+/**
+ * The ⏹ button ends the whole tmux session — everything running in it, Claude
+ * Code included. That is irreversible, so it arms on the first tap and only
+ * acts on the second; an untouched arm reverts after a few seconds.
+ */
+const killBtn = document.getElementById("kill");
+let killArmTimer = null;
+
+function disarmKill() {
+  if (killArmTimer) clearTimeout(killArmTimer);
+  killArmTimer = null;
+  killBtn.classList.remove("armed");
+  killBtn.textContent = "结束";
+}
+
+killBtn.addEventListener("click", async () => {
+  if (!killBtn.classList.contains("armed")) {
+    killBtn.classList.add("armed");
+    killBtn.textContent = "确认结束?";
+    killArmTimer = setTimeout(disarmKill, 3000);
+    return;
+  }
+
+  disarmKill();
+  if (!target) return;
+  killBtn.disabled = true;
+  killBtn.textContent = "结束中…";
+  killing = true;
+  try {
+    const res = await fetch(`api/sessions/${encodeURIComponent(target)}`, { method: "DELETE" });
+    if (res.ok || res.status === 404) {
+      // 404 means it was already gone; either way there is nothing to return to
+      // but the list.
+      location.href = "./";
+      return;
+    }
+    throw new Error(String(res.status));
+  } catch {
+    killing = false;
+    killBtn.disabled = false;
+    killBtn.textContent = "结束失败";
+    setTimeout(() => (killBtn.textContent = "结束"), 2000);
+  }
+});
 
 const encoder = new TextEncoder();
 

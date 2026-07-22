@@ -161,6 +161,35 @@ test("killSession removes a real session", async () => {
   expect((await tmux(["has-session", "-t", victim])).ok).toBe(false);
 });
 
+test("killSession stops the processes even while a web session is attached", async () => {
+  // A grouped web session shares the target's windows, so killing the target
+  // alone leaves its processes running under the web session. The kill has to
+  // take the web session too, or "stop this session" would silently not.
+  const { killSession } = await import("./session-list");
+  const { createWebSession } = await import("./session-manager");
+  // A unique sleep duration is the marker: it is a single valid argument (so
+  // the process actually starts) and greppable (so we can tell if it died).
+  const marker = `sleep ${800000 + Math.floor(Math.random() * 99999)}`;
+  const victim = `kill-attached-${crypto.randomUUID().slice(0, 8)}`;
+  await tmux(["new-session", "-d", "-s", victim, "-x", "80", "-y", "24", marker]);
+  const web = await createWebSession(victim);
+  const alive = async () =>
+    (await Bun.$`pgrep -f ${marker}`.quiet().nothrow()).stdout.toString().trim().length > 0;
+
+  try {
+    expect(await alive()).toBe(true);
+    const result = await killSession(victim);
+    expect(result).toEqual({ ok: true });
+    await Bun.sleep(300);
+    expect(await alive()).toBe(false);
+    expect((await tmux(["has-session", "-t", `=${web}`])).ok).toBe(false);
+  } finally {
+    await Bun.$`pkill -f ${marker}`.quiet().nothrow();
+    await tmux(["kill-session", "-t", `=${victim}`]).catch(() => {});
+    await tmux(["kill-session", "-t", `=${web}`]).catch(() => {});
+  }
+});
+
 test("killSession refuses to touch this app's own web sessions", async () => {
   const { killSession } = await import("./session-list");
   const { createWebSession, destroyWebSession } = await import("./session-manager");

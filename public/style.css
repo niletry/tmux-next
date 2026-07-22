@@ -139,6 +139,19 @@ header .count {
 .term-bar .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-bar .status { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; }
 
+.term-kill {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #2a2f3a;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+/* Armed: one more tap kills. Red so it can't be mistaken for anything else. */
+.term-kill.armed { background: #b3413c; color: #fff; }
+
 #term { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 
 .keys {

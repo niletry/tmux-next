@@ -84,8 +84,38 @@ export async function killSession(name: string): Promise<KillResult> {
   const exact = `=${name}`;
   if (!(await tmux(["has-session", "-t", exact])).ok) return { ok: false, reason: "missing" };
 
+  // A web session grouped to the target shares its windows, so killing the
+  // target alone would leave its processes running under the web session.
+  // Destroy those first so the kill actually stops what is running, no matter
+  // who is attached — including whoever triggered this from that same session.
+  await killGroupedWebSessions(name);
+
   const killed = await tmux(["kill-session", "-t", exact]);
   return killed.ok ? { ok: true } : { ok: false, reason: "missing" };
+}
+
+/**
+ * Kills every `web-*` session grouped to the target.
+ *
+ * The target's own `session_group` reads empty, so matching goes the other way:
+ * a web session created with `new-session -t =<target>` records that spec as its
+ * group name, so its `session_group` is `<target>` (with a leading `=` that the
+ * app strips). Name first in the format, group last: a web-* name has no `|`, so
+ * the split stays exact even if the group name contains one.
+ */
+async function killGroupedWebSessions(target: string): Promise<void> {
+  const listed = await tmux(["list-sessions", "-F", "#{session_name}|#{session_group}"]);
+  if (!listed.ok) return;
+
+  for (const line of listed.stdout.split("\n").filter(Boolean)) {
+    const sep = line.indexOf("|");
+    if (sep < 0) continue;
+    const sname = line.slice(0, sep);
+    const sgroup = line.slice(sep + 1).replace(/^=/, "");
+    if (sname.startsWith(WEB_SESSION_PREFIX) && sgroup === target) {
+      await tmux(["kill-session", "-t", `=${sname}`]);
+    }
+  }
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {
