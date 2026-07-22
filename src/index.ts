@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 import { HELP, MIN_TMUX, meetsMinimum, parseArgs, parseTmuxVersion } from "./cli";
 import { startServer } from "./server";
+// Read from package.json so `--version` can never drift from the published one.
+import pkg from "../package.json" with { type: "json" };
 
-const VERSION = "0.1.0";
+const VERSION = pkg.version;
 
 /**
  * Refuses to start on a tmux that cannot do what this depends on.
