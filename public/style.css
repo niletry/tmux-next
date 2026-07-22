@@ -348,6 +348,9 @@ header .new:active { opacity: 0.7; }
 .copy-box {
   margin: auto;
   width: 100%;
+  /* Without this a flex item won't shrink below its content, so the wide
+     terminal text would push the box past the screen edge. */
+  min-width: 0;
   max-height: 82vh;
   display: flex;
   flex-direction: column;
@@ -368,11 +371,15 @@ header .new:active { opacity: 0.7; }
 .copy-text {
   margin: 0;
   padding: 0.85rem;
-  overflow: auto;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #e6e8ec;
-  white-space: pre;
+  /* Wrap instead of scrolling sideways: on a phone, horizontal-scrolling to
+     select a long line is miserable. Wrapping is only visual — the copied text
+     keeps its real line breaks, and long unbroken tokens (a URL) break too. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   -webkit-user-select: text;
   user-select: text;
 }
