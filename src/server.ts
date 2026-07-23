@@ -1,5 +1,8 @@
 import { homedir } from "node:os";
+import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
 import { sanitiseGeometry } from "./geometry";
+import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand } from "./tmux/session-create";
@@ -69,6 +72,32 @@ async function createSessionResponse(req: Request): Promise<Response> {
   return Response.json({ name: result.name, created: result.created });
 }
 
+/**
+ * Takes an image the browser posted and lands it on disk, so the tool running
+ * in the session can be handed a path to look at.
+ *
+ * The terminal is a byte stream; you cannot paste a picture into it. What you
+ * can do is save the picture and type its path, which is exactly how the CLIs
+ * people run here consume an image. Everything about the write is fixed by the
+ * server — the directory, the name, the accepted types, the size — so a caller
+ * cannot steer it into writing arbitrary content to an arbitrary place.
+ */
+async function uploadResponse(req: Request): Promise<Response> {
+  const ext = imageExtension(req.headers.get("content-type") ?? "");
+  if (!ext) return Response.json({ error: "type" }, { status: 415 });
+
+  const body = await req.arrayBuffer();
+  if (body.byteLength === 0) return Response.json({ error: "empty" }, { status: 400 });
+  if (body.byteLength > MAX_UPLOAD_BYTES) {
+    return Response.json({ error: "toobig" }, { status: 413 });
+  }
+
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  const path = join(UPLOAD_DIR, uploadName(ext));
+  await Bun.write(path, body);
+  return Response.json({ path });
+}
+
 const PUBLIC_DIR = new URL("../public/", import.meta.url).pathname;
 const MODULES_DIR = new URL("../", import.meta.url).pathname;
 const REAP_INTERVAL_MS = 60_000;
@@ -101,6 +130,12 @@ export function startServer(
 
       if (url.pathname === "/api/sessions" && req.method === "POST") {
         return createSessionResponse(req);
+      }
+
+      // An image the browser is handing off so the tool in the session can see
+      // it. We save it and reply with a path the client then types in.
+      if (url.pathname === "/api/upload" && req.method === "POST") {
+        return uploadResponse(req);
       }
 
       // Directories the create dialog offers first, most used first. `home` is

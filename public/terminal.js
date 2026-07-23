@@ -294,6 +294,72 @@ function closeKeyboard() {
 
 termEl.addEventListener("mousedown", openKeyboard);
 
+// --- sending an image -------------------------------------------------------
+
+/**
+ * The terminal can't take a picture, but the tool running inside it can read a
+ * file. So an image the user picks or pastes is uploaded, and the saved path is
+ * typed into the prompt — no Enter, so the user adds their own words and sends.
+ */
+const imgBtn = document.getElementById("img");
+const imgInput = document.getElementById("imgfile");
+
+imgBtn.addEventListener("click", () => imgInput.click());
+
+imgInput.addEventListener("change", () => {
+  const file = imgInput.files && imgInput.files[0];
+  if (file) uploadImage(file);
+  imgInput.value = ""; // so picking the same file twice still fires change
+});
+
+// Pasting an image is the other way in. This runs in the capture phase on
+// purpose: xterm's own paste handler calls stopPropagation() and only reads
+// text/plain, so a bubbling listener would never see an image once the terminal
+// has focus. Capturing lets us look first and step in only for an image —
+// a text paste is left untouched so xterm still handles it normally.
+window.addEventListener(
+  "paste",
+  (e) => {
+    const items = e.clipboardData ? [...e.clipboardData.items] : [];
+    const item = items.find((i) => i.type.startsWith("image/"));
+    if (!item) return;
+    const file = item.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    e.stopPropagation();
+    uploadImage(file);
+  },
+  true,
+);
+
+let uploading = false;
+async function uploadImage(file) {
+  if (uploading) return;
+  uploading = true;
+  flashStatus("上传中…");
+  try {
+    const res = await fetch("api/upload", {
+      method: "POST",
+      headers: { "content-type": file.type },
+      body: file,
+    });
+    if (!res.ok) {
+      flashStatus(
+        res.status === 413 ? "图片过大" : res.status === 415 ? "格式不支持" : "上传失败",
+      );
+      return;
+    }
+    const { path } = await res.json();
+    send(path + " ");
+    focusTerminal();
+    flashStatus("已插入路径");
+  } catch {
+    flashStatus("上传失败");
+  } finally {
+    uploading = false;
+  }
+}
+
 // --- scrolling --------------------------------------------------------------
 
 /**

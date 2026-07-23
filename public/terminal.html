@@ -24,6 +24,14 @@
     <button data-hex="1b 5b 5a">⇧Tab</button>
     <button id="ctrl">Ctrl</button>
     <button id="kbd">⌨</button>
+    <button id="img" title="发送图片" aria-label="发送图片">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <path d="M21 15l-5-5L5 21"/>
+      </svg>
+    </button>
     <button data-hex="1b 5b 41">↑</button>
     <button data-hex="1b 5b 42">↓</button>
     <button data-hex="1b 5b 44">←</button>
@@ -31,6 +39,9 @@
     <button data-hex="03">^C</button>
     <button data-hex="0d">⏎</button>
   </div>
+
+  <input type="file" id="imgfile" accept="image/*" hidden>
+
 
   <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
   <script src="node_modules/@xterm/addon-webgl/lib/addon-webgl.js"></script>

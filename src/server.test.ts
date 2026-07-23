@@ -159,3 +159,25 @@ test("DELETE handles a session name that needs url encoding", async () => {
   const still = await Bun.$`tmux has-session -t ${victim}`.quiet().nothrow();
   expect(still.exitCode).not.toBe(0);
 });
+
+test("accepts an image upload and answers with a saved path", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+    method: "POST",
+    headers: { "content-type": "image/png" },
+    body: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  });
+  expect(res.status).toBe(200);
+  const { path } = (await res.json()) as { path: string };
+  expect(path).toMatch(/img-[0-9a-f-]+\.png$/);
+  expect(await Bun.file(path).exists()).toBe(true);
+  await Bun.$`rm -f ${path}`.quiet().nothrow();
+});
+
+test("refuses to write anything that is not an allow-listed image", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+    method: "POST",
+    headers: { "content-type": "text/html" },
+    body: "<script>alert(1)</script>",
+  });
+  expect(res.status).toBe(415);
+});
