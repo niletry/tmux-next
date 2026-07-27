@@ -1,4 +1,13 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join as joinPath } from "node:path";
+// Redirect key-usage storage to a throwaway file so the suite never touches a
+// real ~/.tmux-next/key-usage.json. Read lazily by the module, so setting it
+// here — before any request — is enough.
+process.env.TMUX_NEXT_KEY_USAGE_PATH = joinPath(
+  tmpdir(),
+  `ku-test-${Math.random().toString(36).slice(2, 10)}.json`,
+);
 import { startServer } from "./server";
 
 const BASE = "srv-test-" + Math.random().toString(36).slice(2, 8);
@@ -180,4 +189,105 @@ test("refuses to write anything that is not an allow-listed image", async () => 
     body: "<script>alert(1)</script>",
   });
   expect(res.status).toBe(415);
+});
+
+const rnBody = (name: string) => ({
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ name }),
+});
+
+test("renames a session; the old name is gone and the new one exists", async () => {
+  const from = "rn-" + Math.random().toString(36).slice(2, 8);
+  const to = from + "-renamed";
+  await Bun.$`tmux new-session -d -s ${from} -x 80 -y 24`.quiet();
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions/${from}/rename`, rnBody(to));
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { name: string }).name).toBe(to);
+    expect((await Bun.$`tmux has-session -t ${"=" + to}`.quiet().nothrow()).exitCode).toBe(0);
+    expect((await Bun.$`tmux has-session -t ${"=" + from}`.quiet().nothrow()).exitCode).not.toBe(0);
+  } finally {
+    await Bun.$`tmux kill-session -t ${"=" + to}`.quiet().nothrow();
+    await Bun.$`tmux kill-session -t ${"=" + from}`.quiet().nothrow();
+  }
+});
+
+test("refuses to rename to a reserved web- name", async () => {
+  const from = "rn-" + Math.random().toString(36).slice(2, 8);
+  await Bun.$`tmux new-session -d -s ${from} -x 80 -y 24`.quiet();
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions/${from}/rename`, rnBody("web-evil"));
+    expect(res.status).toBe(400);
+  } finally {
+    await Bun.$`tmux kill-session -t ${"=" + from}`.quiet().nothrow();
+  }
+});
+
+test("refuses to rename onto an existing session name", async () => {
+  const from = "rn-" + Math.random().toString(36).slice(2, 8);
+  await Bun.$`tmux new-session -d -s ${from} -x 80 -y 24`.quiet();
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions/${from}/rename`, rnBody(BASE));
+    expect(res.status).toBe(409);
+  } finally {
+    await Bun.$`tmux kill-session -t ${"=" + from}`.quiet().nothrow();
+  }
+});
+
+test("renaming a session that does not exist is a 404", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions/no-such-xyz/rename`, rnBody("whatever"));
+  expect(res.status).toBe(404);
+});
+
+test("ending a renamed session still reaps its grouped web sessions", async () => {
+  // The regression guard: a group's id is frozen at creation, so after a rename
+  // the grouped web session's group no longer equals the current name. Ending
+  // the session must still take it down, or its processes would be orphaned.
+  const from = "rn-" + Math.random().toString(36).slice(2, 8);
+  const to = from + "-renamed";
+  const web = `web-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+  await Bun.$`tmux new-session -d -s ${from} -x 80 -y 24`.quiet();
+  await Bun.$`tmux new-session -d -s ${web} -t ${"=" + from}`.quiet();
+  try {
+    expect((await fetch(`http://127.0.0.1:${server.port}/api/sessions/${from}/rename`, rnBody(to))).status).toBe(200);
+    // still attached, now grouped under the frozen id rather than the new name
+    expect((await Bun.$`tmux has-session -t ${"=" + web}`.quiet().nothrow()).exitCode).toBe(0);
+
+    const del = await fetch(`http://127.0.0.1:${server.port}/api/sessions/${to}`, { method: "DELETE" });
+    expect(del.status).toBe(204);
+    expect((await Bun.$`tmux has-session -t ${"=" + web}`.quiet().nothrow()).exitCode).not.toBe(0);
+    expect((await Bun.$`tmux has-session -t ${"=" + to}`.quiet().nothrow()).exitCode).not.toBe(0);
+  } finally {
+    await Bun.$`tmux kill-session -t ${"=" + web}`.quiet().nothrow();
+    await Bun.$`tmux kill-session -t ${"=" + to}`.quiet().nothrow();
+    await Bun.$`tmux kill-session -t ${"=" + from}`.quiet().nothrow();
+  }
+});
+
+test("records toolbar key usage and reads it back, highest first", async () => {
+  const base = `http://127.0.0.1:${server.port}/api/key-usage`;
+  const post = (counts: Record<string, number>) =>
+    fetch(base, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ counts }),
+    });
+  await post({ enter: 3, esc: 1 });
+  await post({ enter: 2 });
+
+  const totals = (await (await fetch(base)).json()) as { key: string; count: number }[];
+  const map = Object.fromEntries(totals.map((t) => [t.key, t.count]));
+  expect(map.enter).toBe(5);
+  expect(map.esc).toBe(1);
+  expect(totals[0]!.key).toBe("enter"); // sorted highest first
+});
+
+test("a malformed usage beacon is swallowed, not an error", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/key-usage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "not json at all",
+  });
+  expect(res.status).toBe(204);
 });

@@ -146,8 +146,9 @@ function connect() {
 
   socket.onclose = () => {
     // Killing the session tears our own web session down, closing this socket.
-    // Don't reconnect into a session that no longer exists.
-    if (killing) return;
+    // A rename navigates away to reconnect under the new name. In neither case
+    // should we reconnect into the old name.
+    if (killing || renaming) return;
     statusEl.textContent = "已断开，重连中…";
     // Nothing is buffered across connections: the server rebuilds the screen
     // from capture-pane on every open, so a reconnect is a full redraw.
@@ -201,6 +202,85 @@ killBtn.addEventListener("click", async () => {
     killBtn.textContent = "结束失败";
     setTimeout(() => (killBtn.textContent = "结束"), 2000);
   }
+});
+
+// --- rename the session ----------------------------------------------------
+
+/**
+ * Renames the session in place. Only the name changes — every window, its
+ * scrollback, and every process keep running — so on success we just reconnect
+ * under the new name with a full reload, which rebuilds the socket, title, and
+ * URL in one step.
+ *
+ * Tapping 改名 turns the title into an input and the button into 取消, so there
+ * is always a visible way out on a phone: a second tap (or Escape) abandons the
+ * edit; Enter commits. Blur is deliberately not a cancel — that would fight the
+ * 取消 tap, which blurs the field on its way to the click.
+ */
+const renameBtn = document.getElementById("rename");
+const titleEl = document.getElementById("title");
+let renaming = false;
+let renameInput = null;
+
+function endRenameEdit() {
+  renameInput = null;
+  renameBtn.textContent = "改名";
+  titleEl.textContent = target;
+}
+
+async function commitRename() {
+  if (!renameInput) return;
+  const next = renameInput.value.trim();
+  if (!next || next === target) return endRenameEdit();
+
+  renameInput.disabled = true;
+  renaming = true;
+  statusEl.textContent = "重命名中…";
+  try {
+    const res = await fetch(`api/sessions/${encodeURIComponent(target)}/rename`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: next }),
+    });
+    if (res.ok) {
+      const { name } = await res.json();
+      location.href = "?target=" + encodeURIComponent(name);
+      return;
+    }
+    statusEl.textContent =
+      res.status === 409 ? "名字已被占用" : res.status === 400 ? "名字不合法" : "重命名失败";
+  } catch {
+    statusEl.textContent = "重命名失败";
+  }
+  renaming = false;
+  endRenameEdit();
+}
+
+renameBtn.addEventListener("click", () => {
+  if (!target || renaming) return;
+  if (renameInput) {
+    endRenameEdit(); // second tap = cancel
+    return;
+  }
+
+  const input = document.createElement("input");
+  input.className = "title-edit";
+  input.value = target;
+  input.setAttribute("aria-label", "新的会话名");
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitRename();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      endRenameEdit();
+    }
+  });
+  titleEl.replaceChildren(input);
+  renameInput = input;
+  renameBtn.textContent = "取消";
+  input.focus();
+  input.select();
 });
 
 const encoder = new TextEncoder();
@@ -529,15 +609,18 @@ termEl.addEventListener("touchend", () => {
 function restoreFocusSoon() {
   if (!keyboardWanted) return;
   setTimeout(() => {
-    if (keyboardWanted) focusTerminal();
+    // While renaming, the title input owns the keyboard; snatching focus back
+    // to the terminal here is exactly what stopped the field being typable.
+    if (keyboardWanted && !renameInput) focusTerminal();
   }, 0);
 }
 
 // Any tap on the page chrome must not count as leaving the terminal.
 for (const chrome of document.querySelectorAll(".keys, .term-bar")) {
   chrome.addEventListener("pointerdown", (e) => {
-    // The back link is a real navigation; let it through.
-    if (e.target.closest("a")) return;
+    // Links are real navigation; inputs (the rename field) need the tap to
+    // focus and place the caret. Everything else must not steal terminal focus.
+    if (e.target.closest("a, input")) return;
     e.preventDefault();
   });
 }
@@ -596,6 +679,51 @@ for (const btn of document.querySelectorAll(".keys button[data-hex]")) {
     if (keyboardWanted) focusTerminal();
   });
 }
+
+// --- toolbar usage ---------------------------------------------------------
+
+/**
+ * Counts which toolbar keys get tapped so their order can be chosen from
+ * evidence instead of guesswork. Taps accumulate locally and are beaconed to
+ * the server in batches — on the way out and on a slow timer — so a phone's
+ * radio isn't woken on every tap. One delegated listener covers every button,
+ * including the ones (Ctrl, ⌨, image) that have their own handlers.
+ */
+const pendingUsage = {};
+
+function flushKeyUsage() {
+  const keys = Object.keys(pendingUsage);
+  if (!keys.length) return;
+  const counts = {};
+  for (const k of keys) {
+    counts[k] = pendingUsage[k];
+    delete pendingUsage[k];
+  }
+  const body = JSON.stringify({ counts });
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon("api/key-usage", new Blob([body], { type: "application/json" }));
+  } else {
+    fetch("api/key-usage", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      keepalive: true,
+    });
+  }
+}
+
+document.querySelector(".keys").addEventListener("pointerdown", (e) => {
+  const btn = e.target.closest("button[data-usage]");
+  if (!btn) return;
+  const label = btn.dataset.usage;
+  pendingUsage[label] = (pendingUsage[label] || 0) + 1;
+});
+
+setInterval(flushKeyUsage, 30000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushKeyUsage();
+});
+window.addEventListener("pagehide", flushKeyUsage);
 
 // --- viewport --------------------------------------------------------------
 

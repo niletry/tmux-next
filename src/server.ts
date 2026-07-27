@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
+import { recordUsage, readUsage } from "./key-usage";
 import { listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand } from "./tmux/session-create";
@@ -10,6 +11,7 @@ import {
   killSession,
   listSessions,
   recentDirectories,
+  renameSession,
   sessionNames,
 } from "./tmux/session-list";
 import { reapOrphanWebSessions } from "./tmux/session-manager";
@@ -31,6 +33,16 @@ const CREATE_STATUS: Record<string, number> = {
   invalid: 400,
   reserved: 400,
   baddir: 400,
+  failed: 500,
+};
+
+const RENAME_STATUS: Record<string, number> = {
+  empty: 400,
+  invalid: 400,
+  reserved: 400,
+  internal: 403,
+  missing: 404,
+  taken: 409,
   failed: 500,
 };
 
@@ -70,6 +82,23 @@ async function createSessionResponse(req: Request): Promise<Response> {
   }
 
   return Response.json({ name: result.name, created: result.created });
+}
+
+/** Renames a session in place; the client reconnects under the returned name. */
+async function renameResponse(req: Request, from: string): Promise<Response> {
+  let body: { name?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "invalid" }, { status: 400 });
+  }
+  if (typeof body.name !== "string") {
+    return Response.json({ error: "invalid" }, { status: 400 });
+  }
+
+  const result = await renameSession(from, body.name);
+  if (result.ok) return Response.json({ name: result.name });
+  return Response.json({ error: result.reason }, { status: RENAME_STATUS[result.reason] ?? 400 });
 }
 
 /**
@@ -138,6 +167,21 @@ export function startServer(
         return uploadResponse(req);
       }
 
+      // Which toolbar keys get tapped, so their order can follow the evidence.
+      // The client batches taps and beacons them here; GET reads the totals back.
+      if (url.pathname === "/api/key-usage") {
+        if (req.method === "GET") return Response.json(await readUsage());
+        if (req.method === "POST") {
+          try {
+            const body = (await req.json()) as { counts?: unknown };
+            await recordUsage((body?.counts ?? {}) as Record<string, number>);
+          } catch {
+            // A malformed beacon is not worth an error; there is nothing to fix.
+          }
+          return new Response(null, { status: 204 });
+        }
+      }
+
       // Directories the create dialog offers first, most used first. `home` is
       // sent along so the client can abbreviate paths without guessing it.
       if (url.pathname === "/api/directories") {
@@ -151,6 +195,11 @@ export function startServer(
         const listing = await listDirectories(url.searchParams.get("path") ?? homedir());
         if (!listing.ok) return Response.json({ error: "notfound" }, { status: 404 });
         return Response.json(listing);
+      }
+
+      const rename = url.pathname.match(/^\/api\/sessions\/(.+)\/rename$/);
+      if (rename && req.method === "POST") {
+        return renameResponse(req, decodeURIComponent(rename[1]!));
       }
 
       const kill = url.pathname.match(/^\/api\/sessions\/(.+)$/);

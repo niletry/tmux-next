@@ -139,7 +139,8 @@ header .count {
 .term-bar .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-bar .status { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; }
 
-.term-kill {
+.term-kill,
+.term-rename {
   flex: 0 0 auto;
   border: 0;
   border-radius: 8px;
@@ -148,6 +149,21 @@ header .count {
   color: var(--dim);
   font-size: 13px;
 }
+
+/* Tapping 改名 turns the title into this field, prefilled with the name. */
+.title-edit {
+  min-width: 0;
+  width: 42vw;
+  max-width: 14rem;
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: #1b1e25;
+  color: var(--fg);
+  font: 600 16px/1 -apple-system, system-ui, sans-serif; /* 16px so iOS doesn't zoom. */
+}
+
+.title-edit:focus { outline: none; }
 
 /* Armed: one more tap kills. Red so it can't be mistaken for anything else. */
 .term-kill.armed { background: #b3413c; color: #fff; }

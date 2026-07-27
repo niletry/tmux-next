@@ -66,11 +66,15 @@ test("lists a session with its geometry and a bounded preview", async () => {
   }
 });
 
-test("sorts sessions waiting on the user first", async () => {
+test("orders sessions by most recent activity", async () => {
   const sessions = await listSessions();
-  const firstBusy = sessions.findIndex((s) => !s.idle);
-  const lastIdle = sessions.map((s) => s.idle).lastIndexOf(true);
-  if (firstBusy !== -1 && lastIdle !== -1) expect(lastIdle).toBeLessThan(firstBusy);
+  // Non-increasing activity from top to bottom: the freshest session leads, so
+  // the one just used is found at the top rather than sorted by its idle state.
+  for (let i = 1; i < sessions.length; i++) {
+    expect(sessions[i - 1]!.lastActivityEpoch).toBeGreaterThanOrEqual(
+      sessions[i]!.lastActivityEpoch,
+    );
+  }
 });
 
 test("excludes this app's own web sessions from the list", async () => {

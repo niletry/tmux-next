@@ -1,4 +1,5 @@
 import { tmux } from "./run";
+import { validateRequestedName } from "./session-create";
 import { WEB_SESSION_PREFIX } from "./session-manager";
 
 export type SessionSummary = {
@@ -97,25 +98,76 @@ export async function killSession(name: string): Promise<KillResult> {
 /**
  * Kills every `web-*` session grouped to the target.
  *
- * The target's own `session_group` reads empty, so matching goes the other way:
- * a web session created with `new-session -t =<target>` records that spec as its
- * group name, so its `session_group` is `<target>` (with a leading `=` that the
- * app strips). Name first in the format, group last: a web-* name has no `|`, so
- * the split stays exact even if the group name contains one.
+ * A group's id is fixed when the group forms and does *not* follow a later
+ * rename, so it can no longer be assumed equal to the current name. We read the
+ * target's own `session_group` and match web sessions to that — which stays
+ * correct after a rename, when the name and the group id diverge. An ungrouped
+ * target reports an empty group and has no web sessions to kill.
+ *
+ * Name first in the format, group last: a web-* name has no `|`, so the split
+ * stays exact even if the group id contains one.
  */
 async function killGroupedWebSessions(target: string): Promise<void> {
   const listed = await tmux(["list-sessions", "-F", "#{session_name}|#{session_group}"]);
   if (!listed.ok) return;
+  const lines = listed.stdout.split("\n").filter(Boolean);
 
-  for (const line of listed.stdout.split("\n").filter(Boolean)) {
+  // Read the target's actual group from the listing. It can't be assumed equal
+  // to the current name — a group's id is fixed when the group forms and does
+  // not follow a rename — and `display-message` reports an empty session_group
+  // for the very session being queried, so only list-sessions can supply it.
+  // Anchoring on the known target length keeps this exact even if the name
+  // itself contains a `|`. An empty group means no grouped web sessions exist.
+  const prefix = target + "|";
+  const row = lines.find((l) => l.startsWith(prefix));
+  const group = row ? row.slice(prefix.length).replace(/^=/, "") : "";
+  if (!group) return;
+
+  for (const line of lines) {
     const sep = line.indexOf("|");
     if (sep < 0) continue;
     const sname = line.slice(0, sep);
     const sgroup = line.slice(sep + 1).replace(/^=/, "");
-    if (sname.startsWith(WEB_SESSION_PREFIX) && sgroup === target) {
+    if (sname.startsWith(WEB_SESSION_PREFIX) && sgroup === group) {
       await tmux(["kill-session", "-t", `=${sname}`]);
     }
   }
+}
+
+export type RenameResult =
+  | { ok: true; name: string }
+  | { ok: false; reason: "empty" | "reserved" | "invalid" | "missing" | "taken" | "internal" | "failed" };
+
+/**
+ * Renames a user session, leaving everything running inside it untouched.
+ *
+ * Only the name changes: the windows, their scrollback, and every process keep
+ * running, and any web session grouped to it stays attached. Web sessions are
+ * refused as a target — they are the app's own attach points, not something a
+ * user renames — and the new name goes through the same validation as creation,
+ * so it can still be targeted afterwards. The name reaches tmux as an argv
+ * entry, never a shell string.
+ */
+export async function renameSession(from: string, to: string): Promise<RenameResult> {
+  if (from.startsWith(WEB_SESSION_PREFIX)) return { ok: false, reason: "internal" };
+
+  const checked = validateRequestedName(to);
+  if (!checked.ok) return { ok: false, reason: checked.reason };
+  // A rename must name its target; validateRequestedName reads a blank/missing
+  // value as "generate one", which makes no sense here.
+  if (!checked.name) return { ok: false, reason: "empty" };
+
+  const exact = `=${from}`;
+  if (!(await tmux(["has-session", "-t", exact])).ok) return { ok: false, reason: "missing" };
+
+  // Renaming to the current name is a no-op, not a collision.
+  if (checked.name === from) return { ok: true, name: from };
+  if ((await tmux(["has-session", "-t", `=${checked.name}`])).ok) {
+    return { ok: false, reason: "taken" };
+  }
+
+  const renamed = await tmux(["rename-session", "-t", exact, checked.name]);
+  return renamed.ok ? { ok: true, name: checked.name } : { ok: false, reason: "failed" };
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {
@@ -154,12 +206,14 @@ export async function listSessions(): Promise<SessionSummary[]> {
     }),
   );
 
-  // Sessions waiting on the user first, then most recently active.
+  // Most recently active first, and nothing else. The session you were just in
+  // has the freshest activity, so it stays on top instead of being pushed below
+  // every session Claude happens to be waiting on. Those still stand out by
+  // their dot; they no longer jerk to the top and back as a turn starts and
+  // finishes, which is what made the order feel unpredictable.
   return summaries
     .filter((s): s is SessionSummary => s !== null)
-    .sort(
-      (a, b) => Number(b.idle) - Number(a.idle) || b.lastActivityEpoch - a.lastActivityEpoch,
-    );
+    .sort((a, b) => b.lastActivityEpoch - a.lastActivityEpoch);
 }
 
 /**
