@@ -611,15 +611,78 @@ function cancelLongPress() {
   }
 }
 
+// --- pinch to zoom ---------------------------------------------------------
+
+/**
+ * Two fingers magnify the rendered terminal like an image; while zoomed, one
+ * finger pans it. This is visual only — a CSS transform on top of xterm that
+ * never changes the column count — so Claude Code's 80-column layout stays
+ * intact, at the cost of some softness when enlarged. A−/A+ is the crisp,
+ * reflowing alternative; the two coexist. Pinching back to 1× clears it.
+ */
+const ZOOM_MAX = 4;
+let zoomScale = 1;
+let zoomTx = 0;
+let zoomTy = 0;
+let pinch = null; // { startDist, startScale } while two fingers are down
+let panFrom = null; // { x, y, tx, ty } while dragging a zoomed view
+
+const fingerGap = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+/** Keeps the magnified content's edges from pulling inside the viewport. */
+function clampPan() {
+  const minX = termEl.clientWidth * (1 - zoomScale);
+  const minY = termEl.clientHeight * (1 - zoomScale);
+  zoomTx = Math.min(0, Math.max(minX, zoomTx));
+  zoomTy = Math.min(0, Math.max(minY, zoomTy));
+}
+
+function applyZoom() {
+  const t = term.element;
+  if (!t) return;
+  if (zoomScale <= 1.001) {
+    zoomScale = 1;
+    zoomTx = zoomTy = 0;
+    t.style.transform = "";
+    t.style.transformOrigin = "";
+    return;
+  }
+  clampPan();
+  t.style.transformOrigin = "0 0";
+  t.style.transform = `translate(${zoomTx}px, ${zoomTy}px) scale(${zoomScale})`;
+}
+
+function resetZoom() {
+  zoomScale = 1;
+  zoomTx = zoomTy = 0;
+  applyZoom();
+}
+
 termEl.addEventListener(
   "touchstart",
   (e) => {
-    // Multi-touch is a pinch or a system gesture; leave it alone.
+    // Two fingers: begin a pinch and abandon any one-finger work in progress.
+    if (e.touches.length === 2) {
+      gesture = null;
+      panFrom = null;
+      cancelLongPress();
+      pinch = { startDist: fingerGap(e.touches), startScale: zoomScale };
+      return;
+    }
+    // Anything above two fingers is a system gesture; leave it alone.
     if (e.touches.length !== 1) {
       gesture = null;
       cancelLongPress();
       return;
     }
+    // One finger while zoomed pans the magnified view rather than scrolling.
+    if (zoomScale > 1) {
+      gesture = null;
+      cancelLongPress();
+      panFrom = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx: zoomTx, ty: zoomTy };
+      return;
+    }
+
     gesture = createGesture({ lineHeight: cellHeight() });
     pager = createPager({ pageLines: Math.max(1, term.rows - 2) });
     gesture.start(e.touches[0].clientY);
@@ -641,6 +704,22 @@ termEl.addEventListener(
 termEl.addEventListener(
   "touchmove",
   (e) => {
+    // Pinch: scale relative to where the fingers started.
+    if (pinch && e.touches.length === 2) {
+      zoomScale = Math.min(ZOOM_MAX, Math.max(1, pinch.startScale * (fingerGap(e.touches) / pinch.startDist)));
+      applyZoom();
+      e.preventDefault();
+      return;
+    }
+    // Pan a zoomed view with one finger.
+    if (panFrom && zoomScale > 1 && e.touches.length === 1) {
+      zoomTx = panFrom.tx + (e.touches[0].clientX - panFrom.x);
+      zoomTy = panFrom.ty + (e.touches[0].clientY - panFrom.y);
+      applyZoom();
+      e.preventDefault();
+      return;
+    }
+
     if (!gesture || e.touches.length !== 1) return;
     // Any real movement means a scroll, not a long press.
     if (Math.abs(e.touches[0].clientY - longPressStartY) > 10) cancelLongPress();
@@ -655,11 +734,15 @@ termEl.addEventListener(
 
 // Only a tap raises the keyboard — a swipe used to raise it on every scroll,
 // and a long press opens the copy overlay instead.
-termEl.addEventListener("touchend", () => {
+termEl.addEventListener("touchend", (e) => {
   cancelLongPress();
+  if (e.touches.length < 2) pinch = null;
+  if (e.touches.length === 0) panFrom = null;
   const tapped = gesture && gesture.end().tap;
   gesture = null;
-  if (tapped && !longPressed) openKeyboard();
+  // A tap raises the keyboard only when not zoomed — while zoomed a tap is just
+  // the end of a pan.
+  if (tapped && !longPressed && zoomScale === 1) openKeyboard();
 });
 
 // Restoring focus inside the blur handler itself is ignored by Safari, so it
@@ -798,6 +881,9 @@ function syncAppHeight() {
 function resizeAndNotify() {
   syncAppHeight();
   const { cols, rows } = fit();
+  // The pan clamp is width/height-relative, so re-apply it after the box moves
+  // (e.g. the keyboard opening) to keep a zoomed view from drifting off-edge.
+  applyZoom();
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ t: "resize", rows, cols }));
   }
@@ -840,7 +926,12 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener("scroll", syncAppHeight);
 }
 window.addEventListener("resize", resizeAndNotify);
-window.addEventListener("orientationchange", () => setTimeout(resizeAndNotify, 300));
+window.addEventListener("orientationchange", () =>
+  setTimeout(() => {
+    resetZoom(); // a flipped screen is a fresh layout; don't keep a stale zoom
+    resizeAndNotify();
+  }, 300),
+);
 
 syncAppHeight();
 fit();

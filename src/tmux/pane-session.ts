@@ -13,6 +13,24 @@ export const DEFAULT_COLUMNS = 80;
 /** Claude Code can emit dozens of %output per repaint; batch them per frame. */
 const FRAME_MS = 16;
 
+/**
+ * DECSET sequences that re-assert the mouse tracking a pane reports.
+ *
+ * capture-pane restores content, not terminal modes, and the seed clears them,
+ * so a program using the mouse comes back with tracking off — and xterm only
+ * binds its wheel-to-mouse handler while a mode is on, which is why scrolling
+ * stayed dead until a keyboard toggle forced a repaint. Flags come straight
+ * from tmux's `#{mouse_*_flag}`; all-motion (1003) supersedes button-only
+ * (1000), and SGR (1006) is the encoding on top.
+ */
+export function mouseModeSeed(anyFlag: number, allFlag: number, sgrFlag: number): string {
+  let modes = "";
+  if (sgrFlag) modes += "\x1b[?1006h";
+  if (allFlag) modes += "\x1b[?1003h";
+  else if (anyFlag) modes += "\x1b[?1000h";
+  return modes;
+}
+
 export type PaneSessionOptions = {
   target: string;
   rows: number;
@@ -82,16 +100,29 @@ export class PaneSession {
       });
 
       const screen = await client.command(`capture-pane -p -e -J -t ${paneId}`);
-      const cursor = (
-        await client.command(`display-message -p -t ${paneId} '#{cursor_y};#{cursor_x}'`)
+      // Cursor and mouse modes in one query. capture-pane restores content but
+      // not terminal *modes*, and the seed's `\x1b[2J\x1b[H` clears them — so
+      // without this, a program using the mouse (Claude Code enables tracking)
+      // comes back with mouse reporting off, and xterm only binds its
+      // wheel-to-mouse handler while a mode is on. That is the "can't scroll
+      // until I toggle the keyboard" bug: the toggle forces a repaint that
+      // re-asserts the mode. Restoring it here means scrolling works at once.
+      const info = (
+        await client.command(
+          `display-message -p -t ${paneId} ` +
+            `'#{cursor_y};#{cursor_x};#{mouse_any_flag};#{mouse_all_flag};#{mouse_sgr_flag}'`,
+        )
       )[0]!;
 
       buffered.length = 0;
       seeded = true;
 
-      const [row, col] = cursor.split(";").map(Number) as [number, number];
+      const [row, col, mAny, mAll, mSgr] = info.split(";").map(Number) as number[];
       const seed =
-        "\x1b[2J\x1b[H" + screen.join("\r\n") + `\x1b[${row + 1};${col + 1}H`;
+        "\x1b[2J\x1b[H" +
+        screen.join("\r\n") +
+        `\x1b[${row! + 1};${col! + 1}H` +
+        mouseModeSeed(mAny!, mAll!, mSgr!);
       opts.onData(new TextEncoder().encode(seed));
 
       return session;

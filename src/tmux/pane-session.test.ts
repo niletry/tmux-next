@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { DEFAULT_COLUMNS, PaneSession } from "./pane-session";
+import { DEFAULT_COLUMNS, PaneSession, mouseModeSeed } from "./pane-session";
 
 const BASE = "ps-test-" + Math.random().toString(36).slice(2, 8);
 const dec = new TextDecoder();
@@ -186,4 +186,24 @@ test("delivers CJK output intact in a bare environment, as under launchd", async
   await proc.exited;
 
   expect(JSON.parse(out)).toBe(true);
+});
+
+// The seed restores mouse tracking so xterm binds its wheel handler and the
+// synthetic scroll works at once, rather than staying dead until a keyboard
+// toggle repaints the pane. The mode-building is pure, so it is tested directly.
+test("restores all-motion + SGR mouse tracking (Claude Code's modes)", () => {
+  expect(mouseModeSeed(1, 1, 1)).toBe("\x1b[?1006h\x1b[?1003h");
+});
+
+test("uses button tracking when the pane reports only that", () => {
+  expect(mouseModeSeed(1, 0, 0)).toBe("\x1b[?1000h");
+});
+
+test("all-motion supersedes button-only", () => {
+  // Never emit both 1000 and 1003; 1003 already reports buttons.
+  expect(mouseModeSeed(1, 1, 0)).toBe("\x1b[?1003h");
+});
+
+test("adds nothing for a pane that never enabled the mouse", () => {
+  expect(mouseModeSeed(0, 0, 0)).toBe("");
 });
