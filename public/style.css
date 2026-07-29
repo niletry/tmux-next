@@ -139,6 +139,17 @@ header .count {
 .term-bar .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-bar .status { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; }
 
+/* Login expired: the one status that must be noticed and tapped, so it drops
+   the dim treatment for the accent and a clear target. */
+.status-relogin {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  padding: 4px 6px;
+  margin: -4px -6px;
+}
+.status-relogin:active { opacity: 0.6; }
+
 .term-kill,
 .term-rename {
   flex: 0 0 auto;

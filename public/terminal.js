@@ -89,6 +89,16 @@ function cellHeight() {
   return cell && cell.height > 0 ? cell.height : term.options.fontSize * 1.2;
 }
 
+// A hand-picked font size, remembered across visits. Null means follow the
+// automatic fit, which keeps 80 columns on screen by shrinking the font.
+const FONT_KEY = "termFont";
+const FONT_MIN = 6;
+const FONT_MAX = 28;
+let fontOverride = (() => {
+  const n = Number(localStorage.getItem(FONT_KEY));
+  return Number.isFinite(n) && n >= FONT_MIN && n <= FONT_MAX ? n : null;
+})();
+
 /** Picks a font size and grid that fill the element, and reports the geometry. */
 function fit() {
   const width = termEl.clientWidth;
@@ -98,13 +108,17 @@ function fit() {
   // Measure the real cell width instead of guessing the aspect ratio.
   const probe = term._core?._renderService?.dimensions?.css?.cell;
   const ratio = probe && probe.width > 0 ? probe.width / term.options.fontSize : 0.6;
+  const lineHeight = cellHeight() / term.options.fontSize;
 
-  const { cols, rows, fontSize } = computeGeometry({
-    width,
-    height,
-    ratio,
-    lineHeight: cellHeight() / term.options.fontSize,
-  });
+  let { cols, rows, fontSize } = computeGeometry({ width, height, ratio, lineHeight });
+
+  // A manual size trades columns for legibility: honour it and refill the grid
+  // around it, which may drop below the 80 columns the auto path guarantees.
+  if (fontOverride) {
+    fontSize = fontOverride;
+    cols = Math.max(1, Math.floor(width / (fontSize * ratio)));
+    rows = Math.max(1, Math.floor(height / (fontSize * lineHeight)));
+  }
 
   if (fontSize !== term.options.fontSize) term.options.fontSize = fontSize;
   if (cols !== term.cols || rows !== term.rows) term.resize(cols, rows);
@@ -150,11 +164,55 @@ function connect() {
     // should we reconnect into the old name.
     if (killing || renaming) return;
     statusEl.textContent = "已断开，重连中…";
-    // Nothing is buffered across connections: the server rebuilds the screen
-    // from capture-pane on every open, so a reconnect is a full redraw.
-    setTimeout(connect, reconnectDelay);
-    reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+    reconnectOrPromptLogin();
   };
+}
+
+/**
+ * Decides whether a dropped socket is worth retrying, or whether the login has
+ * expired behind the auth proxy.
+ *
+ * A WebSocket upgrade that the proxy bounces to a login portal comes back as a
+ * plain abnormal close — no status, nothing to key off. So a reconnect loop
+ * would spin forever into a wall, looking for all the world like a freeze. A
+ * normal fetch *can* tell: if it is redirected to the login page (or answers
+ * with the portal's HTML instead of our JSON), the token is gone, so we say so
+ * in the status bar and offer one tap back to the login rather than retrying.
+ * Nothing is buffered across connections — the server redraws from capture-pane
+ * on every open — so a later reconnect is always a full, clean redraw.
+ */
+async function reconnectOrPromptLogin() {
+  try {
+    const res = await fetch("api/sessions", {
+      headers: { accept: "application/json" },
+      cache: "no-store",
+    });
+    const bounced =
+      res.redirected ||
+      /\/auth(\/|$|\?)/.test(res.url) ||
+      !(res.headers.get("content-type") || "").includes("application/json");
+    if (bounced) return showLoginExpired();
+  } catch {
+    // A network error is not an auth problem — fall through to a normal retry.
+  }
+  setTimeout(connect, reconnectDelay);
+  reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+}
+
+/** Replaces the status text with a one-tap way back to the login portal. */
+function showLoginExpired() {
+  statusEl.replaceChildren();
+  const link = document.createElement("a");
+  link.href = "#";
+  link.className = "status-relogin";
+  link.textContent = "登录已过期 · 点此重新登录";
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    // Reloading walks into the proxy's auth redirect and, after login, back to
+    // this session.
+    location.reload();
+  });
+  statusEl.append(link);
 }
 
 // --- end the session -------------------------------------------------------
@@ -743,6 +801,36 @@ function resizeAndNotify() {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ t: "resize", rows, cols }));
   }
+}
+
+/**
+ * A−/A+ nudge the font by hand and remember it. Stepping from the current size
+ * means the first tap moves off whatever the auto fit last chose; refitting
+ * re-lays the grid and tells the server. Dropping below 80 columns is allowed
+ * but flagged, since that is where some full-screen programs start to wrap.
+ */
+function stepFont(delta) {
+  const current = fontOverride || term.options.fontSize;
+  const next = Math.max(FONT_MIN, Math.min(FONT_MAX, current + delta));
+  if (next === fontOverride) return;
+  fontOverride = next;
+  localStorage.setItem(FONT_KEY, String(next));
+  resizeAndNotify();
+  flashStatus(
+    term.cols < MIN_COLUMNS ? `字号 ${next}px · ${term.cols} 列，可能换行` : `字号 ${next}px`,
+  );
+}
+
+for (const [id, delta] of [
+  ["font-dec", -1],
+  ["font-inc", 1],
+]) {
+  document.getElementById(id).addEventListener("pointerdown", (e) => {
+    // pointerdown + preventDefault, like the key toolbar: keep the soft keyboard.
+    e.preventDefault();
+    stepFont(delta);
+    if (keyboardWanted) focusTerminal();
+  });
 }
 
 // iOS raises the soft keyboard by shrinking the visual viewport, not the layout
