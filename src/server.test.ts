@@ -12,6 +12,10 @@ process.env.TMUX_NEXT_GALLERY_DIR = joinPath(
   tmpdir(),
   `gallery-test-${Math.random().toString(36).slice(2, 10)}`,
 );
+process.env.TMUX_NEXT_PINS_PATH = joinPath(
+  tmpdir(),
+  `pins-test-${Math.random().toString(36).slice(2, 10)}.json`,
+);
 import { startServer } from "./server";
 
 const BASE = "srv-test-" + Math.random().toString(36).slice(2, 8);
@@ -338,4 +342,29 @@ test("gallery refuses a name that tries to climb out", async () => {
 test("gallery is a 404 for a name that does not exist", async () => {
   const res = await fetch(`http://127.0.0.1:${server.port}/api/gallery/file?name=nope.png`);
   expect(res.status).toBe(404);
+});
+
+test("pinning a session marks it and sorts it to the top", async () => {
+  const base = `http://127.0.0.1:${server.port}`;
+  const pin = (p: boolean) =>
+    fetch(`${base}/api/sessions/${BASE}/pin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pinned: p }),
+    });
+
+  expect((await pin(true)).status).toBe(204);
+  let list = (await (await fetch(`${base}/api/sessions`)).json()) as {
+    name: string;
+    pinned: boolean;
+  }[];
+  expect(list[0]!.name).toBe(BASE);
+  expect(list[0]!.pinned).toBe(true);
+
+  expect((await pin(false)).status).toBe(204);
+  list = (await (await fetch(`${base}/api/sessions`)).json()) as {
+    name: string;
+    pinned: boolean;
+  }[];
+  expect(list.find((s) => s.name === BASE)!.pinned).toBe(false);
 });

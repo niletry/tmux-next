@@ -1,6 +1,7 @@
 import { tmux } from "./run";
 import { validateRequestedName } from "./session-create";
 import { WEB_SESSION_PREFIX } from "./session-manager";
+import { readPins, setPin, renamePin } from "../pins";
 
 export type SessionSummary = {
   name: string;
@@ -11,6 +12,7 @@ export type SessionSummary = {
   preview: string[];
   pendingInput: string | null;
   idle: boolean;
+  pinned: boolean;
 };
 
 const PREVIEW_LINES = 4;
@@ -92,6 +94,7 @@ export async function killSession(name: string): Promise<KillResult> {
   await killGroupedWebSessions(name);
 
   const killed = await tmux(["kill-session", "-t", exact]);
+  if (killed.ok) await setPin(name, false); // drop a pin for a session that's gone
   return killed.ok ? { ok: true } : { ok: false, reason: "missing" };
 }
 
@@ -167,6 +170,7 @@ export async function renameSession(from: string, to: string): Promise<RenameRes
   }
 
   const renamed = await tmux(["rename-session", "-t", exact, checked.name]);
+  if (renamed.ok) await renamePin(from, checked.name); // keep a pin with its session
   return renamed.ok ? { ok: true, name: checked.name } : { ok: false, reason: "failed" };
 }
 
@@ -175,6 +179,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
   if (!listed.ok) return [];
 
   const rows = listed.stdout.trim().split("\n").filter(Boolean);
+  const pinnedSet = new Set(await readPins());
   const summaries = await Promise.all(
     rows.map(async (row): Promise<SessionSummary | null> => {
       const parts = row.split(FIELD_SEP);
@@ -201,19 +206,21 @@ export async function listSessions(): Promise<SessionSummary[]> {
         windowHeight: Number(height),
         lastActivityEpoch: Number(activity),
         attached: attached === "1",
+        pinned: pinnedSet.has(name),
         ...extractPreview(screen),
       };
     }),
   );
 
-  // Most recently active first, and nothing else. The session you were just in
-  // has the freshest activity, so it stays on top instead of being pushed below
-  // every session Claude happens to be waiting on. Those still stand out by
-  // their dot; they no longer jerk to the top and back as a turn starts and
-  // finishes, which is what made the order feel unpredictable.
+  // Pinned first, then most recently active. Pinning is the one deliberate
+  // override of the recency order; within each group the freshest leads, so the
+  // session you were just in still rises to the top of its group. Sessions
+  // waiting on you stand out by their dot rather than by reordering.
   return summaries
     .filter((s): s is SessionSummary => s !== null)
-    .sort((a, b) => b.lastActivityEpoch - a.lastActivityEpoch);
+    .sort(
+      (a, b) => Number(b.pinned) - Number(a.pinned) || b.lastActivityEpoch - a.lastActivityEpoch,
+    );
 }
 
 /**

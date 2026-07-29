@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { tmux } from "./run";
+
+// kill/rename now touch the pins file; keep the suite off the real one.
+process.env.TMUX_NEXT_PINS_PATH = join(
+  tmpdir(),
+  `pins-sl-test-${Math.random().toString(36).slice(2, 10)}.json`,
+);
 import { extractPreview, listSessions, rankDirectories, sessionNames } from "./session-list";
 
 // Taken verbatim from a real Claude Code session on this machine.

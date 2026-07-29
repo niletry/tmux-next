@@ -204,9 +204,10 @@ header .count {
   font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* The image button holds an SVG rather than a glyph; centre it like the others
-   and let it inherit the same grey text colour through currentColor. */
-#img { display: inline-flex; align-items: center; justify-content: center; }
+/* These buttons hold an SVG rather than a glyph; centre it like the others and
+   let it inherit the same grey text colour through currentColor. */
+#img,
+#paste { display: inline-flex; align-items: center; justify-content: center; }
 
 .keys button:active { background: #39404e; }
 .keys button.sticky-on { background: var(--accent); color: #14161a; }
@@ -531,3 +532,11 @@ header .ghead svg { width: 18px; height: 18px; }
 .viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .viewer-frame { width: 100%; height: 100%; border: 0; background: #fff; }
 .viewer-note { color: var(--dim); padding: 24px; text-align: center; }
+
+/* ---- pin ---- */
+
+/* Pinned marker on a list card, and the vertical action menu behind ⋯. */
+.pin { color: var(--accent); display: inline-flex; flex: 0 0 auto; }
+.pin svg { display: block; }
+
+.sheet-menu { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }

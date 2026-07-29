@@ -498,6 +498,47 @@ async function uploadImage(file) {
   }
 }
 
+// --- paste (mobile has no Cmd+V) -------------------------------------------
+
+/**
+ * Reads the clipboard on a tap and does the right thing with it: an image is
+ * uploaded like any other, text is handed to xterm's paste (which wraps it in
+ * bracketed-paste markers when the program has that mode on). The async
+ * Clipboard API is the only paste that works reliably on a phone — it runs from
+ * this gesture over HTTPS, and iOS shows its own "Paste" confirmation.
+ */
+const pasteBtn = document.getElementById("paste");
+
+async function pasteText(text) {
+  if (!text) return;
+  term.paste(text);
+  focusTerminal();
+}
+
+pasteBtn.addEventListener("click", async () => {
+  try {
+    if (navigator.clipboard && navigator.clipboard.read) {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith("image/"));
+        if (imageType) return uploadImage(await item.getType(imageType));
+      }
+      for (const item of items) {
+        if (item.types.includes("text/plain")) {
+          return pasteText(await (await item.getType("text/plain")).text());
+        }
+      }
+      flashStatus("剪贴板是空的");
+    } else if (navigator.clipboard && navigator.clipboard.readText) {
+      await pasteText(await navigator.clipboard.readText());
+    } else {
+      flashStatus("此浏览器不支持粘贴");
+    }
+  } catch {
+    flashStatus("粘贴被拒绝或失败");
+  }
+});
+
 // --- scrolling --------------------------------------------------------------
 
 /**

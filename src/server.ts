@@ -5,6 +5,7 @@ import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { recordUsage, readUsage } from "./key-usage";
 import { listGallery, galleryFilePath } from "./gallery";
+import { setPin } from "./pins";
 import { listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand } from "./tmux/session-create";
@@ -216,6 +217,20 @@ export function startServer(
       const rename = url.pathname.match(/^\/api\/sessions\/(.+)\/rename$/);
       if (rename && req.method === "POST") {
         return renameResponse(req, decodeURIComponent(rename[1]!));
+      }
+
+      // Pin or unpin a session so it sits at the top of the list.
+      const pin = url.pathname.match(/^\/api\/sessions\/(.+)\/pin$/);
+      if (pin && req.method === "POST") {
+        let body: { pinned?: unknown };
+        try {
+          body = await req.json();
+        } catch {
+          return Response.json({ error: "invalid" }, { status: 400 });
+        }
+        // Strict `=== true`: the value is untrusted JSON.
+        await setPin(decodeURIComponent(pin[1]!), body.pinned === true);
+        return new Response(null, { status: 204 });
       }
 
       const kill = url.pathname.match(/^\/api\/sessions\/(.+)$/);

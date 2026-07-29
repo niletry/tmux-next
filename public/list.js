@@ -72,12 +72,68 @@ async function confirmAndKill(session) {
   });
 }
 
+function pinBadge() {
+  const span = el("span", "pin");
+  span.title = "已置顶";
+  span.innerHTML =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true">' +
+    '<path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5' +
+    'a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>';
+  return span;
+}
+
+/**
+ * The ⋯ menu: pin to the top, or end the session. Pinning is one tap; ending
+ * still goes through its own confirming dialog.
+ */
+function openActions(session) {
+  const dialog = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet");
+  sheet.append(el("p", "sheet-name", session.name));
+
+  const menu = el("div", "sheet-menu");
+  const pinBtn = el("button", "btn", session.pinned ? "取消置顶" : "置顶");
+  const endBtn = el("button", "btn danger", "结束会话");
+  const cancel = el("button", "btn", "取消");
+  menu.append(pinBtn, endBtn, cancel);
+  sheet.append(menu);
+  dialog.append(sheet);
+  document.body.append(dialog);
+
+  const close = () => dialog.remove();
+  cancel.addEventListener("click", close);
+  dialog.addEventListener("click", (e) => {
+    if (e.target === dialog) close();
+  });
+
+  pinBtn.addEventListener("click", async () => {
+    pinBtn.disabled = true;
+    try {
+      await fetch(`api/sessions/${encodeURIComponent(session.name)}/pin`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pinned: !session.pinned }),
+      });
+    } catch {
+      // A failed toggle just leaves the order as it was; the next render is truth.
+    }
+    close();
+    render();
+  });
+
+  endBtn.addEventListener("click", () => {
+    close();
+    confirmAndKill(session);
+  });
+}
+
 function card(session) {
   const wrapper = el("div", "card");
   const link = el("a", "card-main");
   link.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
 
   const row = el("div", "row");
+  if (session.pinned) row.append(pinBadge());
   if (session.idle) {
     const dot = el("span", "dot");
     dot.title = "等待你的回复";
@@ -103,7 +159,7 @@ function card(session) {
     // The button sits on top of the card link; do not follow it.
     e.preventDefault();
     e.stopPropagation();
-    confirmAndKill(session);
+    openActions(session);
   });
 
   wrapper.append(link, more);
