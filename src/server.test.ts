@@ -8,6 +8,10 @@ process.env.TMUX_NEXT_KEY_USAGE_PATH = joinPath(
   tmpdir(),
   `ku-test-${Math.random().toString(36).slice(2, 10)}.json`,
 );
+process.env.TMUX_NEXT_GALLERY_DIR = joinPath(
+  tmpdir(),
+  `gallery-test-${Math.random().toString(36).slice(2, 10)}`,
+);
 import { startServer } from "./server";
 
 const BASE = "srv-test-" + Math.random().toString(36).slice(2, 8);
@@ -290,4 +294,48 @@ test("a malformed usage beacon is swallowed, not an error", async () => {
     body: "not json at all",
   });
   expect(res.status).toBe(204);
+});
+
+test("gallery lists its files newest first with a kind", async () => {
+  const dir = process.env.TMUX_NEXT_GALLERY_DIR!;
+  await Bun.$`mkdir -p ${dir}`.quiet();
+  await Bun.write(joinPath(dir, "old.png"), "PNGDATA");
+  await Bun.sleep(20);
+  await Bun.write(joinPath(dir, "new.html"), "<h1>hi</h1>");
+
+  const items = (await (
+    await fetch(`http://127.0.0.1:${server.port}/api/gallery`)
+  ).json()) as { name: string; kind: string }[];
+
+  const byName = Object.fromEntries(items.map((i) => [i.name, i.kind]));
+  expect(byName["old.png"]).toBe("image");
+  expect(byName["new.html"]).toBe("html");
+  // Newest (new.html) sorts before old.png.
+  const names = items.map((i) => i.name);
+  expect(names.indexOf("new.html")).toBeLessThan(names.indexOf("old.png"));
+});
+
+test("gallery serves a file's bytes with a type from its extension", async () => {
+  const dir = process.env.TMUX_NEXT_GALLERY_DIR!;
+  await Bun.$`mkdir -p ${dir}`.quiet();
+  await Bun.write(joinPath(dir, "page.html"), "<h1>artifact</h1>");
+
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/gallery/file?name=page.html`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("text/html");
+  expect(await res.text()).toContain("artifact");
+});
+
+test("gallery refuses a name that tries to climb out", async () => {
+  for (const name of ["../../etc/passwd", "sub/x.png", "..%2Fx"]) {
+    const res = await fetch(
+      `http://127.0.0.1:${server.port}/api/gallery/file?name=${encodeURIComponent(name)}`,
+    );
+    expect(res.status).toBe(400);
+  }
+});
+
+test("gallery is a 404 for a name that does not exist", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/gallery/file?name=nope.png`);
+  expect(res.status).toBe(404);
 });

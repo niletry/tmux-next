@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { recordUsage, readUsage } from "./key-usage";
+import { listGallery, galleryFilePath } from "./gallery";
 import { listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand } from "./tmux/session-create";
@@ -165,6 +166,21 @@ export function startServer(
       // it. We save it and reply with a path the client then types in.
       if (url.pathname === "/api/upload" && req.method === "POST") {
         return uploadResponse(req);
+      }
+
+      // The drop-folder gallery: what is in it, and its files one by one. The
+      // name is reduced to a basename inside the gallery, so it can never reach
+      // a file elsewhere on disk. Content types come from Bun.file by extension,
+      // which is what lets the client render images and HTML.
+      if (url.pathname === "/api/gallery" && req.method === "GET") {
+        return Response.json(await listGallery());
+      }
+      if (url.pathname === "/api/gallery/file" && req.method === "GET") {
+        const path = galleryFilePath(url.searchParams.get("name") ?? "");
+        if (!path) return new Response("bad name", { status: 400 });
+        const file = Bun.file(path);
+        if (!(await file.exists())) return new Response("not found", { status: 404 });
+        return new Response(file);
       }
 
       // Which toolbar keys get tapped, so their order can follow the evidence.

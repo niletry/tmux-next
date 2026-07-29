@@ -263,7 +263,8 @@ header .count {
 /* ---- create session ---- */
 
 header .new {
-  margin-left: auto;
+  /* .ghead before it already carries the margin-left:auto that pushes the
+     right-hand cluster over, so this one just sits next to it. */
   width: 34px;
   height: 34px;
   border: 0;
@@ -427,3 +428,106 @@ header .new:active { opacity: 0.7; }
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* ---- gallery ---- */
+
+header .back { color: var(--accent); text-decoration: none; font-size: 15px; font-weight: 400; }
+header .back:active { opacity: 0.7; }
+
+/* Entry point on the list header, sitting left of the ＋ button. */
+header .ghead {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #2a2f3a;
+  color: var(--fg);
+  align-self: center;
+  text-decoration: none;
+}
+header .ghead:active { opacity: 0.7; }
+header .ghead svg { width: 18px; height: 18px; }
+
+.gal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  padding: 0 12px 24px;
+}
+
+.gal-cell {
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  padding: 0;
+  background: var(--card);
+  border-radius: 12px;
+  overflow: hidden;
+  text-align: left;
+  color: inherit;
+}
+.gal-cell:active { background: #252932; }
+
+.gal-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: #0f1115;
+  display: block;
+}
+
+/* Non-images get a labelled tile instead of a thumbnail. */
+.gal-badge {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #22262f;
+  color: var(--accent);
+  font: 600 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+}
+
+.gal-name { padding: 8px 10px; font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
+.ghint { font-size: 13px; color: var(--dim); }
+.ghint code { font-size: 0.9em; }
+
+/* full-screen viewer for one artifact */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #0c0d10;
+  display: flex;
+  flex-direction: column;
+}
+.viewer[hidden] { display: none; }
+
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: max(10px, env(safe-area-inset-top)) 14px 10px;
+  background: var(--card);
+  flex: 0 0 auto;
+}
+.viewer-close { border: 0; border-radius: 8px; padding: 6px 12px; background: #2a2f3a; color: var(--fg); font-size: 14px; }
+.viewer-name { flex: 1; min-width: 0; font-size: 13px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-dl { color: var(--accent); text-decoration: none; font-size: 14px; }
+
+.viewer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.viewer-frame { width: 100%; height: 100%; border: 0; background: #fff; }
+.viewer-note { color: var(--dim); padding: 24px; text-align: center; }
