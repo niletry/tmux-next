@@ -601,7 +601,7 @@ let pager = null;
  * The current visible screen as plain text, read from xterm's buffer.
  *
  * A canvas/WebGL renderer draws the text and leaves nothing to select, so
- * instead of fighting that, a long press lifts the screen into a plain HTML
+ * instead of fighting that, the copy button lifts the screen into a plain HTML
  * overlay the browser can select natively. Trailing blank lines are dropped so
  * the overlay is only as tall as the content.
  */
@@ -616,41 +616,76 @@ function visibleScreenText() {
   return lines.join("\n");
 }
 
-/** Freezes the screen into a selectable overlay; native selection copies it. */
+/** URLs on the visible screen, de-duplicated, trailing punctuation trimmed. */
+function extractLinks(text) {
+  const found = text.match(/\bhttps?:\/\/[^\s<>"'`\])]+/g) || [];
+  return [...new Set(found.map((u) => u.replace(/[.,;:!?)\]}>]+$/, "")))];
+}
+
+/**
+ * Lifts the visible screen into a plain HTML overlay: the canvas renderer
+ * leaves nothing to select, so this is how text gets copied on a phone. Any
+ * links are listed on their own at the top as tap-to-copy rows, since selecting
+ * a URL by hand on a phone is the fiddly part. Opened from a toolbar button —
+ * a long press fought with scrolling.
+ */
 function showCopyOverlay() {
   const text = visibleScreenText();
-  if (!text) return;
-  if (navigator.vibrate) navigator.vibrate(12);
+  if (!text) {
+    flashStatus("屏幕是空的");
+    return;
+  }
 
   const backdrop = document.createElement("div");
   backdrop.className = "copy-overlay";
   const box = document.createElement("div");
   box.className = "copy-box";
+
   const hint = document.createElement("div");
   hint.className = "copy-hint";
-  hint.textContent = "长按选中要复制的文字 · 点空白处关闭";
+  hint.textContent = "选中文字复制 · 点链接直接复制 · 点空白处关闭";
+  box.append(hint);
+
+  const links = extractLinks(text);
+  if (links.length) {
+    const sec = document.createElement("div");
+    sec.className = "copy-links";
+    for (const url of links) {
+      const row = document.createElement("button");
+      row.className = "copy-link";
+      row.textContent = url;
+      row.addEventListener("click", () => {
+        navigator.clipboard?.writeText(url).then(
+          () => {
+            row.classList.add("copied");
+            row.textContent = "已复制 ✓";
+            setTimeout(() => {
+              row.classList.remove("copied");
+              row.textContent = url;
+            }, 1200);
+          },
+          () => (row.textContent = "复制失败（需 HTTPS）"),
+        );
+      });
+      sec.append(row);
+    }
+    box.append(sec);
+  }
+
   const pre = document.createElement("pre");
   pre.className = "copy-text";
   pre.textContent = text;
-  box.append(hint, pre);
+  box.append(pre);
+
   backdrop.append(box);
-  // A tap on the backdrop (not the text) dismisses it.
+  // A tap on the backdrop (not the content) dismisses it.
   backdrop.addEventListener("pointerdown", (e) => {
     if (e.target === backdrop) backdrop.remove();
   });
   document.body.append(backdrop);
 }
 
-let longPressTimer = null;
-let longPressStartY = 0;
-let longPressed = false;
-
-function cancelLongPress() {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
-  }
-}
+document.getElementById("copy").addEventListener("click", showCopyOverlay);
 
 // --- pinch to zoom ---------------------------------------------------------
 
@@ -706,20 +741,17 @@ termEl.addEventListener(
     if (e.touches.length === 2) {
       gesture = null;
       panFrom = null;
-      cancelLongPress();
       pinch = { startDist: fingerGap(e.touches), startScale: zoomScale };
       return;
     }
     // Anything above two fingers is a system gesture; leave it alone.
     if (e.touches.length !== 1) {
       gesture = null;
-      cancelLongPress();
       return;
     }
     // One finger while zoomed pans the magnified view rather than scrolling.
     if (zoomScale > 1) {
       gesture = null;
-      cancelLongPress();
       panFrom = { x: e.touches[0].clientX, y: e.touches[0].clientY, tx: zoomTx, ty: zoomTy };
       return;
     }
@@ -727,17 +759,6 @@ termEl.addEventListener(
     gesture = createGesture({ lineHeight: cellHeight() });
     pager = createPager({ pageLines: Math.max(1, term.rows - 2) });
     gesture.start(e.touches[0].clientY);
-
-    // A finger held still long enough opens the copy overlay. Moving before it
-    // fires cancels it, so a drag scrolls exactly as before.
-    longPressed = false;
-    longPressStartY = e.touches[0].clientY;
-    cancelLongPress();
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null;
-      longPressed = true;
-      showCopyOverlay();
-    }, 450);
   },
   { passive: true }
 );
@@ -762,8 +783,6 @@ termEl.addEventListener(
     }
 
     if (!gesture || e.touches.length !== 1) return;
-    // Any real movement means a scroll, not a long press.
-    if (Math.abs(e.touches[0].clientY - longPressStartY) > 10) cancelLongPress();
     const lines = gesture.move(e.touches[0].clientY);
     if (!lines) return;
     // Not passive: without this Safari rubber-bands the page instead.
@@ -776,14 +795,13 @@ termEl.addEventListener(
 // Only a tap raises the keyboard — a swipe used to raise it on every scroll,
 // and a long press opens the copy overlay instead.
 termEl.addEventListener("touchend", (e) => {
-  cancelLongPress();
   if (e.touches.length < 2) pinch = null;
   if (e.touches.length === 0) panFrom = null;
   const tapped = gesture && gesture.end().tap;
   gesture = null;
   // A tap raises the keyboard only when not zoomed — while zoomed a tap is just
   // the end of a pan.
-  if (tapped && !longPressed && zoomScale === 1) openKeyboard();
+  if (tapped && zoomScale === 1) openKeyboard();
 });
 
 // Restoring focus inside the blur handler itself is ignored by Safari, so it

@@ -207,7 +207,8 @@ header .count {
 /* These buttons hold an SVG rather than a glyph; centre it like the others and
    let it inherit the same grey text colour through currentColor. */
 #img,
-#paste { display: inline-flex; align-items: center; justify-content: center; }
+#paste,
+#copy { display: inline-flex; align-items: center; justify-content: center; }
 
 .keys button:active { background: #39404e; }
 .keys button.sticky-on { background: var(--accent); color: #14161a; }
@@ -540,3 +541,31 @@ header .ghead svg { width: 18px; height: 18px; }
 .pin svg { display: block; }
 
 .sheet-menu { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+
+/* Links pulled out of the copy overlay: each a tap-to-copy row. */
+.copy-links {
+  flex: 0 0 auto;
+  max-height: 30vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.5rem;
+  border-bottom: 1px solid #22262f;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.copy-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  background: #1b1e25;
+  color: var(--accent);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+.copy-link:active { background: #22262f; }
+.copy-link.copied { color: var(--idle); border-color: var(--idle); }
