@@ -211,16 +211,17 @@
   </p>
 
   <div class="note">
-    <strong>It has no login of its own, and binds to localhost only.</strong> To reach it
-    from your phone you need a reverse proxy in front doing HTTPS and a login — otherwise
-    you're putting a shell on the open internet. The <a href="/deploy">Caddy guide</a> walks
-    through a working setup.
+    <strong>It has no login of its own, and binds to localhost only.</strong> The simplest way to
+    reach it from your phone is <a href="/tailscale">Tailscale</a> — your own devices only, with
+    nothing exposed to the public internet. For a public URL with a login instead, the
+    <a href="/deploy">Caddy guide</a> walks through a working setup.
   </div>
 
   <div class="links">
     <a href="https://github.com/niletry/tmux-next">GitHub</a>
     <a href="https://www.npmjs.com/package/tmux-next">npm</a>
-    <a href="/deploy">Deploy guide</a>
+    <a href="/tailscale">Tailscale</a>
+    <a href="/deploy">Caddy</a>
   </div>
 
   <footer>

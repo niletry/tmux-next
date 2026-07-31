@@ -1,0 +1,221 @@
+<title>用 Tailscale 私有访问 tmux-next（不暴露公网）</title>
+<meta name="description" content="从手机访问 tmux-next 最简单又安全的方式：Tailscale。不用反向代理、不开公网端口、不用管密码——tailnet 成员身份即认证，HTTPS 自动搞定。">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<style>
+  :root {
+    --paper: #edeff3;
+    --paper-2: #e3e6ec;
+    --ink: #12151b;
+    --muted: #666e7d;
+    --line: #d2d7e0;
+    --accent: #2f5fe0;
+    --accent-soft: #dfe6fb;
+    --term-bg: #14161a;
+    --term-fg: #e6e8ec;
+    --term-dim: #8b919c;
+    --danger: #c0392b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+      --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+    --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+  }
+  :root[data-theme="light"] {
+    --paper: #edeff3; --paper-2: #e3e6ec; --ink: #12151b; --muted: #666e7d;
+    --line: #d2d7e0; --accent: #2f5fe0; --accent-soft: #dfe6fb; --danger: #c0392b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.8 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 1.5rem 5rem; }
+
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 3rem;
+  }
+
+  .top a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+  .top a:hover { color: var(--accent); }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(1.6rem, 5vw, 2.4rem);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    margin: 0 0 0.8rem;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 1.25rem;
+    letter-spacing: -0.01em;
+    margin: 3rem 0 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  h2 .n { color: var(--accent); margin-right: 0.5rem; }
+
+  .lede { font-size: 1.08rem; color: var(--muted); margin: 0 0 1rem; }
+
+  p { margin: 0 0 1rem; }
+  strong { font-weight: 600; }
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.9em;
+    background: var(--accent-soft);
+    padding: 0.1em 0.36em;
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    font: 13px/1.65 var(--mono);
+    color: var(--term-fg);
+    background: var(--term-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 0 0 1.2rem;
+  }
+
+  pre .c { color: var(--term-dim); }
+  pre .k { color: #7aa2f7; }
+  pre .s { color: #9ece6a; }
+
+  .box {
+    border-left: 3px solid var(--accent);
+    background: var(--paper-2);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 0 0 1.2rem;
+    font-size: 0.96rem;
+  }
+
+  .box.warn { border-left-color: var(--danger); }
+  .box strong { color: var(--ink); }
+  .box p:last-child { margin: 0; }
+
+  ul { margin: 0 0 1rem; padding-left: 1.3rem; }
+  li { margin-bottom: 0.4rem; }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.87rem;
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <a href="/">← tmux-next</a>
+    <span><a href="/tailscale">EN</a> · <a href="/tailscale-zh" style="color:var(--ink);font-weight:600">中文</a> · <a href="https://github.com/niletry/tmux-next">GitHub</a></span>
+  </div>
+
+  <h1>用 Tailscale，私有地连上它</h1>
+
+  <p class="lede">
+    tmux-next 只绑 <code>127.0.0.1</code>，自己没有登录。从手机访问它最简单又安全的办法是
+    <a href="https://tailscale.com/">Tailscale</a>:把你的机器和手机放进同一张私有网络,只有你自己的设备连得上。
+    不用反向代理、不开公网端口、不用管密码——而且 HTTPS 由 Tailscale 自动搞定。
+  </p>
+
+  <div class="box">
+    <p><strong>什么都不暴露到公网。</strong>
+    <a href="/deploy">Caddy 指引</a>是把服务放到公网域名后面、加一层登录;而这套只让 tailnet 里的设备够得着。
+    <em>在 tailnet 里</em>本身就是认证——所以对个人使用来说,它既更简单也更安全。</p>
+  </div>
+
+  <h2><span class="n">1</span>开始之前</h2>
+
+  <ul>
+    <li>在跑 tmux-next 的机器和你的手机上都装好并登录
+      <a href="https://tailscale.com/download">Tailscale</a>——两台在<strong>同一个 tailnet</strong>。</li>
+    <li>为 tailnet 开启 HTTPS 证书:在 Tailscale 管理后台开启 <strong>MagicDNS</strong> 和
+      <strong>HTTPS Certificates</strong>(DNS 设置里)。没开的话,下面的 serve 命令会提示你。</li>
+    <li>tmux-next 已在本地运行,监听 <code>127.0.0.1:7682</code>(默认端口)。</li>
+  </ul>
+
+  <h2><span class="n">2</span>运行 tmux-next</h2>
+
+  <pre><span class="c"># 监听 127.0.0.1:7682——只绑本机,这正是你要的</span>
+bunx tmux-next</pre>
+
+  <p>
+    保持它只绑 localhost。Tailscale 会是唯一能够到它的东西,没必要把端口开得更宽。
+  </p>
+
+  <h2><span class="n">3</span>把它挂到 tailnet 上</h2>
+
+  <p>一条命令,把 tailnet 的 HTTPS 代理到本地端口,并打印出访问地址:</p>
+
+  <pre><span class="c"># --bg 让它后台常驻、重启后仍在</span>
+tailscale serve --bg 7682</pre>
+
+  <p>
+    它会打印类似 <code>https://你的机器.你的tailnet.ts.net</code> 的地址,代理到
+    <code>http://127.0.0.1:7682</code>。证书由 Tailscale 自动签发和续期。随时可查看在挂什么:
+  </p>
+
+  <pre>tailscale serve status</pre>
+
+  <h2><span class="n">4</span>在手机上打开</h2>
+
+  <p>
+    手机上连着 Tailscale,浏览器打开那个 <code>https://…ts.net</code> 地址。就这样——
+    <strong>不弹登录框</strong>,因为"在你的 tailnet 里"就是认证。加到主屏,一点就是个 app。
+  </p>
+
+  <div class="box">
+    <p><strong>WebSocket 直接就通。</strong> 终端的实时数据走 WebSocket,<code>tailscale serve</code>
+    会把它一并代理(以 <code>wss</code>),不用任何额外配置——Caddy 指引里那些给 WebSocket 单独做鉴权的折腾,
+    这里都没有,因为根本没有另一层登录要绕。</p>
+  </div>
+
+  <h2><span class="n">5</span>谁能访问</h2>
+
+  <p>
+    默认只有你自己的设备。想让别人也能进,把这台机器<strong>共享</strong>给对方的 Tailscale 账号(节点共享),
+    或者用 tailnet 的 ACL——和 tailnet 上任何服务一样。连进来的人都得有 Tailscale,这个门槛正是意义所在。
+  </p>
+
+  <div class="box warn">
+    <p><strong>千万别对它用 <code>tailscale funnel</code>。</strong> Funnel 会把服务暴露到<em>公网</em>,
+    而 tmux-next 自己没有登录——Funnel 等于把一个 shell 挂到公网上,谁都能连。请用 <code>serve</code>(只限 tailnet)。
+    如果你确实需要公网访问,改用 <a href="/deploy">Caddy 指引</a>,那篇会加上真正的登录。</p>
+  </div>
+
+  <footer>
+    <p>tmux-next · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a> · <a href="/deploy-zh" style="color:var(--muted)">Caddy 指引</a> · <a href="/" style="color:var(--muted)">首页</a></p>
+  </footer>
+
+</div>

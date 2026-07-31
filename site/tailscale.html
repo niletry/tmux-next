@@ -1,0 +1,231 @@
+<title>Reach tmux-next over Tailscale (no public exposure)</title>
+<meta name="description" content="The simplest secure way to reach tmux-next from your phone: Tailscale. No reverse proxy, no open ports, no password to manage — tailnet membership is the auth, and HTTPS is handled for you.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<style>
+  :root {
+    --paper: #edeff3;
+    --paper-2: #e3e6ec;
+    --ink: #12151b;
+    --muted: #666e7d;
+    --line: #d2d7e0;
+    --accent: #2f5fe0;
+    --accent-soft: #dfe6fb;
+    --term-bg: #14161a;
+    --term-fg: #e6e8ec;
+    --term-dim: #8b919c;
+    --danger: #c0392b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+      --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+    --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+  }
+  :root[data-theme="light"] {
+    --paper: #edeff3; --paper-2: #e3e6ec; --ink: #12151b; --muted: #666e7d;
+    --line: #d2d7e0; --accent: #2f5fe0; --accent-soft: #dfe6fb; --danger: #c0392b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.7 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 1.5rem 5rem; }
+
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 3rem;
+  }
+
+  .top a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+  .top a:hover { color: var(--accent); }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(1.7rem, 5vw, 2.6rem);
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+    margin: 0 0 0.8rem;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    letter-spacing: -0.02em;
+    margin: 3rem 0 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  h2 .n { color: var(--accent); margin-right: 0.5rem; }
+
+  .lede { font-size: 1.12rem; color: var(--muted); margin: 0 0 1rem; }
+
+  p { margin: 0 0 1rem; }
+  strong { font-weight: 600; }
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--accent-soft);
+    padding: 0.1em 0.36em;
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    font: 13px/1.65 var(--mono);
+    color: var(--term-fg);
+    background: var(--term-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 0 0 1.2rem;
+  }
+
+  pre .c { color: var(--term-dim); }
+  pre .k { color: #7aa2f7; }
+  pre .s { color: #9ece6a; }
+
+  .box {
+    border-left: 3px solid var(--accent);
+    background: var(--paper-2);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 0 0 1.2rem;
+    font-size: 0.96rem;
+  }
+
+  .box.warn { border-left-color: var(--danger); }
+  .box strong { color: var(--ink); }
+  .box p:last-child { margin: 0; }
+
+  ul { margin: 0 0 1rem; padding-left: 1.3rem; }
+  li { margin-bottom: 0.4rem; }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.87rem;
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <a href="/">← tmux-next</a>
+    <span><a href="/tailscale" style="color:var(--ink);font-weight:600">EN</a> · <a href="/tailscale-zh">中文</a> · <a href="https://github.com/niletry/tmux-next">GitHub</a></span>
+  </div>
+
+  <h1>Reach it over Tailscale, privately</h1>
+
+  <p class="lede">
+    tmux-next binds only to <code>127.0.0.1</code> and has no login of its own. The simplest
+    secure way to reach it from your phone is <a href="https://tailscale.com/">Tailscale</a>: put
+    your machine and phone on the same private network, and only your own devices can connect.
+    No reverse proxy, no ports opened to the internet, no password to manage — and Tailscale
+    provisions HTTPS for you.
+  </p>
+
+  <div class="box">
+    <p><strong>Nothing is exposed to the public internet.</strong> Where the
+    <a href="/deploy">Caddy guide</a> puts the service behind a public domain and a login, this
+    keeps it reachable only from devices on your tailnet. Being on the tailnet <em>is</em> the
+    authentication — which is why it's both simpler and safer for a personal setup.</p>
+  </div>
+
+  <h2><span class="n">1</span>Before you start</h2>
+
+  <ul>
+    <li><a href="https://tailscale.com/download">Tailscale</a> installed and signed in on the
+      machine running tmux-next, and on your phone — both on the <strong>same tailnet</strong>.</li>
+    <li>HTTPS certificates enabled for your tailnet: in the Tailscale admin console, enable
+      <strong>MagicDNS</strong> and <strong>HTTPS Certificates</strong> (DNS settings). If it isn't
+      on, the serve command below will tell you.</li>
+    <li>tmux-next running locally, listening on <code>127.0.0.1:7682</code> (the default port).</li>
+  </ul>
+
+  <h2><span class="n">2</span>Run tmux-next</h2>
+
+  <pre><span class="c"># listens on 127.0.0.1:7682 — localhost only, which is exactly what you want</span>
+bunx tmux-next</pre>
+
+  <p>
+    Keep it bound to localhost. Tailscale will be the only thing that can reach it, so there's no
+    reason to expose the port any wider.
+  </p>
+
+  <h2><span class="n">3</span>Serve it on your tailnet</h2>
+
+  <p>One command proxies HTTPS on your tailnet to the local port and prints the URL:</p>
+
+  <pre><span class="c"># --bg keeps it running in the background and across reboots</span>
+tailscale serve --bg 7682</pre>
+
+  <p>
+    It prints something like <code>https://your-machine.your-tailnet.ts.net</code>, proxying to
+    <code>http://127.0.0.1:7682</code>. Tailscale obtains and renews the certificate automatically.
+    Check what's being served any time:
+  </p>
+
+  <pre>tailscale serve status</pre>
+
+  <h2><span class="n">4</span>Open it on your phone</h2>
+
+  <p>
+    With Tailscale connected on your phone, open that <code>https://…ts.net</code> URL in the
+    browser. That's the whole thing — <strong>no login prompt</strong>, because being on your
+    tailnet is the authentication. Add it to your home screen for a one-tap app.
+  </p>
+
+  <div class="box">
+    <p><strong>The WebSocket just works.</strong> The terminal's live data is a WebSocket, and
+    <code>tailscale serve</code> proxies it (as <code>wss</code>) with no extra config — none of the
+    WebSocket-auth juggling the Caddy guide has to do, because there's no separate login layer to
+    reason about.</p>
+  </div>
+
+  <h2><span class="n">5</span>Who can reach it</h2>
+
+  <p>
+    By default, only your own devices. To let someone else in, <strong>share the machine</strong> to
+    their Tailscale account (node sharing), or use your tailnet's ACLs — the same as any service on
+    a tailnet. Everyone who connects needs Tailscale; that requirement is the point.
+  </p>
+
+  <div class="box warn">
+    <p><strong>Do not <code>tailscale funnel</code> this.</strong> Funnel exposes a service to the
+    <em>public</em> internet, and tmux-next has no login of its own — Funnel would put a shell on the
+    open net for anyone to reach. Use <code>serve</code> (tailnet-only). If you genuinely need public
+    access, use the <a href="/deploy">Caddy guide</a> instead, which adds a real login.</p>
+  </div>
+
+  <footer>
+    <p>tmux-next · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a> · <a href="/deploy" style="color:var(--muted)">Caddy guide</a> · <a href="/" style="color:var(--muted)">Home</a></p>
+  </footer>
+
+</div>
