@@ -152,6 +152,7 @@ function connect() {
   socket.onmessage = (event) => {
     if (event.data instanceof ArrayBuffer) {
       term.write(new Uint8Array(event.data));
+      scheduleIdleCheck();
       return;
     }
     const msg = JSON.parse(event.data);
@@ -408,6 +409,17 @@ function focusTerminal() {
 }
 
 /**
+ * Whether the soft keyboard is actually on screen: the visual viewport is much
+ * shorter than the layout viewport when it is. `keyboardWanted` alone drifts
+ * out of sync once the user dismisses the keyboard by hand, so a toolbar tap
+ * checks this before refocusing — otherwise it pops the keyboard back open.
+ */
+function keyboardIsOpen() {
+  const vv = window.visualViewport;
+  return vv ? window.innerHeight - vv.height > 120 : false;
+}
+
+/**
  * Whether the user wants the soft keyboard up.
  *
  * iOS hides the keyboard the moment the textarea loses focus, and a tap on any
@@ -616,6 +628,53 @@ function visibleScreenText() {
   return lines.join("\n");
 }
 
+// --- background attention --------------------------------------------------
+
+/**
+ * Puts the list's "waiting on you" state onto the browser tab, so a
+ * backgrounded tab shows which session just finished. The trigger is the
+ * completion marker Claude prints when a turn ends — the same one the green dot
+ * keys off — not raw output, which streams the whole time a session is busy.
+ */
+const IDLE_MARKER = /^\s*[✻✽✢·*]\s+\S+ for \d/;
+
+function screenIsIdle() {
+  return visibleScreenText().split("\n").some((l) => IDLE_MARKER.test(l));
+}
+
+let wasIdle = false;
+let attention = false;
+let idleCheckTimer = null;
+
+function setAttention(on) {
+  if (attention === on) return;
+  attention = on;
+  document.title = (on ? "● " : "") + (target || "tmux");
+  const link = document.querySelector('link[rel="icon"]');
+  if (link) link.href = on ? "favicon-alert.svg" : "favicon.svg";
+}
+
+function checkIdleTransition() {
+  const nowIdle = screenIsIdle();
+  // A turn finishing while you're looking elsewhere is what's worth flagging.
+  // Going busy again clears it; being here to see it never flags at all.
+  if (nowIdle && !wasIdle && document.hidden) setAttention(true);
+  else if (!nowIdle) setAttention(false);
+  wasIdle = nowIdle;
+}
+
+// Check only once output has settled, so a mid-stream frame never counts.
+function scheduleIdleCheck() {
+  if (idleCheckTimer) clearTimeout(idleCheckTimer);
+  idleCheckTimer = setTimeout(checkIdleTransition, 500);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  setAttention(false); // you're looking now — clear it
+  wasIdle = screenIsIdle(); // resync so re-hiding doesn't re-flag the same finish
+});
+
 /** URLs on the visible screen, de-duplicated, trailing punctuation trimmed. */
 function extractLinks(text) {
   const found = text.match(/\bhttps?:\/\/[^\s<>"'`\])]+/g) || [];
@@ -686,6 +745,16 @@ function showCopyOverlay() {
 }
 
 document.getElementById("copy").addEventListener("click", showCopyOverlay);
+
+// The key panel expands upward to reveal the grouped extra rows.
+const keysEl = document.getElementById("keys");
+const keysToggle = document.getElementById("keys-toggle");
+keysToggle.addEventListener("pointerdown", (e) => {
+  e.preventDefault(); // a toggle, not a key — keep terminal focus
+  const expanded = keysEl.classList.toggle("expanded");
+  keysToggle.textContent = expanded ? "▾" : "▴";
+  keysToggle.setAttribute("aria-expanded", String(expanded));
+});
 
 // --- pinch to zoom ---------------------------------------------------------
 
@@ -840,7 +909,7 @@ ctrlBtn.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   ctrlArmed = !ctrlArmed;
   ctrlBtn.classList.toggle("sticky-on", ctrlArmed);
-  if (keyboardWanted) focusTerminal();
+  if (keyboardWanted && keyboardIsOpen()) focusTerminal();
 });
 
 kbdBtn.addEventListener("pointerdown", (e) => {
@@ -876,7 +945,7 @@ for (const btn of document.querySelectorAll(".keys button[data-hex]")) {
     e.preventDefault();
     const bytes = btn.dataset.hex.split(" ").map((h) => parseInt(h, 16));
     sendBytes(new Uint8Array(bytes));
-    if (keyboardWanted) focusTerminal();
+    if (keyboardWanted && keyboardIsOpen()) focusTerminal();
   });
 }
 
@@ -974,7 +1043,7 @@ for (const [id, delta] of [
     // pointerdown + preventDefault, like the key toolbar: keep the soft keyboard.
     e.preventDefault();
     stepFont(delta);
-    if (keyboardWanted) focusTerminal();
+    if (keyboardWanted && keyboardIsOpen()) focusTerminal();
   });
 }
 

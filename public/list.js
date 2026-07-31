@@ -166,11 +166,19 @@ function card(session) {
   return wrapper;
 }
 
+/** Reflects "how many sessions are waiting on you" onto the browser tab. */
+function setTabWaiting(count) {
+  document.title = count ? `(${count}) tmux 会话` : "tmux 会话";
+  const link = document.querySelector('link[rel="icon"]');
+  if (link) link.href = count ? "favicon-alert.svg" : "favicon.svg";
+}
+
 async function render() {
   try {
     const res = await fetch("api/sessions");
     const sessions = await res.json();
     countEl.textContent = sessions.length ? `${sessions.length} 个` : "";
+    setTabWaiting(sessions.filter((s) => s.idle).length);
     listEl.replaceChildren(
       ...(sessions.length ? sessions.map(card) : [el("p", "empty", "没有 tmux 会话")]),
     );

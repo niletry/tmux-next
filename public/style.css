@@ -181,19 +181,24 @@ header .count {
 
 #term { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 
+/* A stack of grouped rows. The extra rows are hidden until the toggle expands
+   the panel upward, so the common keys never need horizontal scrolling. */
 .keys {
   flex: 0 0 auto;
   display: flex;
+  flex-direction: column;
   gap: 6px;
   padding: 8px;
   padding-bottom: calc(8px + env(safe-area-inset-bottom));
-  overflow-x: auto;
   background: var(--card);
-  -webkit-overflow-scrolling: touch;
 }
 
+.keys-row { display: flex; gap: 6px; }
+.keys-more { display: none; }
+.keys.expanded .keys-more { display: flex; }
+
 .keys button {
-  flex: 0 0 auto;
+  flex: 1 1 auto; /* buttons share the row width evenly — bigger tap targets */
   min-width: 44px;
   height: 40px;
   padding: 0 10px;
@@ -203,6 +208,11 @@ header .count {
   color: var(--fg);
   font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* The expand/collapse handle stays a fixed, narrow square. The id keeps this
+   from losing to `.keys button` on specificity. */
+#keys-toggle { flex: 0 0 40px; color: var(--dim); font-size: 15px; }
+.keys.expanded #keys-toggle { color: var(--accent); }
 
 /* These buttons hold an SVG rather than a glyph; centre it like the others and
    let it inherit the same grey text colour through currentColor. */
@@ -251,12 +261,13 @@ header .count {
 
 .btn {
   flex: 1;
-  height: 46px;
+  min-height: 54px;
+  padding: 14px 16px;
   border: 0;
   border-radius: 10px;
   background: #2a2f3a;
   color: var(--fg);
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .btn.danger { background: #b3413c; color: #fff; }

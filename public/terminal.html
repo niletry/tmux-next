@@ -20,42 +20,54 @@
 
   <div id="term"></div>
 
-  <div class="keys">
-    <button data-hex="0d" data-usage="enter">⏎</button>
-    <button data-hex="1b" data-usage="esc">Esc</button>
-    <button data-hex="09" data-usage="tab">Tab</button>
-    <button data-hex="1b 5b 5a" data-usage="shift-tab">⇧Tab</button>
-    <button id="ctrl" data-usage="ctrl">Ctrl</button>
-    <button id="kbd" data-usage="keyboard">⌨</button>
-    <button id="img" data-usage="image" title="发送图片" aria-label="发送图片">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="3" width="18" height="18" rx="2"/>
-        <circle cx="8.5" cy="8.5" r="1.5"/>
-        <path d="M21 15l-5-5L5 21"/>
-      </svg>
-    </button>
-    <button id="paste" data-usage="paste" title="粘贴" aria-label="粘贴">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="5" y="5" width="14" height="16" rx="2"/>
-        <rect x="9" y="3" width="6" height="4" rx="1.5"/>
-      </svg>
-    </button>
-    <button id="copy" data-usage="copy" title="复制 / 链接" aria-label="复制">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="9" y="9" width="12" height="12" rx="2"/>
-        <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
-      </svg>
-    </button>
-    <button data-hex="1b 5b 41" data-usage="up">↑</button>
-    <button data-hex="1b 5b 42" data-usage="down">↓</button>
-    <button data-hex="1b 5b 44" data-usage="left">←</button>
-    <button data-hex="1b 5b 43" data-usage="right">→</button>
-    <button data-hex="03" data-usage="ctrl-c">^C</button>
-    <button id="font-dec" data-usage="font-smaller" title="字号减小">A−</button>
-    <button id="font-inc" data-usage="font-bigger" title="字号增大">A+</button>
+  <div class="keys" id="keys">
+    <!-- Tools — shown only when expanded. -->
+    <div class="keys-row keys-more">
+      <button id="kbd" data-usage="keyboard">⌨</button>
+      <button id="img" data-usage="image" title="发送图片" aria-label="发送图片">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+      </button>
+      <button id="paste" data-usage="paste" title="粘贴" aria-label="粘贴">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="5" y="5" width="14" height="16" rx="2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1.5"/>
+        </svg>
+      </button>
+      <button id="copy" data-usage="copy" title="复制 / 链接" aria-label="复制">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="12" height="12" rx="2"/>
+          <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
+        </svg>
+      </button>
+      <button id="font-dec" data-usage="font-smaller" title="字号减小">A−</button>
+      <button id="font-inc" data-usage="font-bigger" title="字号增大">A+</button>
+    </div>
+
+    <!-- Navigation / editing — shown only when expanded. -->
+    <div class="keys-row keys-more">
+      <button id="ctrl" data-usage="ctrl">Ctrl</button>
+      <button data-hex="03" data-usage="ctrl-c">^C</button>
+      <button data-hex="1b 5b 44" data-usage="left">←</button>
+      <button data-hex="1b 5b 43" data-usage="right">→</button>
+    </div>
+
+    <!-- Primary — always visible; the toggle opens the rest upward. -->
+    <div class="keys-row keys-primary">
+      <button class="keys-toggle" id="keys-toggle" aria-label="更多按键" aria-expanded="false">▴</button>
+      <button data-hex="1b" data-usage="esc">Esc</button>
+      <button data-hex="09" data-usage="tab">Tab</button>
+      <button data-hex="1b 5b 5a" data-usage="shift-tab">⇧Tab</button>
+      <button data-hex="1b 5b 41" data-usage="up">↑</button>
+      <button data-hex="1b 5b 42" data-usage="down">↓</button>
+      <button data-hex="0d" data-usage="enter">⏎</button>
+    </div>
   </div>
 
   <input type="file" id="imgfile" accept="image/*" hidden>
