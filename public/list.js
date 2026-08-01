@@ -173,15 +173,56 @@ function setTabWaiting(count) {
   if (link) link.href = count ? "favicon-alert.svg" : "favicon.svg";
 }
 
+async function fetchRestorable() {
+  try {
+    return await (await fetch("api/restorable")).json();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Sessions whose tmux died (a reboot, a crash) but whose Claude conversation can
+ * be brought back. Recreating each one launches a Claude process, so it waits
+ * for a tap rather than restoring on its own.
+ */
+function restoreBanner(count) {
+  const bar = el("div", "restore-banner");
+  bar.append(el("span", null, `${count} 个上次的会话可恢复`));
+  const btn = el("button", "restore-btn", "恢复");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "恢复中…";
+    try {
+      await fetch("api/restore", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+    } catch {
+      // The next render reflects whatever actually came back.
+    }
+    render();
+  });
+  bar.append(btn);
+  return bar;
+}
+
 async function render() {
   try {
-    const res = await fetch("api/sessions");
-    const sessions = await res.json();
+    const [sessions, restorable] = await Promise.all([
+      fetch("api/sessions").then((r) => r.json()),
+      fetchRestorable(),
+    ]);
     countEl.textContent = sessions.length ? `${sessions.length} 个` : "";
     setTabWaiting(sessions.filter((s) => s.idle).length);
-    listEl.replaceChildren(
+
+    const children = [];
+    if (restorable.length) children.push(restoreBanner(restorable.length));
+    children.push(
       ...(sessions.length ? sessions.map(card) : [el("p", "empty", "没有 tmux 会话")]),
     );
+    listEl.replaceChildren(...children);
   } catch {
     countEl.textContent = "";
     listEl.replaceChildren(el("p", "empty", "无法连接到服务"));

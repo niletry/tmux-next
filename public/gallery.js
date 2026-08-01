@@ -1,6 +1,7 @@
 // @ts-check
 // The drop-folder gallery: shows what's in ~/.tmux-next/gallery — images and
-// HTML/SVG rendered in place, anything else offered to download.
+// HTML/SVG rendered in place, anything else offered to download. The viewer
+// pages through items directly, without going back to the grid each time.
 
 const listEl = /** @type {HTMLElement} */ (document.getElementById("gallery"));
 const countEl = /** @type {HTMLElement} */ (document.getElementById("count"));
@@ -11,8 +12,11 @@ const viewer = /** @type {HTMLElement} */ (document.getElementById("viewer"));
 const fileUrl = (/** @type {string} */ name) => "api/gallery/file?name=" + encodeURIComponent(name);
 const ext = (/** @type {string} */ name) => (name.match(/\.([^.]+)$/)?.[1] ?? "文件").toUpperCase();
 
+/** @type {Item[]} */
+let items = [];
+let viewerIndex = -1;
+
 async function load() {
-  let items;
   try {
     items = await (await fetch("api/gallery")).json();
   } catch {
@@ -30,10 +34,10 @@ async function load() {
 
   const grid = document.createElement("div");
   grid.className = "gal-grid";
-  for (const item of items) {
+  items.forEach((item, i) => {
     const cell = document.createElement("button");
     cell.className = "gal-cell";
-    cell.addEventListener("click", () => openViewer(item));
+    cell.addEventListener("click", () => openViewer(i));
 
     if (item.kind === "image") {
       const img = document.createElement("img");
@@ -54,11 +58,54 @@ async function load() {
     cap.textContent = item.name;
     cell.append(cap);
     grid.append(cell);
-  }
+  });
   listEl.replaceChildren(grid);
 }
 
-function openViewer(/** @type {Item} */ item) {
+function openViewer(/** @type {number} */ index) {
+  viewerIndex = index;
+  renderViewer();
+  viewer.hidden = false;
+}
+
+/** Moves to the previous/next artifact, wrapping around the ends. */
+function step(/** @type {number} */ delta) {
+  if (items.length < 2) return;
+  viewerIndex = (viewerIndex + delta + items.length) % items.length;
+  renderViewer();
+}
+
+function navButton(/** @type {string} */ glyph, /** @type {() => void} */ onClick) {
+  const b = document.createElement("button");
+  b.className = "viewer-nav " + (glyph === "‹" ? "prev" : "next");
+  b.textContent = glyph;
+  b.setAttribute("aria-label", glyph === "‹" ? "上一个" : "下一个");
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+/** A horizontal swipe pages through — handy for images (an iframe eats its own touches). */
+function addSwipe(/** @type {HTMLElement} */ el) {
+  let x0 = /** @type {number | null} */ (null);
+  el.addEventListener(
+    "touchstart",
+    (e) => {
+      x0 = e.touches.length === 1 ? e.touches[0].clientX : null;
+    },
+    { passive: true },
+  );
+  el.addEventListener("touchend", (e) => {
+    if (x0 === null) return;
+    const dx = (e.changedTouches[0]?.clientX ?? x0) - x0;
+    x0 = null;
+    if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1);
+  });
+}
+
+function renderViewer() {
+  const item = items[viewerIndex];
+  if (!item) return;
+
   const bar = document.createElement("div");
   bar.className = "viewer-bar";
   const close = document.createElement("button");
@@ -68,12 +115,15 @@ function openViewer(/** @type {Item} */ item) {
   const name = document.createElement("span");
   name.className = "viewer-name";
   name.textContent = item.name;
+  const count = document.createElement("span");
+  count.className = "viewer-count";
+  count.textContent = `${viewerIndex + 1} / ${items.length}`;
   const dl = document.createElement("a");
   dl.className = "viewer-dl";
   dl.href = fileUrl(item.name);
   dl.setAttribute("download", item.name);
   dl.textContent = "下载";
-  bar.append(close, name, dl);
+  bar.append(close, name, count, dl);
 
   const body = document.createElement("div");
   body.className = "viewer-body";
@@ -83,6 +133,7 @@ function openViewer(/** @type {Item} */ item) {
     img.src = fileUrl(item.name);
     img.alt = item.name;
     body.append(img);
+    addSwipe(body);
   } else if (item.kind === "html") {
     const frame = document.createElement("iframe");
     frame.className = "viewer-frame";
@@ -99,17 +150,23 @@ function openViewer(/** @type {Item} */ item) {
     body.append(note);
   }
 
-  viewer.replaceChildren(bar, body);
-  viewer.hidden = false;
+  /** @type {HTMLElement[]} */
+  const parts = [bar, body];
+  if (items.length > 1) parts.push(navButton("‹", () => step(-1)), navButton("›", () => step(1)));
+  viewer.replaceChildren(...parts);
 }
 
 function closeViewer() {
   viewer.hidden = true;
+  viewerIndex = -1;
   viewer.replaceChildren();
 }
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !viewer.hidden) closeViewer();
+  if (viewer.hidden) return;
+  if (e.key === "Escape") closeViewer();
+  else if (e.key === "ArrowLeft") step(-1);
+  else if (e.key === "ArrowRight") step(1);
 });
 
 load();

@@ -16,6 +16,10 @@ process.env.TMUX_NEXT_PINS_PATH = joinPath(
   tmpdir(),
   `pins-test-${Math.random().toString(36).slice(2, 10)}.json`,
 );
+process.env.TMUX_NEXT_SESSIONS_DIR = joinPath(
+  tmpdir(),
+  `sessions-test-${Math.random().toString(36).slice(2, 10)}`,
+);
 import { startServer } from "./server";
 
 const BASE = "srv-test-" + Math.random().toString(36).slice(2, 8);
@@ -367,4 +371,21 @@ test("pinning a session marks it and sorts it to the top", async () => {
     pinned: boolean;
   }[];
   expect(list.find((s) => s.name === BASE)!.pinned).toBe(false);
+});
+
+test("lists a dead session's record as restorable, but not a live one", async () => {
+  const dir = process.env.TMUX_NEXT_SESSIONS_DIR!;
+  await Bun.$`mkdir -p ${dir}`.quiet();
+  await Bun.write(
+    joinPath(dir, "aaa.json"),
+    JSON.stringify({ id: "dead-uuid-1", session: "no-such-restorable-xyz", cwd: "/tmp" }),
+  );
+  await Bun.write(joinPath(dir, "bbb.json"), JSON.stringify({ id: "live-uuid-2", session: BASE }));
+
+  const list = (await (
+    await fetch(`http://127.0.0.1:${server.port}/api/restorable`)
+  ).json()) as { session: string; id: string }[];
+  const names = list.map((r) => r.session);
+  expect(names).toContain("no-such-restorable-xyz");
+  expect(names).not.toContain(BASE); // BASE is a live session
 });

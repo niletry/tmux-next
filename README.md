@@ -91,6 +91,18 @@ tmux-next [options]
 
 仓库里不带 service 文件——路径和用户都因机器而异。macOS 用 launchd plist，Linux 用 systemd unit，命令都是 `bun run /path/to/tmux-next/src/index.ts`。注意 launchd 给的环境极其精简，`tmux` 未必在 `PATH` 里，需要显式指定。
 
+### 会话恢复（tmux 重启后找回 Claude 会话）
+
+tmux server 一死（重启、崩溃、`tmux kill-server`），里面跑着的 Claude 会话就没了。装上配套的 SessionStart hook，tmux-next 就能在事后把它们恢复回来：
+
+```bash
+bunx tmux-next hook
+```
+
+它把一个 hook 脚本装进 `~/.claude/hooks/`，并在 `~/.claude/settings.json` 里注册（改动前备份、幂等、不覆盖你已有配置）。之后每个在 tmux 里**新启动**的 Claude，会把 `{会话名, 会话 id, cwd}` 记到 `~/.tmux-next/sessions/`（磁盘上，扛得过 tmux 死——Claude 的对话记录本就在磁盘上）。
+
+tmux 重启后打开列表，顶部会出现「N 个上次的会话可恢复」；点一下，tmux-next 用 `tmux new-session -c <cwd>` 重建会话并 `claude --resume <id>`，对话就回来了。需要机器上有 `jq`。只对之后新起的 Claude 生效；用 tmux-next「结束会话」主动杀掉的不会被提示恢复。
+
 ### 开发
 
 ```bash

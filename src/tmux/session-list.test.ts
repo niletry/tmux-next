@@ -3,10 +3,15 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { tmux } from "./run";
 
-// kill/rename now touch the pins file; keep the suite off the real one.
+// kill/rename now touch the pins file and the restore-records dir; keep the
+// suite off the real ones.
 process.env.TMUX_NEXT_PINS_PATH = join(
   tmpdir(),
   `pins-sl-test-${Math.random().toString(36).slice(2, 10)}.json`,
+);
+process.env.TMUX_NEXT_SESSIONS_DIR = join(
+  tmpdir(),
+  `sessions-sl-test-${Math.random().toString(36).slice(2, 10)}`,
 );
 import { extractPreview, listSessions, rankDirectories, sessionNames } from "./session-list";
 

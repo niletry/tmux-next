@@ -6,6 +6,7 @@ import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./uplo
 import { recordUsage, readUsage } from "./key-usage";
 import { listGallery, galleryFilePath } from "./gallery";
 import { setPin } from "./pins";
+import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand } from "./tmux/session-create";
@@ -167,6 +168,36 @@ export function startServer(
       // it. We save it and reply with a path the client then types in.
       if (url.pathname === "/api/upload" && req.method === "POST") {
         return uploadResponse(req);
+      }
+
+      // Claude conversations whose tmux session died (a reboot, a crash) but
+      // whose record on disk survives — offer to recreate them and resume.
+      if (url.pathname === "/api/restorable" && req.method === "GET") {
+        const [records, names] = await Promise.all([readSessionRecords(), sessionNames()]);
+        return Response.json(
+          restorable(records, new Set(names)).map((r) => ({
+            session: r.session,
+            id: r.id,
+            cwd: r.cwd ?? null,
+          })),
+        );
+      }
+      if (url.pathname === "/api/restore" && req.method === "POST") {
+        let body: { sessions?: unknown } = {};
+        try {
+          body = await req.json();
+        } catch {
+          // no body → restore everything restorable
+        }
+        const [records, names] = await Promise.all([readSessionRecords(), sessionNames()]);
+        let list = restorable(records, new Set(names));
+        if (Array.isArray(body.sessions)) {
+          const want = new Set(body.sessions.filter((s): s is string => typeof s === "string"));
+          list = list.filter((r) => want.has(r.session));
+        }
+        const results = [];
+        for (const rec of list) results.push(await restoreRecord(rec));
+        return Response.json({ restored: results.filter((r) => r.ok).length, results });
       }
 
       // The drop-folder gallery: what is in it, and its files one by one. The

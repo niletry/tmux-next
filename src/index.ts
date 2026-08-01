@@ -46,6 +46,12 @@ if (parsed.kind === "version") {
   process.exit(0);
 }
 
+if (parsed.kind === "hook") {
+  const { installHook } = await import("./hook-setup");
+  await installHook();
+  process.exit(0);
+}
+
 if (parsed.kind === "error") {
   console.error(`tmux-next: ${parsed.message}`);
   console.error("try --help");

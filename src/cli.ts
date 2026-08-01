@@ -25,11 +25,16 @@ export const MIN_TMUX: TmuxVersion = { major: 3, minor: 2 };
 
 export type CliResult =
   | { kind: "run"; port: number; host: string }
+  | { kind: "hook" }
   | { kind: "help" }
   | { kind: "version" }
   | { kind: "error"; message: string };
 
 export function parseArgs(argv: string[]): CliResult {
+  // The one subcommand: install the Claude SessionStart hook. It takes no
+  // options, so it's handled before the flag loop.
+  if (argv[0] === "hook") return { kind: "hook" };
+
   let port = DEFAULT_PORT;
   let host = DEFAULT_HOST;
 
@@ -81,6 +86,7 @@ export const HELP = `tmux-next — a phone-friendly web client for your tmux ses
 
 Usage:
   tmux-next [options]
+  tmux-next hook        install the Claude SessionStart hook (for session restore)
 
 Options:
   -p, --port <n>     port to listen on (default ${DEFAULT_PORT})

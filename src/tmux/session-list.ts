@@ -2,6 +2,7 @@ import { tmux } from "./run";
 import { validateRequestedName } from "./session-create";
 import { WEB_SESSION_PREFIX } from "./session-manager";
 import { readPins, setPin, renamePin } from "../pins";
+import { forgetSession, renameSessionRecords } from "../claude-sessions";
 
 export type SessionSummary = {
   name: string;
@@ -94,7 +95,10 @@ export async function killSession(name: string): Promise<KillResult> {
   await killGroupedWebSessions(name);
 
   const killed = await tmux(["kill-session", "-t", exact]);
-  if (killed.ok) await setPin(name, false); // drop a pin for a session that's gone
+  if (killed.ok) {
+    await setPin(name, false); // drop a pin for a session that's gone
+    await forgetSession(name); // and its restore record — this end was deliberate
+  }
   return killed.ok ? { ok: true } : { ok: false, reason: "missing" };
 }
 
@@ -170,7 +174,10 @@ export async function renameSession(from: string, to: string): Promise<RenameRes
   }
 
   const renamed = await tmux(["rename-session", "-t", exact, checked.name]);
-  if (renamed.ok) await renamePin(from, checked.name); // keep a pin with its session
+  if (renamed.ok) {
+    await renamePin(from, checked.name); // keep a pin with its session
+    await renameSessionRecords(from, checked.name); // and its restore record
+  }
   return renamed.ok ? { ok: true, name: checked.name } : { ok: false, reason: "failed" };
 }
 
