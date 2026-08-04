@@ -3,6 +3,7 @@ import { validateRequestedName } from "./session-create";
 import { WEB_SESSION_PREFIX } from "./session-manager";
 import { readPins, setPin, renamePin } from "../pins";
 import { forgetSession, renameSessionRecords } from "../claude-sessions";
+import { nextStamp, type ActivityEntry } from "./activity-stamp";
 
 export type SessionSummary = {
   name: string;
@@ -63,8 +64,21 @@ export function extractPreview(screen: string): {
  * such as tab cannot be used: tmux rewrites it to `_` unless a locale is set.
  */
 const FIELD_SEP = "|";
+// window_activity, not session_activity: the latter only advances while a
+// client is attached, so on the detached sessions this app lists it stays
+// frozen at creation time. window_activity tracks pane output regardless of
+// attachment — but it advances on any repaint (spinner, status line), so on its
+// own it reads "just now" for every live Claude session. We use it only as the
+// seed for a session first seen this process; the shown time then follows
+// actual visible-content changes (see activity-stamp and the capture loop).
 const LIST_FORMAT =
-  "#{window_width}|#{window_height}|#{session_activity}|#{session_attached}|#{session_name}";
+  "#{window_width}|#{window_height}|#{window_activity}|#{session_attached}|#{session_name}";
+
+// Per-session record of the last visible-screen change, keyed by session name.
+// Lives for the life of the server process; seeded from window_activity on
+// first sight so a restart doesn't reset every session to "just now". Pruned to
+// the live sessions on each poll so it can't grow without bound.
+const activityStore = new Map<string, ActivityEntry>();
 
 export type KillResult = { ok: true } | { ok: false; reason: "missing" | "internal" };
 
@@ -187,6 +201,9 @@ export async function listSessions(): Promise<SessionSummary[]> {
 
   const rows = listed.stdout.trim().split("\n").filter(Boolean);
   const pinnedSet = new Set(await readPins());
+
+  const now = Math.floor(Date.now() / 1000);
+
   const summaries = await Promise.all(
     rows.map(async (row): Promise<SessionSummary | null> => {
       const parts = row.split(FIELD_SEP);
@@ -207,17 +224,47 @@ export async function listSessions(): Promise<SessionSummary[]> {
       // a session called `web` cannot capture `webmux` instead.
       const captured = await tmux(["capture-pane", "-p", "-t", `=${name}:`]);
       const screen = captured.ok ? captured.stdout : "";
+      const parsed = extractPreview(screen);
+
+      // "Last updated" tracks when the *shown* content last changed — the
+      // preview lines, with chrome already stripped — not every repaint.
+      // Hashing the raw screen instead let a cursor blink, a spinner, or a
+      // global redraw (tmux repaints many windows at once) count as an update,
+      // which stamped whole batches of idle sessions with one identical time. A
+      // failed capture is not a change: keep the prior stamp (or the
+      // window_activity seed) rather than reading the empty string as one.
+      let lastActivityEpoch: number;
+      if (captured.ok) {
+        const entry = nextStamp(
+          activityStore.get(name),
+          String(Bun.hash(parsed.preview.join("\n"))),
+          Number(activity),
+          now,
+        );
+        activityStore.set(name, entry);
+        lastActivityEpoch = entry.epoch;
+      } else {
+        lastActivityEpoch = activityStore.get(name)?.epoch ?? Number(activity);
+      }
+
       return {
         name,
         windowWidth: Number(width),
         windowHeight: Number(height),
-        lastActivityEpoch: Number(activity),
+        lastActivityEpoch,
         attached: attached === "1",
         pinned: pinnedSet.has(name),
-        ...extractPreview(screen),
+        ...parsed,
       };
     }),
   );
+
+  // Forget sessions that are gone so the store can't grow without bound. Web
+  // sessions never enter it (skipped above), so the live set is the user names.
+  const live = new Set(summaries.filter((s): s is SessionSummary => s !== null).map((s) => s.name));
+  for (const name of activityStore.keys()) {
+    if (!live.has(name)) activityStore.delete(name);
+  }
 
   // Pinned first, then most recently active. Pinning is the one deliberate
   // override of the recency order; within each group the freshest leads, so the
