@@ -11,6 +11,7 @@ import { listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand, resumeCommand } from "./tmux/session-create";
 import { listHistory } from "./claude-history";
+import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
 import {
   killSession,
   listSessions,
@@ -32,6 +33,13 @@ type ClientMessage =
   | { t: "resize"; rows: unknown; cols?: unknown };
 
 /** Reasons the caller can fix, versus ones that mean the request was refused. */
+const PUSH_EVENTS = new Set<PushEvent>(["waiting", "ended", "attention"]);
+
+/** Loopback source, in the forms Bun reports it (incl. IPv4-mapped IPv6). */
+export function isLoopback(address: string | undefined): boolean {
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
 const CREATE_STATUS: Record<string, number> = {
   empty: 400,
   invalid: 400,
@@ -251,6 +259,46 @@ export function startServer(
         const dir = await resolveDirectory(url.searchParams.get("dir") ?? "");
         if (!dir.ok) return Response.json({ error: "baddir" }, { status: 400 });
         return Response.json({ conversations: await listHistory(dir.path) });
+      }
+
+      // The VAPID public key the browser needs to subscribe for push.
+      if (url.pathname === "/api/push/key" && req.method === "GET") {
+        return Response.json({ key: (await getVapid()).publicKey });
+      }
+
+      // A browser registering (or re-registering) for push notifications.
+      if (url.pathname === "/api/push/subscribe" && req.method === "POST") {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return Response.json({ error: "invalid" }, { status: 400 });
+        }
+        if (!validSubscription(body)) return Response.json({ error: "invalid" }, { status: 400 });
+        await saveSubscription(body);
+        return new Response(null, { status: 204 });
+      }
+
+      // A Claude hook reporting an event to notify about. Loopback only: the
+      // hooks run on this machine, and — since the server may be bound to
+      // 0.0.0.0 — without this guard anyone on the network could spoof
+      // notifications. The whole point is that this is not a public endpoint.
+      if (url.pathname === "/api/notify" && req.method === "POST") {
+        if (!isLoopback(srv.requestIP(req)?.address)) {
+          return new Response("forbidden", { status: 403 });
+        }
+        let body: { event?: unknown; session?: unknown; message?: unknown };
+        try {
+          body = await req.json();
+        } catch {
+          return Response.json({ error: "invalid" }, { status: 400 });
+        }
+        if (!PUSH_EVENTS.has(body.event as PushEvent) || typeof body.session !== "string" || !body.session) {
+          return Response.json({ error: "invalid" }, { status: 400 });
+        }
+        const message = typeof body.message === "string" ? body.message : undefined;
+        const result = await notify(body.event as PushEvent, body.session, { message });
+        return Response.json(result, { status: 202 });
       }
 
       // Browsing for a directory the sessions don't already cover. Any path on

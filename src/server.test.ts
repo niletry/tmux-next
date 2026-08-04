@@ -24,8 +24,16 @@ process.env.CLAUDE_PROJECTS_DIR = joinPath(
   tmpdir(),
   `projects-test-${Math.random().toString(36).slice(2, 10)}`,
 );
+process.env.TMUX_NEXT_PUSH_DIR = joinPath(
+  tmpdir(),
+  `push-test-${Math.random().toString(36).slice(2, 10)}`,
+);
+process.env.TMUX_NEXT_VAPID_PATH = joinPath(
+  tmpdir(),
+  `vapid-test-${Math.random().toString(36).slice(2, 10)}.json`,
+);
 import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
-import { startServer } from "./server";
+import { startServer, isLoopback } from "./server";
 import { encodeProjectDir } from "./claude-history";
 
 const BASE = "srv-test-" + Math.random().toString(36).slice(2, 8);
@@ -467,4 +475,52 @@ test("creating with a resume id launches claude --resume in the new session", as
   } finally {
     await Bun.$`tmux kill-session -t ${"=" + name}`.quiet().nothrow();
   }
+});
+
+// --- push notifications -----------------------------------------------------
+
+test("isLoopback accepts only local addresses", () => {
+  for (const a of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) expect(isLoopback(a)).toBe(true);
+  for (const a of ["192.168.1.5", "10.0.0.1", "::ffff:8.8.8.8", undefined]) {
+    expect(isLoopback(a)).toBe(false);
+  }
+});
+
+test("push key endpoint returns a VAPID public key", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/push/key`);
+  expect(res.status).toBe(200);
+  const { key } = (await res.json()) as { key: string };
+  expect(typeof key).toBe("string");
+  expect(key.length).toBeGreaterThan(80); // base64url of a 65-byte point
+});
+
+test("subscribe rejects a malformed subscription and accepts a valid one", async () => {
+  const post = (body: unknown) =>
+    fetch(`http://127.0.0.1:${server.port}/api/push/subscribe`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  expect((await post({ endpoint: "http://x", keys: {} })).status).toBe(400);
+  const ok = await post({
+    endpoint: "https://push.example.com/abc",
+    keys: { p256dh: "BPk", auth: "xyz" },
+  });
+  expect(ok.status).toBe(204);
+});
+
+test("notify rejects a bad event and accepts a valid one over loopback", async () => {
+  const post = (body: unknown) =>
+    fetch(`http://127.0.0.1:${server.port}/api/notify`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  expect((await post({ event: "bogus", session: "s" })).status).toBe(400);
+  expect((await post({ event: "ended", session: "" })).status).toBe(400);
+  // A valid event over loopback is accepted (no subscriptions → nothing sent).
+  const ok = await post({ event: "ended", session: "notify-test-sess" });
+  expect(ok.status).toBe(202);
 });
