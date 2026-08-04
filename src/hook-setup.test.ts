@@ -41,3 +41,35 @@ test("appends alongside an existing, different SessionStart hook", () => {
   expect(added).toBe(true);
   expect((settings.hooks as { SessionStart: unknown[] }).SessionStart.length).toBe(2);
 });
+
+import { addCommandHook } from "./hook-setup";
+
+test("addCommandHook registers under an arbitrary event", () => {
+  const { settings, added } = addCommandHook({}, "Stop", "/x/notify.sh");
+  expect(added).toBe(true);
+  expect(settings).toEqual({
+    hooks: { Stop: [{ hooks: [{ type: "command", command: "/x/notify.sh" }] }] },
+  });
+});
+
+test("registering all four tmux-next hooks builds each event once, idempotently", () => {
+  const SESSION = "/x/session.sh";
+  const NOTIFY = "/x/notify.sh";
+  const register = (s: Record<string, unknown>) => {
+    let r = addCommandHook(s, "SessionStart", SESSION);
+    for (const ev of ["Stop", "SessionEnd", "Notification"]) r = addCommandHook(r.settings, ev, NOTIFY);
+    return r.settings;
+  };
+
+  const once = register({});
+  const hooks = once.hooks as Record<string, unknown[]>;
+  expect(Object.keys(hooks).sort()).toEqual(["Notification", "SessionEnd", "SessionStart", "Stop"]);
+  expect(hooks.Stop.length).toBe(1);
+
+  // A second run over the same settings adds nothing.
+  const twice = register(once);
+  const hooks2 = twice.hooks as Record<string, unknown[]>;
+  for (const ev of ["SessionStart", "Stop", "SessionEnd", "Notification"]) {
+    expect(hooks2[ev]!.length).toBe(1);
+  }
+});
