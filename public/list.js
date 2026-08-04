@@ -140,6 +140,13 @@ function card(session) {
     row.append(dot);
   }
   row.append(el("span", "name", session.name));
+  if (session.claudeId) {
+    // Short prefix only — enough to eyeball and to match the transcript file
+    // under ~/.claude/projects; the full id is on the title for a long-press.
+    const sid = el("span", "sid", session.claudeId.slice(0, 8));
+    sid.title = session.claudeId;
+    row.append(sid);
+  }
   row.append(el("span", "time", relativeTime(session.lastActivityEpoch)));
   link.append(row);
 

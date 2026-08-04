@@ -2,7 +2,12 @@ import { tmux } from "./run";
 import { validateRequestedName } from "./session-create";
 import { WEB_SESSION_PREFIX } from "./session-manager";
 import { readPins, setPin, renamePin } from "../pins";
-import { forgetSession, renameSessionRecords } from "../claude-sessions";
+import {
+  forgetSession,
+  renameSessionRecords,
+  readSessionRecords,
+  dedupeBySession,
+} from "../claude-sessions";
 import { nextStamp, type ActivityEntry } from "./activity-stamp";
 
 export type SessionSummary = {
@@ -15,6 +20,10 @@ export type SessionSummary = {
   pendingInput: string | null;
   idle: boolean;
   pinned: boolean;
+  // The Claude conversation id bound to this session by the SessionStart hook,
+  // if one is on record. Absent for sessions started before the hook was set
+  // up, and for anything that isn't Claude Code.
+  claudeId: string | null;
 };
 
 const PREVIEW_LINES = 4;
@@ -202,6 +211,14 @@ export async function listSessions(): Promise<SessionSummary[]> {
   const rows = listed.stdout.trim().split("\n").filter(Boolean);
   const pinnedSet = new Set(await readPins());
 
+  // The hook records one file per Claude launch; dedupe keeps the newest per
+  // session name, which is the conversation currently running under that name.
+  // Joined by the live session name, so a rename (which rewrites the record)
+  // still lines up.
+  const claudeIdByName = new Map(
+    dedupeBySession(await readSessionRecords()).map((r) => [r.session, r.id]),
+  );
+
   const now = Math.floor(Date.now() / 1000);
 
   const summaries = await Promise.all(
@@ -254,6 +271,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
         lastActivityEpoch,
         attached: attached === "1",
         pinned: pinnedSet.has(name),
+        claudeId: claudeIdByName.get(name) ?? null,
         ...parsed,
       };
     }),
