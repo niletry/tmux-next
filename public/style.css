@@ -382,6 +382,33 @@ header .new:active { opacity: 0.7; }
 .dir-row:active { background: #22262f; }
 .dir-empty { margin: 12px 4px; color: var(--dim); font-size: 14px; }
 
+/* Past conversations for the chosen directory: empty for most, a short list
+   when the directory has history. Scrolls on its own so a long list never
+   pushes the name field and Create button off a phone screen. */
+.history { margin-bottom: 12px; max-height: 30vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.history:empty { display: none; }
+.history-label { margin: 2px 4px 6px; color: var(--dim); font-size: 13px; }
+
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #22262f;
+  padding: 10px 4px;
+  background: none;
+  color: var(--fg);
+  text-align: left;
+}
+
+.hist-title { flex: 1 1 auto; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-time { flex: 0 0 auto; color: var(--dim); font-size: 12px; }
+.hist-row:active { background: #22262f; }
+/* Picked: this conversation will be resumed. */
+.hist-row.on { background: rgba(122, 162, 247, 0.16); }
+.hist-row.on .hist-title { color: var(--accent); font-weight: 600; }
+
 /* Roomy enough to be a comfortable tap target on a phone. */
 .check {
   display: flex;

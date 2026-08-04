@@ -20,7 +20,13 @@ process.env.TMUX_NEXT_SESSIONS_DIR = joinPath(
   tmpdir(),
   `sessions-test-${Math.random().toString(36).slice(2, 10)}`,
 );
+process.env.CLAUDE_PROJECTS_DIR = joinPath(
+  tmpdir(),
+  `projects-test-${Math.random().toString(36).slice(2, 10)}`,
+);
+import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
 import { startServer } from "./server";
+import { encodeProjectDir } from "./claude-history";
 
 const BASE = "srv-test-" + Math.random().toString(36).slice(2, 8);
 let server: { stop(): void; port: number };
@@ -388,4 +394,77 @@ test("lists a dead session's record as restorable, but not a live one", async ()
   const names = list.map((r) => r.session);
   expect(names).toContain("no-such-restorable-xyz");
   expect(names).not.toContain(BASE); // BASE is a live session
+});
+
+// --- history + resume -------------------------------------------------------
+
+const jsonl = (aiTitle: string, cwd: string) =>
+  [
+    JSON.stringify({ type: "ai-title", aiTitle }),
+    JSON.stringify({ type: "user", cwd, message: { role: "user", content: "hi" } }),
+  ].join("\n");
+
+test("history lists a directory's past conversations, newest first", async () => {
+  const work = realpathSync(mkdtempSync(joinPath(tmpdir(), "hwork-")));
+  const folder = joinPath(process.env.CLAUDE_PROJECTS_DIR!, encodeProjectDir(work));
+  mkdirSync(folder, { recursive: true });
+  const old = joinPath(folder, "aaaa1111-old.jsonl");
+  const fresh = joinPath(folder, "bbbb2222-new.jsonl");
+  writeFileSync(old, jsonl("旧对话", work));
+  writeFileSync(fresh, jsonl("新对话", work));
+  // Make "fresh" the more recently modified one, deterministically.
+  const { utimesSync } = await import("node:fs");
+  utimesSync(old, 1000, 1000);
+  utimesSync(fresh, 2000, 2000);
+
+  const res = await fetch(
+    `http://127.0.0.1:${server.port}/api/history?dir=${encodeURIComponent(work)}`,
+  );
+  expect(res.status).toBe(200);
+  const { conversations } = (await res.json()) as {
+    conversations: { id: string; title: string; mtime: number }[];
+  };
+  expect(conversations.map((c) => c.title)).toEqual(["新对话", "旧对话"]);
+  expect(conversations[0]!.id).toBe("bbbb2222-new");
+});
+
+test("history is 400 for a directory that does not exist", async () => {
+  const res = await fetch(
+    `http://127.0.0.1:${server.port}/api/history?dir=${encodeURIComponent("/no/such/dir/xyz")}`,
+  );
+  expect(res.status).toBe(400);
+});
+
+test("creating with a bad resume id is rejected, not started", async () => {
+  const work = realpathSync(mkdtempSync(joinPath(tmpdir(), "rbad-")));
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ dir: work, name: "resume-bad-xyz", resume: "a.b; rm -rf /" }),
+  });
+  expect(res.status).toBe(400);
+  const alive = await Bun.$`tmux has-session -t =resume-bad-xyz`.quiet().nothrow();
+  expect(alive.exitCode).not.toBe(0); // nothing was created
+});
+
+test("creating with a resume id launches claude --resume in the new session", async () => {
+  const work = realpathSync(mkdtempSync(joinPath(tmpdir(), "rgood-")));
+  const name = `resume-ok-${Math.random().toString(36).slice(2, 8)}`;
+  const id = "00000000-0000-4000-8000-000000000000";
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dir: work, name, resume: id }),
+    });
+    expect(res.status).toBe(200);
+    const shown = await Bun.$`tmux display-message -p -t ${"=" + name + ":"} ${"#{pane_start_command}"}`
+      .quiet()
+      .nothrow();
+    const cmd = shown.stdout.toString();
+    expect(cmd).toContain("--resume");
+    expect(cmd).toContain(id);
+  } finally {
+    await Bun.$`tmux kill-session -t ${"=" + name}`.quiet().nothrow();
+  }
 });

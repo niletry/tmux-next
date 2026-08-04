@@ -7,6 +7,15 @@ function el(tag, className, text) {
   return node;
 }
 
+/** Same wording as the session list, kept local so the sheet stands alone. */
+function relativeTime(epochSeconds) {
+  const secs = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds));
+  if (secs < 60) return "刚刚";
+  if (secs < 3600) return `${Math.floor(secs / 60)} 分钟前`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)} 小时前`;
+  return `${Math.floor(secs / 86400)} 天前`;
+}
+
 const ERRORS = {
   baddir: "这个目录用不了",
   empty: "名字不能只有空格",
@@ -39,6 +48,12 @@ export function openCreateSheet() {
   filter.autocomplete = "off";
 
   const list = el("div", "dir-list");
+
+  // Past Claude conversations in the chosen directory. Picking one resumes it
+  // instead of starting fresh; picking none (the default) is a new session.
+  const history = el("div", "history");
+  let selectedResumeId = null;
+
   const nameField = el("input", "field");
   nameField.placeholder = "会话名（选填，如 PROJ-1088）";
   nameField.autocapitalize = "none";
@@ -59,7 +74,7 @@ export function openCreateSheet() {
   const submit = el("button", "btn primary", "创建");
   actions.append(cancel, submit);
 
-  sheet.append(favourites, crumb, filter, list, nameField, skipRow, error, actions);
+  sheet.append(favourites, crumb, filter, list, history, nameField, skipRow, error, actions);
   backdrop.append(sheet);
   document.body.append(backdrop);
 
@@ -86,6 +101,49 @@ export function openCreateSheet() {
         return row;
       }),
     );
+  }
+
+  function submitLabel() {
+    submit.textContent = selectedResumeId ? "恢复对话" : "创建";
+  }
+
+  // Selecting a conversation is a toggle: a second tap on the same one clears
+  // it, back to starting a fresh session.
+  function selectResume(id, row) {
+    selectedResumeId = selectedResumeId === id ? null : id;
+    for (const r of history.querySelectorAll(".hist-row")) {
+      r.classList.toggle("on", r.dataset.id === selectedResumeId);
+    }
+    submitLabel();
+  }
+
+  async function loadHistory(dir) {
+    // A new directory starts with nothing resumed and an empty section.
+    selectedResumeId = null;
+    submitLabel();
+    history.replaceChildren();
+
+    let conversations;
+    try {
+      const res = await fetch(`api/history?dir=${encodeURIComponent(dir)}`);
+      if (!res.ok) return; // history is optional; a failure just hides it
+      ({ conversations } = await res.json());
+    } catch {
+      return;
+    }
+    // A later browse() may have moved on while this was in flight.
+    if (dir !== current) return;
+    if (!conversations || !conversations.length) return;
+
+    history.append(el("div", "history-label", "接着聊一段历史对话（可选）"));
+    for (const c of conversations) {
+      const row = el("button", "hist-row");
+      row.dataset.id = c.id;
+      row.append(el("span", "hist-title", c.title || c.id.slice(0, 8)));
+      row.append(el("span", "hist-time", relativeTime(c.mtime)));
+      row.addEventListener("click", () => selectResume(c.id, row));
+      history.append(row);
+    }
   }
 
   function drawCrumb(parent) {
@@ -125,6 +183,8 @@ export function openCreateSheet() {
     drawCrumb(body.parent);
     drawList();
     markFavourite();
+    // Not awaited: the directory shows at once, past conversations fill in.
+    loadHistory(current);
   }
 
   function markFavourite() {
@@ -146,6 +206,8 @@ export function openCreateSheet() {
     if (name) payload.name = name;
     // Only ever sent as true; the server treats anything else as off anyway.
     if (skipBox.checked) payload.skipPermissions = true;
+    // Present only when a past conversation was picked; the server resumes it.
+    if (selectedResumeId) payload.resume = selectedResumeId;
 
     let res;
     try {
@@ -157,7 +219,7 @@ export function openCreateSheet() {
     } catch {
       error.textContent = "无法连接到服务";
       submit.disabled = false;
-      submit.textContent = "创建";
+      submitLabel();
       return;
     }
 
@@ -165,7 +227,7 @@ export function openCreateSheet() {
       const body = await res.json().catch(() => ({}));
       error.textContent = ERRORS[body.error] ?? "创建失败";
       submit.disabled = false;
-      submit.textContent = "创建";
+      submitLabel();
       return;
     }
 

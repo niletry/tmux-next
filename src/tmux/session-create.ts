@@ -39,6 +39,28 @@ export function launchCommand(skipPermissions: unknown): string {
   return skipPermissions === true ? LAUNCH_COMMAND_SKIP_PERMISSIONS : LAUNCH_COMMAND;
 }
 
+/**
+ * Id-safe characters only, so a resume id can be interpolated into the launch
+ * command without letting anything shell-shaped through. Mirrors the check in
+ * claude-sessions' restore path — a Claude session id is a uuid.
+ */
+const RESUME_ID = /^[A-Za-z0-9-]{1,64}$/;
+
+/**
+ * The launch command for resuming a past Claude conversation, or null if the id
+ * is not id-safe.
+ *
+ * The id is the only caller-supplied value that reaches the `sh -c` string, and
+ * it is admitted only after matching RESUME_ID — the same discipline the fixed
+ * commands above keep by carrying nothing interpolatable at all. Returning null
+ * on a bad id keeps a malformed request from ever reaching tmux.
+ */
+export function resumeCommand(id: unknown, skipPermissions: unknown): string | null {
+  if (typeof id !== "string" || !RESUME_ID.test(id)) return null;
+  const flags = skipPermissions === true ? " --dangerously-skip-permissions" : "";
+  return `exec "$SHELL" -lc "claude --resume ${id}${flags}"`;
+}
+
 export type NameCheck =
   | { ok: true; name: string | null }
   | { ok: false; reason: "empty" | "reserved" | "invalid" };

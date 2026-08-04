@@ -1,5 +1,10 @@
 import { test, expect } from "bun:test";
-import { LAUNCH_COMMAND, LAUNCH_COMMAND_SKIP_PERMISSIONS, launchCommand } from "./session-create";
+import {
+  LAUNCH_COMMAND,
+  LAUNCH_COMMAND_SKIP_PERMISSIONS,
+  launchCommand,
+  resumeCommand,
+} from "./session-create";
 
 test("the default launch asks Claude Code for permission as usual", () => {
   expect(LAUNCH_COMMAND).not.toContain("dangerously");
@@ -30,5 +35,37 @@ test("both commands stay constants with nothing interpolatable", () => {
   for (const cmd of [LAUNCH_COMMAND, LAUNCH_COMMAND_SKIP_PERMISSIONS]) {
     expect(cmd).not.toMatch(/\$\{|`/);
     expect(cmd.startsWith('exec "$SHELL" -lc ')).toBe(true);
+  }
+});
+
+test("resumeCommand builds a --resume launch for an id-safe id", () => {
+  const id = "53102e0e-58d4-4223-8343-7e260c917651";
+  expect(resumeCommand(id, undefined)).toBe(`exec "$SHELL" -lc "claude --resume ${id}"`);
+});
+
+test("resumeCommand adds the skip-permissions flag only for a real true", () => {
+  const id = "abc-123";
+  expect(resumeCommand(id, true)).toBe(
+    `exec "$SHELL" -lc "claude --resume ${id} --dangerously-skip-permissions"`,
+  );
+  expect(resumeCommand(id, "true")).toBe(`exec "$SHELL" -lc "claude --resume ${id}"`);
+});
+
+test("resumeCommand refuses anything that isn't an id-safe string", () => {
+  for (const bad of [
+    "", // empty
+    "a b", // space
+    "a;rm -rf /", // shell metacharacters
+    "a.b", // dot
+    "id$(whoami)",
+    "`id`",
+    "../../etc",
+    "x".repeat(65), // too long
+    undefined,
+    null,
+    42,
+    {},
+  ]) {
+    expect(resumeCommand(bad, false)).toBeNull();
   }
 });

@@ -9,7 +9,8 @@ import { setPin } from "./pins";
 import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
-import { createSession, launchCommand } from "./tmux/session-create";
+import { createSession, launchCommand, resumeCommand } from "./tmux/session-create";
+import { listHistory } from "./claude-history";
 import {
   killSession,
   listSessions,
@@ -57,7 +58,7 @@ const RENAME_STATUS: Record<string, number> = {
  * caller happened to send.
  */
 async function createSessionResponse(req: Request): Promise<Response> {
-  let body: { dir?: unknown; name?: unknown; skipPermissions?: unknown };
+  let body: { dir?: unknown; name?: unknown; skipPermissions?: unknown; resume?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -71,15 +72,22 @@ async function createSessionResponse(req: Request): Promise<Response> {
     return Response.json({ error: "invalid" }, { status: 400 });
   }
 
+  // Resuming a past conversation swaps the launch command for `claude --resume
+  // <id>`. The id is validated to id-safe characters before it can reach the
+  // shell; a bad one is rejected rather than quietly started as a fresh session.
+  let command: string;
+  if (body.resume !== undefined) {
+    const resumed = resumeCommand(body.resume, body.skipPermissions);
+    if (resumed === null) return Response.json({ error: "invalid" }, { status: 400 });
+    command = resumed;
+  } else {
+    command = launchCommand(body.skipPermissions);
+  }
+
   const dir = await resolveDirectory(body.dir);
   if (!dir.ok) return Response.json({ error: "baddir" }, { status: 400 });
 
-  const result = await createSession(
-    dir.path,
-    body.name,
-    await sessionNames(),
-    launchCommand(body.skipPermissions),
-  );
+  const result = await createSession(dir.path, body.name, await sessionNames(), command);
   if (!result.ok) {
     return Response.json({ error: result.reason }, { status: CREATE_STATUS[result.reason] ?? 400 });
   }
@@ -234,6 +242,15 @@ export function startServer(
       // sent along so the client can abbreviate paths without guessing it.
       if (url.pathname === "/api/directories") {
         return Response.json({ home: homedir(), recent: await recentDirectories() });
+      }
+
+      // Past Claude conversations in a directory, so a new session can resume
+      // one instead of starting fresh. Scoped to the directory because
+      // `claude --resume` is; an empty list is a normal answer, not an error.
+      if (url.pathname === "/api/history") {
+        const dir = await resolveDirectory(url.searchParams.get("dir") ?? "");
+        if (!dir.ok) return Response.json({ error: "baddir" }, { status: 400 });
+        return Response.json({ conversations: await listHistory(dir.path) });
       }
 
       // Browsing for a directory the sessions don't already cover. Any path on
