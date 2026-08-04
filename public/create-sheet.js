@@ -27,18 +27,24 @@ const ERRORS = {
 /**
  * The dialog for starting a new Claude Code session.
  *
- * Directory first, name second: nearly every session lives in the same project,
- * so the common path is to accept the default directory and type nothing but a
- * ticket number — or not even that, since the name is optional.
+ * Two screens, so only one list is ever on screen at a time. The first is the
+ * whole of new-session: directory first, name second — nearly every session
+ * lives in the same project, so the common path is to accept the default
+ * directory and type nothing but a ticket number, or not even that. The second
+ * screen is reached only on demand, to resume a past conversation in the chosen
+ * directory instead of starting fresh.
  *
  * Browsing is tap-driven rather than typed. Reaching a new directory on a phone
- * by typing its full path is miserable, so the list below the field drills down
- * a level per tap and the field only filters what is already on screen.
+ * by typing its full path is miserable, so the list drills down a level per tap
+ * and the field only filters what is already on screen.
  */
 export function openCreateSheet() {
   const backdrop = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
-  sheet.append(el("h2", null, "新建会话"));
+
+  // --- screen 1: new session -------------------------------------------------
+  const step1 = el("div", "sheet-step");
+  step1.append(el("h2", null, "新建会话"));
 
   const favourites = el("div", "chips");
   const crumb = el("div", "crumb");
@@ -48,11 +54,6 @@ export function openCreateSheet() {
   filter.autocomplete = "off";
 
   const list = el("div", "dir-list");
-
-  // Past Claude conversations in the chosen directory. Picking one resumes it
-  // instead of starting fresh; picking none (the default) is a new session.
-  const history = el("div", "history");
-  let selectedResumeId = null;
 
   const nameField = el("input", "field");
   nameField.placeholder = "会话名（选填，如 PROJ-1088）";
@@ -68,25 +69,48 @@ export function openCreateSheet() {
   skipRow.append(skipBox, el("span", null, "跳过权限确认"));
   skipRow.append(el("b", "check-warn", "Claude 将无需确认直接执行"));
 
+  // Shown only when the chosen directory has past conversations; opens screen 2.
+  const resumeEntry = el("button", "resume-entry", "从历史恢复对话 →");
+  resumeEntry.style.display = "none";
+
+  step1.append(favourites, crumb, filter, list, nameField, skipRow, resumeEntry);
+
+  // --- screen 2: pick a past conversation ------------------------------------
+  const step2 = el("div", "sheet-step");
+  step2.style.display = "none";
+  const back = el("button", "sheet-back", "‹ 选一段历史对话");
+  const historyBox = el("div", "history");
+  step2.append(back, historyBox);
+
+  // --- shared footer ---------------------------------------------------------
   const error = el("p", "sheet-error");
   const actions = el("div", "sheet-actions");
   const cancel = el("button", "btn", "取消");
   const submit = el("button", "btn primary", "创建");
   actions.append(cancel, submit);
 
-  sheet.append(favourites, crumb, filter, list, history, nameField, skipRow, error, actions);
+  sheet.append(step1, step2, error, actions);
   backdrop.append(sheet);
   document.body.append(backdrop);
 
   let home = "";
   let current = null;
   let entries = [];
+  let history = []; // past conversations for `current`
+  let busy = false;
 
   const close = () => backdrop.remove();
   cancel.addEventListener("click", close);
   backdrop.addEventListener("click", (e) => {
     if (e.target === backdrop) close();
   });
+
+  function showStep(n) {
+    error.textContent = "";
+    step1.style.display = n === 1 ? "" : "none";
+    step2.style.display = n === 2 ? "" : "none";
+    actions.style.display = n === 1 ? "" : "none";
+  }
 
   function drawList() {
     const matches = filterEntries(entries, filter.value);
@@ -101,49 +125,6 @@ export function openCreateSheet() {
         return row;
       }),
     );
-  }
-
-  function submitLabel() {
-    submit.textContent = selectedResumeId ? "恢复对话" : "创建";
-  }
-
-  // Selecting a conversation is a toggle: a second tap on the same one clears
-  // it, back to starting a fresh session.
-  function selectResume(id, row) {
-    selectedResumeId = selectedResumeId === id ? null : id;
-    for (const r of history.querySelectorAll(".hist-row")) {
-      r.classList.toggle("on", r.dataset.id === selectedResumeId);
-    }
-    submitLabel();
-  }
-
-  async function loadHistory(dir) {
-    // A new directory starts with nothing resumed and an empty section.
-    selectedResumeId = null;
-    submitLabel();
-    history.replaceChildren();
-
-    let conversations;
-    try {
-      const res = await fetch(`api/history?dir=${encodeURIComponent(dir)}`);
-      if (!res.ok) return; // history is optional; a failure just hides it
-      ({ conversations } = await res.json());
-    } catch {
-      return;
-    }
-    // A later browse() may have moved on while this was in flight.
-    if (dir !== current) return;
-    if (!conversations || !conversations.length) return;
-
-    history.append(el("div", "history-label", "接着聊一段历史对话（可选）"));
-    for (const c of conversations) {
-      const row = el("button", "hist-row");
-      row.dataset.id = c.id;
-      row.append(el("span", "hist-title", c.title || c.id.slice(0, 8)));
-      row.append(el("span", "hist-time", relativeTime(c.mtime)));
-      row.addEventListener("click", () => selectResume(c.id, row));
-      history.append(row);
-    }
   }
 
   function drawCrumb(parent) {
@@ -183,8 +164,40 @@ export function openCreateSheet() {
     drawCrumb(body.parent);
     drawList();
     markFavourite();
-    // Not awaited: the directory shows at once, past conversations fill in.
-    loadHistory(current);
+    // Not awaited: the directory shows at once, the resume entry appears if the
+    // directory turns out to have history.
+    refreshHistory(current);
+  }
+
+  // Fetches the directory's past conversations so screen 2 can show them, and
+  // reveals the entry button only when there is something to resume.
+  async function refreshHistory(dir) {
+    history = [];
+    resumeEntry.style.display = "none";
+    let conversations;
+    try {
+      const res = await fetch(`api/history?dir=${encodeURIComponent(dir)}`);
+      if (!res.ok) return; // history is optional; a failure just hides the entry
+      ({ conversations } = await res.json());
+    } catch {
+      return;
+    }
+    // A later browse() may have moved on while this was in flight.
+    if (dir !== current || !conversations || !conversations.length) return;
+    history = conversations;
+    resumeEntry.textContent = `从历史恢复对话 (${history.length}) →`;
+    resumeEntry.style.display = "";
+  }
+
+  function renderHistory() {
+    historyBox.replaceChildren();
+    for (const c of history) {
+      const row = el("button", "hist-row");
+      row.append(el("span", "hist-title", c.title || c.id.slice(0, 8)));
+      row.append(el("span", "hist-time", relativeTime(c.mtime)));
+      row.addEventListener("click", () => create(c.id, row));
+      historyBox.append(row);
+    }
   }
 
   function markFavourite() {
@@ -193,12 +206,15 @@ export function openCreateSheet() {
     }
   }
 
-  filter.addEventListener("input", drawList);
-
-  submit.addEventListener("click", async () => {
-    if (!current) return;
-    submit.disabled = true;
-    submit.textContent = "创建中…";
+  // The one create path, for both a fresh session and a resumed one. `resume`
+  // is a conversation id or null; the directory, name, and skip choice come
+  // from screen 1 either way.
+  async function create(resume, trigger) {
+    if (!current || busy) return;
+    busy = true;
+    const label = trigger.textContent;
+    trigger.disabled = true;
+    trigger.textContent = resume ? "恢复中…" : "创建中…";
     error.textContent = "";
 
     const name = nameField.value.trim();
@@ -206,34 +222,39 @@ export function openCreateSheet() {
     if (name) payload.name = name;
     // Only ever sent as true; the server treats anything else as off anyway.
     if (skipBox.checked) payload.skipPermissions = true;
-    // Present only when a past conversation was picked; the server resumes it.
-    if (selectedResumeId) payload.resume = selectedResumeId;
+    if (resume) payload.resume = resume;
 
-    let res;
     try {
-      res = await fetch("api/sessions", {
+      const res = await fetch("api/sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        error.textContent = ERRORS[body.error] ?? "创建失败";
+        busy = false;
+        trigger.disabled = false;
+        trigger.textContent = label;
+        return;
+      }
+      const body = await res.json();
+      location.href = `terminal.html?target=${encodeURIComponent(body.name)}`;
     } catch {
       error.textContent = "无法连接到服务";
-      submit.disabled = false;
-      submitLabel();
-      return;
+      busy = false;
+      trigger.disabled = false;
+      trigger.textContent = label;
     }
+  }
 
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      error.textContent = ERRORS[body.error] ?? "创建失败";
-      submit.disabled = false;
-      submitLabel();
-      return;
-    }
-
-    const body = await res.json();
-    location.href = `terminal.html?target=${encodeURIComponent(body.name)}`;
+  filter.addEventListener("input", drawList);
+  submit.addEventListener("click", () => create(null, submit));
+  resumeEntry.addEventListener("click", () => {
+    renderHistory();
+    showStep(2);
   });
+  back.addEventListener("click", () => showStep(1));
 
   // Populate: favourites drive the default directory, so they load first.
   (async () => {

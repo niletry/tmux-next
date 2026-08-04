@@ -249,6 +249,13 @@ header .count {
   background: var(--card);
   border-radius: 16px 16px 0 0;
   padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  /* A bottom sheet grows upward; without a ceiling, a tall body (a long
+     directory list plus a history list) pushes its own top off the top of the
+     screen. Cap it to the viewport and let the whole sheet scroll instead. */
+  max-height: calc(100vh - env(safe-area-inset-top));
+  max-height: calc(100dvh - env(safe-area-inset-top));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sheet h2 { margin: 0 0 4px; font-size: 17px; }
@@ -382,12 +389,30 @@ header .new:active { opacity: 0.7; }
 .dir-row:active { background: #22262f; }
 .dir-empty { margin: 12px 4px; color: var(--dim); font-size: 14px; }
 
-/* Past conversations for the chosen directory: empty for most, a short list
-   when the directory has history. Scrolls on its own so a long list never
-   pushes the name field and Create button off a phone screen. */
-.history { margin-bottom: 12px; max-height: 30vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.history:empty { display: none; }
-.history-label { margin: 2px 4px 6px; color: var(--dim); font-size: 13px; }
+/* Screen two of the sheet is nothing but the conversation list, so it gets the
+   room. It still scrolls on its own within the capped sheet. */
+.history { max-height: 62vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* Entry to the resume screen and the way back from it. */
+.resume-entry {
+  width: 100%;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 8px;
+  padding: 11px;
+  background: #2a2f3a;
+  color: var(--accent);
+  font-size: 14px;
+}
+.resume-entry:active { background: #22262f; }
+.sheet-back {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 15px;
+  padding: 2px 0;
+  margin-bottom: 10px;
+}
 
 .hist-row {
   display: flex;
