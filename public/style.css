@@ -523,6 +523,24 @@ header .ghead {
 header .ghead:active { opacity: 0.7; }
 header .ghead svg { width: 18px; height: 18px; }
 
+/* The notification bell, in the right-hand cluster after the gallery icon. */
+header .hbell {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: #2a2f3a;
+  color: var(--fg);
+  align-self: center;
+}
+header .hbell:active { opacity: 0.7; }
+header .hbell svg { width: 18px; height: 18px; }
+/* Lit up when notifications are on. */
+header .hbell.on { background: var(--accent); color: #14161a; }
+
 .gal-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

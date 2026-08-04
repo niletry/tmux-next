@@ -1,4 +1,5 @@
 import { openCreateSheet } from "./create-sheet.js";
+import { initNotifyToggle } from "./push.js";
 
 const listEl = document.getElementById("list");
 const countEl = document.getElementById("count");
@@ -237,6 +238,7 @@ async function render() {
 }
 
 document.getElementById("new-session").addEventListener("click", openCreateSheet);
+initNotifyToggle(document.getElementById("notify-toggle"));
 
 render();
 setInterval(render, 5000);
