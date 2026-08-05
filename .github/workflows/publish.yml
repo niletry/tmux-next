@@ -18,14 +18,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No registry-url: it writes an empty `_authToken=` into .npmrc, which
+      # makes npm attempt (empty) token auth and skip the OIDC exchange, so the
+      # publish comes back 404. With no token configured, npm does OIDC.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: 'https://registry.npmjs.org'
 
-      # Trusted publishing (and --provenance) need a recent npm; the bundled one
-      # is too old.
+      # Trusted publishing needs a recent npm (OIDC landed in 11.5.1); the
+      # bundled one is too old.
       - run: npm install -g npm@latest
+
+      - run: node --version && npm --version
 
       # The tag drives the release, but the file that actually ships is
       # package.json — refuse a mismatch rather than publish the wrong version.
