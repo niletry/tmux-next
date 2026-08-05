@@ -12,6 +12,7 @@ import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand, resumeCommand } from "./tmux/session-create";
 import { listHistory } from "./claude-history";
 import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
+import { readNotifications } from "./notifications";
 import pkg from "../package.json" with { type: "json" };
 import {
   killSession,
@@ -281,6 +282,12 @@ export function startServer(
           { version: pkg.version, build: BUILD },
           { headers: { "Cache-Control": "no-cache" } },
         );
+      }
+
+      // A log of notifications that were sent, so one swiped away on the phone
+      // can still be found here.
+      if (url.pathname === "/api/notifications" && req.method === "GET") {
+        return Response.json({ notifications: await readNotifications() });
       }
 
       // The VAPID public key the browser needs to subscribe for push.

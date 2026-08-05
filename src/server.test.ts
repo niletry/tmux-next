@@ -32,6 +32,10 @@ process.env.TMUX_NEXT_VAPID_PATH = joinPath(
   tmpdir(),
   `vapid-test-${Math.random().toString(36).slice(2, 10)}.json`,
 );
+process.env.TMUX_NEXT_NOTIFICATIONS_PATH = joinPath(
+  tmpdir(),
+  `notif-test-${Math.random().toString(36).slice(2, 10)}.jsonl`,
+);
 import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
 import { startServer, isLoopback } from "./server";
 import { encodeProjectDir } from "./claude-history";
@@ -523,4 +527,20 @@ test("notify rejects a bad event and accepts a valid one over loopback", async (
   // A valid event over loopback is accepted (no subscriptions → nothing sent).
   const ok = await post({ event: "ended", session: "notify-test-sess" });
   expect(ok.status).toBe(202);
+});
+
+test("a sent notification is logged and readable from /api/notifications", async () => {
+  await fetch(`http://127.0.0.1:${server.port}/api/notify`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ event: "ended", session: "hist-test-sess" }),
+  });
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/notifications`);
+  expect(res.status).toBe(200);
+  const { notifications } = (await res.json()) as {
+    notifications: { session: string; body: string }[];
+  };
+  const found = notifications.find((n) => n.session === "hist-test-sess");
+  expect(found).toBeDefined();
+  expect(found!.body).toBe("会话已结束");
 });

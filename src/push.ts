@@ -8,6 +8,7 @@ import {
   type PushSubscription,
   type Fetch,
 } from "./web-push";
+import { recordNotification } from "./notifications";
 
 /**
  * Push notifications for Claude events: stores the VAPID identity and the
@@ -156,11 +157,15 @@ export async function notify(
   const nowMs = opts.nowMs ?? Date.now();
   if (!allowNotify(event, session, nowMs, lastNotify)) return { skipped: true, sent: 0 };
 
+  // Log it before delivery, so the history holds what happened even if there is
+  // no subscription or the push fails — that is the whole point of the log.
+  const { title, body } = eventText(event, session, opts.message);
+  await recordNotification({ ts: Math.floor(nowMs / 1000), event, session, title, body });
+
   const subs = await readSubscriptions();
   if (!subs.length) return { skipped: false, sent: 0 };
 
   const keys = await getVapid();
-  const { title, body } = eventText(event, session, opts.message);
   const payload = { title, body, session, event };
 
   let sent = 0;
