@@ -348,7 +348,13 @@ export function startServer(
 
       const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
       const asset = Bun.file(PUBLIC_DIR + name);
-      if (await asset.exists()) return new Response(asset);
+      if (await asset.exists()) {
+        // These files are served straight from disk and change on deploy; a
+        // phone (especially an installed PWA) otherwise clings to a stale copy
+        // for days. `no-cache` means "revalidate before use", not "don't
+        // store", so a redeploy is picked up on the next load.
+        return new Response(asset, { headers: { "Cache-Control": "no-cache" } });
+      }
 
       return new Response("not found", { status: 404 });
     },
