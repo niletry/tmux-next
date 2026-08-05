@@ -36,5 +36,6 @@ jobs:
           echo "tag=$tag package.json=$pkg"
           test "$tag" = "$pkg"
 
-      # No NODE_AUTH_TOKEN: npm authenticates through the OIDC identity above.
-      - run: npm publish --provenance
+      # No NODE_AUTH_TOKEN: npm authenticates through the OIDC identity above,
+      # and generates provenance automatically for a trusted-publisher release.
+      - run: npm publish
