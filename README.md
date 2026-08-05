@@ -34,6 +34,7 @@
 | **新建会话** | 点选目录（可一路往下钻）、可选会话名、可选跳过权限确认 |
 | **终端** | 宽度自适应窗口、软键盘工具条（Esc / Tab / ⇧Tab / Ctrl / 方向键 / ^C / ⏎）、拖动滚动全屏程序 |
 | **断线重连** | 不缓冲、不重放——重连时从 tmux 重新抓一次完整画面 |
+| **锁屏通知** | 会话结束、一轮聊完在等你、Claude 要你确认时，推到手机锁屏（Web Push，需装 hook + 订阅） |
 | **中文输入** | 绕过了 xterm.js 5.5.0 吞掉中文标点的输入守卫 |
 
 ## 跑起来
@@ -102,6 +103,26 @@ bunx tmux-next hook
 它把一个 hook 脚本装进 `~/.claude/hooks/`，并在 `~/.claude/settings.json` 里注册（改动前备份、幂等、不覆盖你已有配置）。之后每个在 tmux 里**新启动**的 Claude，会把 `{会话名, 会话 id, cwd}` 记到 `~/.tmux-next/sessions/`（磁盘上，扛得过 tmux 死——Claude 的对话记录本就在磁盘上）。
 
 tmux 重启后打开列表，顶部会出现「N 个上次的会话可恢复」；点一下，tmux-next 用 `tmux new-session -c <cwd>` 重建会话并 `claude --resume <id>`，对话就回来了。需要机器上有 `jq`。只对之后新起的 Claude 生效；用 tmux-next「结束会话」主动杀掉的不会被提示恢复。
+
+### 锁屏通知（会话结束/在等你/需要确认时提醒）
+
+把任务丢给 tmux 里的 Claude 然后去忙别的，回来才发现它早停了——通知补的就是这段。走标准 Web Push，手机锁屏、app 关着也能收到系统通知，点通知直接跳到那个会话。
+
+装通知 hook 用的是**同一条命令**（它一次装好恢复用的和通知用的全部 hook）：
+
+```bash
+bunx tmux-next hook       # 或从克隆的仓库：bun run src/index.ts hook
+```
+
+它把 hook 脚本装进 `~/.claude/hooks/`，在 `~/.claude/settings.json` 注册四个事件（`SessionStart` 用于恢复；`Stop`/`SessionEnd`/`Notification` 用于通知），改动前备份、幂等、不覆盖你已有配置。之后**新起**的 tmux 里的 Claude 会话，在这三个时机会把事件 POST 给本机的 tmux-next。需要 `jq` 与 `curl`。
+
+然后在 web 界面**订阅一次**：列表页右上角点铃铛，允许通知即可（铃铛变亮＝已订阅）。几个前提：
+
+- **必须 HTTPS**（或 `localhost`）——浏览器只在安全上下文里给通知权限。经反向代理访问天然满足；局域网明文 `http://…` 不行。
+- **iPhone** 需先把页面「添加到主屏幕」当 PWA，从那个图标进去再订阅（iOS 只对已安装 PWA 推送，需 iOS 16.4+）。
+- VAPID 密钥首次自动生成存 `~/.tmux-next/vapid.json`，订阅存 `~/.tmux-next/push-subscriptions/`，无需任何第三方账号。
+
+同一会话 30 秒内最多推一条（会话结束不受限）。触发通知的 `/api/notify` 只接受本机来源，别人无法伪造。
 
 ### 开发
 
