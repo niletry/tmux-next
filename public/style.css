@@ -546,6 +546,7 @@ header .hbell {
   background: #2a2f3a;
   color: var(--fg);
   align-self: center;
+  text-decoration: none;
 }
 header .hbell:active { opacity: 0.7; }
 header .hbell svg { width: 18px; height: 18px; }
