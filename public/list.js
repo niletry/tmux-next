@@ -240,6 +240,18 @@ async function render() {
 document.getElementById("new-session").addEventListener("click", openCreateSheet);
 initNotifyToggle(document.getElementById("notify-toggle"));
 
+// A build marker in the corner: if you can see it and it matches the deploy,
+// the page is the current one — no guessing about a stale cache.
+fetch("api/version")
+  .then((r) => r.json())
+  .then(({ version, build }) => {
+    const tag = document.createElement("div");
+    tag.className = "ver";
+    tag.textContent = `v${version}${build ? " · " + build : ""}`;
+    document.body.append(tag);
+  })
+  .catch(() => {});
+
 render();
 setInterval(render, 5000);
 document.addEventListener("visibilitychange", () => {

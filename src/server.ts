@@ -12,6 +12,7 @@ import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand, resumeCommand } from "./tmux/session-create";
 import { listHistory } from "./claude-history";
 import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
+import pkg from "../package.json" with { type: "json" };
 import {
   killSession,
   listSessions,
@@ -148,6 +149,19 @@ async function uploadResponse(req: Request): Promise<Response> {
 
 const PUBLIC_DIR = new URL("../public/", import.meta.url).pathname;
 const MODULES_DIR = new URL("../", import.meta.url).pathname;
+
+// A build marker so a phone can see at a glance whether it has the latest
+// front-end rather than guessing at the cache. The git short SHA changes every
+// deploy; falls back to empty where git isn't available (a published package).
+const BUILD: string = (() => {
+  try {
+    const p = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"], { cwd: MODULES_DIR });
+    if (p.exitCode === 0) return new TextDecoder().decode(p.stdout).trim();
+  } catch {
+    // not a git checkout — leave it empty
+  }
+  return "";
+})();
 const REAP_INTERVAL_MS = 60_000;
 
 export function startServer(
@@ -259,6 +273,14 @@ export function startServer(
         const dir = await resolveDirectory(url.searchParams.get("dir") ?? "");
         if (!dir.ok) return Response.json({ error: "baddir" }, { status: 400 });
         return Response.json({ conversations: await listHistory(dir.path) });
+      }
+
+      // The running version + build, so the front-end can show which it is.
+      if (url.pathname === "/api/version") {
+        return Response.json(
+          { version: pkg.version, build: BUILD },
+          { headers: { "Cache-Control": "no-cache" } },
+        );
       }
 
       // The VAPID public key the browser needs to subscribe for push.

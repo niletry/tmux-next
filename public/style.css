@@ -99,6 +99,17 @@ header .count {
 
 .time { margin-left: auto; color: var(--dim); font-size: 13px; white-space: nowrap; }
 
+/* Build marker, unobtrusive in the corner. */
+.ver {
+  position: fixed;
+  right: 8px;
+  bottom: calc(4px + env(safe-area-inset-bottom));
+  color: var(--dim);
+  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .preview {
   margin: 8px 0 0;
   white-space: pre-wrap;
