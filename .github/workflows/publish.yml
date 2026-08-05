@@ -1,0 +1,40 @@
+name: Publish
+
+# Publish to npm on a version tag, via npm trusted publishing (OIDC): no
+# long-lived token, no one-time password. Configure the trusted publisher for
+# this package on npmjs.com to point at this repo and this workflow file
+# (publish.yml), then push a tag like v0.8.0.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write # lets npm exchange a short-lived OIDC token to authenticate
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing (and --provenance) need a recent npm; the bundled one
+      # is too old.
+      - run: npm install -g npm@latest
+
+      # The tag drives the release, but the file that actually ships is
+      # package.json — refuse a mismatch rather than publish the wrong version.
+      - name: Tag must match package.json version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          echo "tag=$tag package.json=$pkg"
+          test "$tag" = "$pkg"
+
+      # No NODE_AUTH_TOKEN: npm authenticates through the OIDC identity above.
+      - run: npm publish --provenance
