@@ -67,6 +67,16 @@ if (problem) {
 const server = startServer(parsed.port, parsed.host);
 console.log(`listening on http://${parsed.host}:${server.port}`);
 
+// Hooks are copied into ~/.claude/hooks, so upgrading this package leaves the
+// installed copies behind. A stale hook fails silently by design, so say it
+// here or it will not be said anywhere. Never awaited and never fatal: this is
+// a diagnostic, not a precondition.
+void (async () => {
+  const { staleHooks, staleHookMessage } = await import("./hook-freshness");
+  const message = staleHookMessage(await staleHooks());
+  if (message) console.warn(message);
+})();
+
 // Binding beyond loopback breaks the assumption the whole design rests on:
 // that a reverse proxy is doing TLS and authentication.
 if (parsed.host !== "127.0.0.1" && parsed.host !== "localhost") {
