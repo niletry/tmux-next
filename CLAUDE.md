@@ -42,6 +42,22 @@ Browser (xterm.js) ⇄ WebSocket ⇄ Bun server ⇄ `tmux -C attach` (control mo
 
 **Target tmux by `=<name>`, always.** A bare target resolves by prefix and glob — `kill-session -t web` would kill `webmux`.
 
+**Never run `tmux kill-server`, and never kill a tmux session you did not create.** The tmux server owns every pane's PTY and child process on the machine, so killing it destroys every running session at once — including the user's work, which no test needs to touch. Clean up only by exact name (`kill-session -t =<name>`) against names the current run created and recorded.
+
+This is not hypothetical. A run once tried to re-check the orphan-session tests under an isolated server:
+
+```bash
+export TMUX_TMPDIR=$(mktemp -d)   # intended to isolate
+bun test ...                      # output showed 12 sessions, not 1
+tmux kill-server                  # ran anyway — killed the real server
+```
+
+The isolation silently failed, and the evidence that it had failed was already on screen — a count that could only come from the real server. Twenty-six sessions and thirty-two Claude processes died. Three could not be restored, because a separate bug had left them without binding records.
+
+The rule that would have prevented it: **a destructive command must be preceded by a check that its target is what you think it is, and that check must be read before the command runs.** Verifying afterwards is not verifying. When an isolation premise cannot be confirmed, the destructive step is cancelled, not attempted.
+
+**Confirm what a running process is actually serving; do not infer it from timestamps.** `public/` is read from disk per request (`Bun.file(PUBLIC_DIR + name)`), while `src/` is loaded once at startup and Bun does not reload without `--watch`. So after an edit the front-end is live immediately and the back-end is not — a running server is routinely half-new, and "started before the commit" proves nothing about what it serves. Check the endpoint or asset itself.
+
 **Nothing from a request is spliced into a shell command.** The launch command is one of two fixed constants (`LAUNCH_COMMAND` / `LAUNCH_COMMAND_SKIP_PERMISSIONS`); the directory travels as its own argv via `-c`; a resume id must match `/^[A-Za-z0-9-]{1,64}$/` or the request is rejected. Untrusted geometry goes through `sanitiseGeometry` before reaching tmux — that is why the `ClientMessage` dimensions are typed `unknown`.
 
 **There is no auth and no directory allow-list, on purpose.** Anyone who reaches the interface can already attach to a session and type `ls`; fencing the file browser would only be theatre while costing machine-specific paths in the source. The service binds loopback and assumes a reverse proxy for TLS + auth. Do not add features that assume the server is safely exposed. `/api/notify` is loopback-only because the server *may* be bound wider.
