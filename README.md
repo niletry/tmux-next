@@ -33,10 +33,13 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 | | |
 |---|---|
 | **Session list** | Preview of the last lines, a "waiting on you" dot, unsent input, last-active time |
-| **New session** | Tap to pick a directory (drill down), optional name, optional skip-permissions, or resume a past conversation |
+| **New session** | Tap to pick a directory (drill down, or create one on the spot), optional name, optional skip-permissions, or resume a past conversation |
 | **Terminal** | Width that adapts to the window, a soft-keyboard toolbar (Esc / Tab / ⇧Tab / Ctrl / arrows / ^C / ⏎), drag to scroll full-screen programs |
 | **Reconnect** | No buffering, no replay — a reconnect re-captures the whole screen from tmux |
 | **Lock-screen push** | Session ended, a turn finished and it's waiting, or Claude needs confirmation — pushed to your phone (Web Push; needs the hook + a subscription) |
+| **Notification history** | Every push is logged, so one swiped away on the phone can still be found |
+| **Colour themes** | Four presets (Tokyo Night, Catppuccin Mocha, One Dark, Nord), switched from the list header, applied without a reload |
+| **Artifacts** | Anything dropped in `~/.tmux-next/gallery/` shows up in the UI — images and self-contained HTML render in place |
 | **CJK input** | Works around the xterm.js 5.5.0 guard that swallows CJK punctuation |
 
 ## Getting it running
@@ -125,6 +128,16 @@ Then **subscribe once** in the web UI: tap the bell at the top-right of the list
 - The VAPID keypair is generated on first use at `~/.tmux-next/vapid.json`; subscriptions live in `~/.tmux-next/push-subscriptions/`. No third-party account involved.
 
 At most one push per session per 30 seconds (session-end is exempt). The `/api/notify` endpoint that triggers a push accepts loopback callers only, so no one can spoof one.
+
+**After upgrading the package, re-run `bunx tmux-next hook`.** The scripts are *copied* into `~/.claude/hooks/`, so npm cannot update them in place. A stale hook fails silently — that is what hooks are built to do — taking session restore and push notifications with it, so the server checks at startup and prints a line if the installed copies differ from the ones it ships.
+
+### Colour themes
+
+Tap the gear in the list header. Four presets ship: Tokyo Night (default), Catppuccin Mocha, One Dark and Nord — each shown with its palette and a sample before you pick. The change applies immediately, no reload.
+
+The choice is stored per machine (`~/.tmux-next/theme.json`), so phone and desktop agree. Font size stays per device, on the terminal toolbar — how big a screen is and what a machine looks like are different questions.
+
+Every palette is checked against WCAG AA by the test suite. Note that the four presets do **not** use their upstream `brightBlack`: all of them ship one between 1.7:1 and 2.5:1 against their own background, and that is the colour Claude Code draws its secondary text in — unreadable on a phone outdoors. Each is replaced by a lighter step from the same upstream palette.
 
 ### Development
 
