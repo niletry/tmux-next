@@ -4,6 +4,8 @@ import { createGesture, createPager } from "./scroll-gesture.js";
 
 import { MIN_COLUMNS, computeGeometry } from "./terminal-fit.js";
 import { createCopyGate, decodeOsc52 } from "./copy-on-select.js";
+import { xtermTheme } from "./themes.js";
+import { initTheme, cachedTheme } from "./theme-apply.js";
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
@@ -14,16 +16,29 @@ document.getElementById("title").textContent = target || "";
 // times tells you nothing. Home-screen bookmarks pick this up as well.
 document.title = target || "tmux";
 
+const initialTheme = cachedTheme();
+
 const term = new Terminal({
   // Starting grid only; fit() replaces both before the socket opens.
   cols: MIN_COLUMNS,
   rows: 24,
   scrollback: 5000,
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-  theme: { background: "#14161a", foreground: "#e6e8ec" },
+  // The cached name, synchronously, so the terminal never paints in the wrong
+  // palette. initTheme() below confirms it against the machine's stored choice
+  // and swaps only if they differ — which on any device that has loaded the
+  // page before, they do not.
+  theme: xtermTheme(initialTheme),
   allowProposedApi: true,
 });
 term.open(termEl);
+
+// Captured before initTheme() runs: that call updates the cache as a side
+// effect, so comparing against cachedTheme() afterwards would always match and
+// a changed theme would never reach the terminal.
+initTheme().then((name) => {
+  if (name !== initialTheme) term.options.theme = xtermTheme(name);
+});
 
 try {
   term.loadAddon(new WebglAddon.WebglAddon());

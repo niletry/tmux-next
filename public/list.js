@@ -1,5 +1,11 @@
 import { openCreateSheet } from "./create-sheet.js";
 import { initNotifyToggle } from "./push.js";
+import { openThemeSheet } from "./theme-sheet.js";
+import { initTheme } from "./theme-apply.js";
+
+// Before anything renders: paints the cached theme synchronously, then
+// reconciles with the machine's stored choice.
+initTheme();
 
 const listEl = document.getElementById("list");
 const countEl = document.getElementById("count");
@@ -238,6 +244,7 @@ async function render() {
 }
 
 document.getElementById("new-session").addEventListener("click", openCreateSheet);
+document.getElementById("appearance").addEventListener("click", openThemeSheet);
 initNotifyToggle(document.getElementById("notify-toggle"));
 
 // A build marker in the corner: if you can see it and it matches the deploy,

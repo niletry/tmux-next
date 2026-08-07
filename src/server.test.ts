@@ -36,6 +36,10 @@ process.env.TMUX_NEXT_NOTIFICATIONS_PATH = joinPath(
   tmpdir(),
   `notif-test-${Math.random().toString(36).slice(2, 10)}.jsonl`,
 );
+process.env.TMUX_NEXT_THEME_PATH = joinPath(
+  tmpdir(),
+  `theme-test-${Math.random().toString(36).slice(2, 10)}.json`,
+);
 import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
 import { startServer, isLoopback } from "./server";
 import { encodeProjectDir } from "./claude-history";
@@ -479,6 +483,39 @@ test("creating with a resume id launches claude --resume in the new session", as
   } finally {
     await Bun.$`tmux kill-session -t ${"=" + name}`.quiet().nothrow();
   }
+});
+
+// --- colour theme -----------------------------------------------------------
+
+test("theme endpoint round-trips a name and refuses an unknown one", async () => {
+  const url = `http://127.0.0.1:${server.port}/api/theme`;
+  const post = (body: unknown) =>
+    fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  // Fresh machine: no file yet, so the default comes back rather than an error.
+  const first = (await (await fetch(url)).json()) as { name: string };
+  expect(first.name).toBe("tokyo-night");
+
+  expect((await post({ name: "nord" })).status).toBe(204);
+  expect(((await (await fetch(url)).json()) as { name: string }).name).toBe("nord");
+
+  // A name we do not ship must not be stored, and must not disturb the stored one.
+  expect((await post({ name: "solarized-mango" })).status).toBe(400);
+  expect((await post({ name: 42 })).status).toBe(400);
+  expect(((await (await fetch(url)).json()) as { name: string }).name).toBe("nord");
+});
+
+test("theme endpoint rejects a malformed body", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/theme`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{ not json",
+  });
+  expect(res.status).toBe(400);
 });
 
 // --- push notifications -----------------------------------------------------

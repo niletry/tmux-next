@@ -13,6 +13,7 @@ import { createSession, launchCommand, resumeCommand } from "./tmux/session-crea
 import { listHistory } from "./claude-history";
 import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
 import { readNotifications } from "./notifications";
+import { readTheme, writeTheme } from "./theme";
 import pkg from "../package.json" with { type: "json" };
 import {
   killSession,
@@ -288,6 +289,24 @@ export function startServer(
       // can still be found here.
       if (url.pathname === "/api/notifications" && req.method === "GET") {
         return Response.json({ notifications: await readNotifications() });
+      }
+
+      // The colour theme this machine uses. The name only — the colours
+      // themselves are in public/themes.js, which the browser imports directly.
+      if (url.pathname === "/api/theme" && req.method === "GET") {
+        return Response.json({ name: await readTheme() });
+      }
+      if (url.pathname === "/api/theme" && req.method === "POST") {
+        let body: { name?: unknown };
+        try {
+          body = await req.json();
+        } catch {
+          return Response.json({ error: "invalid" }, { status: 400 });
+        }
+        if (!(await writeTheme(body.name))) {
+          return Response.json({ error: "unknown" }, { status: 400 });
+        }
+        return new Response(null, { status: 204 });
       }
 
       // The VAPID public key the browser needs to subscribe for push.
