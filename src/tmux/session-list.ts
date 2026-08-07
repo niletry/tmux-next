@@ -9,6 +9,7 @@ import {
   dedupeBySession,
 } from "../claude-sessions";
 import { nextStamp, type ActivityEntry } from "./activity-stamp";
+import { readLastPrompt, transcriptPath } from "../claude-activity";
 
 export type SessionSummary = {
   name: string;
@@ -24,6 +25,10 @@ export type SessionSummary = {
   // if one is on record. Absent for sessions started before the hook was set
   // up, and for anything that isn't Claude Code.
   claudeId: string | null;
+  // The latest thing this conversation was asked to do, from its transcript.
+  // Null when the session is not Claude, has no binding record, or predates
+  // Claude Code writing the record at all.
+  task: string | null;
 };
 
 const PREVIEW_LINES = 4;
@@ -215,8 +220,11 @@ export async function listSessions(): Promise<SessionSummary[]> {
   // session name, which is the conversation currently running under that name.
   // Joined by the live session name, so a rename (which rewrites the record)
   // still lines up.
+  const recordByName = new Map(
+    dedupeBySession(await readSessionRecords()).map((r) => [r.session, r]),
+  );
   const claudeIdByName = new Map(
-    dedupeBySession(await readSessionRecords()).map((r) => [r.session, r.id]),
+    [...recordByName].map(([name, r]) => [name, r.id]),
   );
 
   const now = Math.floor(Date.now() / 1000);
@@ -264,6 +272,15 @@ export async function listSessions(): Promise<SessionSummary[]> {
         lastActivityEpoch = activityStore.get(name)?.epoch ?? Number(activity);
       }
 
+      // What the conversation was last asked to do. Only a tail read, and only
+      // where the hook recorded both an id and a cwd — the two together locate
+      // the transcript without having to search for it.
+      const record = recordByName.get(name);
+      const task =
+        record?.cwd !== undefined
+          ? await readLastPrompt(transcriptPath(record.cwd, record.id))
+          : null;
+      
       return {
         name,
         windowWidth: Number(width),
@@ -272,6 +289,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
         attached: attached === "1",
         pinned: pinnedSet.has(name),
         claudeId: claudeIdByName.get(name) ?? null,
+        task,
         ...parsed,
       };
     }),

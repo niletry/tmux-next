@@ -812,3 +812,29 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 
 .dir-make:active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .dir-make-plus { font-size: 17px; line-height: 1; }
+
+/* The task a session was last given. Sits above the screen preview because it
+   explains it: the preview shows what is happening, this says what it is for.
+   Clamped to two lines so one long prompt cannot push the list around. */
+.task {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 0;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.task > span:last-child {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.task-mark { flex: 0 0 auto; color: var(--accent); font-weight: 600; }
+
+/* With a task line present the preview becomes supporting detail, so it steps
+   back rather than competing. */
+.task + .preview { margin-top: 6px; opacity: 0.72; }

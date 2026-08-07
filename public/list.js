@@ -157,6 +157,15 @@ function card(session) {
   row.append(el("span", "time", relativeTime(session.lastActivityEpoch)));
   link.append(row);
 
+  // What it was last asked to do, above the screen preview: mid-task the
+  // preview is usually tool output scrolling past, which says what is happening
+  // but not what it is for.
+  if (session.task) {
+    const task = el("p", "task");
+    task.append(el("span", "task-mark", "❯"), el("span", null, session.task));
+    link.append(task);
+  }
+
   if (session.preview.length) {
     link.append(el("p", "preview", session.preview.join("\n")));
   }
