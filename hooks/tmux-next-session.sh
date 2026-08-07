@@ -16,12 +16,22 @@ id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 [ -z "$id" ] && exit 0
 
-# The session the current pane belongs to. $TMUX_PANE is set inside tmux.
-name=$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null)
+# The user session the current pane belongs to. $TMUX_PANE is set inside tmux.
+#
+# Not `display-message -t <pane> '#{session_name}'`: a pane belongs to *every*
+# session grouped onto its window, and that form has to collapse the set to one
+# answer — it returns the most recently created, which is always tmux-next's own
+# `web-*` mount point while a browser is watching. The `web-*` guard below then
+# fired on the very sessions a browser was open on, silently skipping them.
+#
+# `list-panes -a` does not collapse: it prints one row per (session, pane), so
+# the mount points can be filtered out and the user's session kept. pane_id
+# comes first and cannot contain `|`, so `cut -f2-` keeps names with `|` or
+# spaces intact. Empty means the pane lives only in a web session — nothing to
+# attribute, so exit as before.
+name=$(tmux list-panes -a -F '#{pane_id}|#{session_name}' 2>/dev/null \
+  | grep "^${TMUX_PANE}|" | cut -d'|' -f2- | grep -v '^web-' | head -1)
 [ -z "$name" ] && exit 0
-
-# web-* sessions are tmux-next's own attach points, not sessions it lists.
-case "$name" in web-*) exit 0 ;; esac
 
 dir="$HOME/.tmux-next/sessions"
 mkdir -p "$dir" 2>/dev/null || exit 0
