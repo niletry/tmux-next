@@ -7,7 +7,7 @@ import { recordUsage, readUsage } from "./key-usage";
 import { listGallery, galleryFilePath } from "./gallery";
 import { setPin } from "./pins";
 import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
-import { listDirectories, resolveDirectory } from "./paths";
+import { createDirectory, listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand, resumeCommand } from "./tmux/session-create";
 import { listHistory } from "./claude-history";
@@ -48,6 +48,12 @@ const CREATE_STATUS: Record<string, number> = {
   invalid: 400,
   reserved: 400,
   baddir: 400,
+  failed: 500,
+};
+
+const MKDIR_STATUS: Record<string, number> = {
+  badparent: 404,
+  exists: 409,
   failed: 500,
 };
 
@@ -352,10 +358,33 @@ export function startServer(
       // Browsing for a directory the sessions don't already cover. Any path on
       // the machine is fair game; a failure here means it is missing or not a
       // directory, not that it was off limits.
-      if (url.pathname === "/api/dirs") {
+      if (url.pathname === "/api/dirs" && req.method === "GET") {
         const listing = await listDirectories(url.searchParams.get("path") ?? homedir());
         if (!listing.ok) return Response.json({ error: "notfound" }, { status: 404 });
         return Response.json(listing);
+      }
+
+      // Creating one directory inside the one being browsed, so a session can
+      // start somewhere that does not exist yet. Deliberately not `mkdir -p`:
+      // the name is validated as a name, and createDirectory then confirms the
+      // joined path still sits directly under the resolved parent.
+      //
+      // This is not a wider door than the app already is. Anyone who reaches
+      // the interface can attach to a session and run mkdir themselves; what
+      // this adds is a strict subset of that — one level, no delete, no rename.
+      if (url.pathname === "/api/dirs" && req.method === "POST") {
+        let body: { parent?: unknown; name?: unknown };
+        try {
+          body = await req.json();
+        } catch {
+          return Response.json({ error: "invalid" }, { status: 400 });
+        }
+        if (typeof body.parent !== "string") {
+          return Response.json({ error: "badparent" }, { status: 400 });
+        }
+        const result = await createDirectory(body.parent, body.name);
+        if (result.ok) return Response.json({ path: result.path }, { status: 201 });
+        return Response.json({ error: result.reason }, { status: MKDIR_STATUS[result.reason] ?? 400 });
       }
 
       const rename = url.pathname.match(/^\/api\/sessions\/(.+)\/rename$/);

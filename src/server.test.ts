@@ -40,7 +40,7 @@ process.env.TMUX_NEXT_THEME_PATH = joinPath(
   tmpdir(),
   `theme-test-${Math.random().toString(36).slice(2, 10)}.json`,
 );
-import { mkdtempSync, mkdirSync, writeFileSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, readdirSync } from "node:fs";
 import { startServer, isLoopback } from "./server";
 import { encodeProjectDir } from "./claude-history";
 
@@ -580,4 +580,31 @@ test("a sent notification is logged and readable from /api/notifications", async
   const found = notifications.find((n) => n.session === "hist-test-sess");
   expect(found).toBeDefined();
   expect(found!.body).toBe("会话已结束");
+});
+
+// --- creating a directory ---------------------------------------------------
+
+test("POST /api/dirs creates one level and refuses to escape the parent", async () => {
+  const parent = realpathSync(mkdtempSync(joinPath(tmpdir(), "api-mkdir-")));
+  const post = (body: unknown) =>
+    fetch(`http://127.0.0.1:${server.port}/api/dirs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  const made = await post({ parent, name: "fresh" });
+  expect(made.status).toBe(201);
+  expect(((await made.json()) as { path: string }).path).toBe(joinPath(parent, "fresh"));
+
+  // Same name again is a conflict, not a silent success.
+  expect((await post({ parent, name: "fresh" })).status).toBe(409);
+
+  // Nothing that looks like a path may create anything.
+  for (const name of ["..", "../escaped", "a/b", "", ".hidden"]) {
+    expect((await post({ parent, name })).status).toBe(400);
+  }
+  expect(readdirSync(parent)).toEqual(["fresh"]);
+
+  expect((await post({ parent: joinPath(parent, "nope"), name: "x" })).status).toBe(404);
 });

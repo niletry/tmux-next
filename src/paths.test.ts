@@ -127,3 +127,89 @@ test("a listing that fails carries empty entries rather than throwing", async ()
   const listed = await listDirectories("/definitely/not/a/path");
   expect(listed).toEqual({ ok: false, path: null, parent: null, entries: [] });
 });
+
+// --- creating a directory ---------------------------------------------------
+
+import { validateDirName, createDirectory } from "./paths";
+import { existsSync, readdirSync } from "node:fs";
+
+/**
+ * The name check is the first of three layers, and the only one that can be
+ * exhausted by a table — so it is worth exhausting. The other two (resolving
+ * the parent, and confirming the joined path still sits directly under it) are
+ * exercised against a real filesystem below.
+ */
+// The reason is typed to the union rather than string so a renamed or removed
+// reason breaks the table at compile time instead of at assertion time.
+const REJECTED: [string, "empty" | "invalid" | "hidden" | "toolong"][] = [
+  ["", "empty"],
+  ["   ", "empty"],
+  [".", "invalid"],
+  ["..", "invalid"],
+  ["../etc", "invalid"],
+  ["a/b", "invalid"],
+  ["/abs", "invalid"],
+  ["a\\b", "invalid"],
+  [".hidden", "hidden"],
+  ["x".repeat(256), "toolong"],
+];
+
+test.each(REJECTED)("validateDirName rejects %p", (input, reason) => {
+  const result = validateDirName(input);
+  expect(result.ok).toBe(false);
+  if (!result.ok) expect(result.reason).toBe(reason);
+});
+
+test.each([
+  "project",
+  "my project",
+  "工单-1042",
+  "a_b-c.d",
+  "x".repeat(255),
+])("validateDirName accepts %p", (input) => {
+  expect(validateDirName(input).ok).toBe(true);
+});
+
+test("validateDirName trims before judging", () => {
+  const result = validateDirName("  spaced  ");
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.name).toBe("spaced");
+});
+
+test("createDirectory makes one level under the parent", async () => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), "mkdir-test-")));
+  const result = await createDirectory(parent, "newproj");
+  expect(result.ok).toBe(true);
+  if (result.ok) {
+    expect(result.path).toBe(join(parent, "newproj"));
+    expect(existsSync(result.path)).toBe(true);
+  }
+});
+
+test("createDirectory refuses a name that would escape the parent", async () => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), "mkdir-test-")));
+  const before = readdirSync(join(parent, ".."));
+
+  for (const escape of ["..", "../escaped", "sub/deep"]) {
+    const result = await createDirectory(parent, escape);
+    expect(result.ok).toBe(false);
+  }
+
+  // Nothing appeared outside the parent, and nothing inside it either.
+  expect(readdirSync(join(parent, ".."))).toEqual(before);
+  expect(readdirSync(parent)).toEqual([]);
+});
+
+test("createDirectory reports an existing directory rather than reusing it", async () => {
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), "mkdir-test-")));
+  expect((await createDirectory(parent, "dup")).ok).toBe(true);
+  const second = await createDirectory(parent, "dup");
+  expect(second.ok).toBe(false);
+  if (!second.ok) expect(second.reason).toBe("exists");
+});
+
+test("createDirectory refuses a parent that does not exist", async () => {
+  const result = await createDirectory(join(tmpdir(), "no-such-parent-" + Math.random()), "x");
+  expect(result.ok).toBe(false);
+  if (!result.ok) expect(result.reason).toBe("badparent");
+});

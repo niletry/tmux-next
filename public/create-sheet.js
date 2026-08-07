@@ -16,6 +16,16 @@ function relativeTime(epochSeconds) {
   return `${Math.floor(secs / 86400)} 天前`;
 }
 
+const MKDIR_ERRORS = {
+  empty: "名字不能为空",
+  invalid: "名字里不能有 / 或 \\",
+  hidden: "以 . 开头的目录不会显示在列表里",
+  toolong: "名字太长了",
+  exists: "这个目录已经存在",
+  badparent: "上级目录不见了",
+  failed: "创建失败，可能没有权限",
+};
+
 const ERRORS = {
   baddir: "这个目录用不了",
   empty: "名字不能只有空格",
@@ -112,9 +122,63 @@ export function openCreateSheet() {
     actions.style.display = n === 1 ? "" : "none";
   }
 
+  /**
+   * Whether what is typed in the filter could be a new directory's name.
+   *
+   * Mirrors the server's validateDirName. Duplicated rather than shared because
+   * this only decides whether to *offer* the action — the server re-checks and
+   * is the authority. Keeping it in step matters for the offer looking sane,
+   * not for safety.
+   */
+  function offerableName(raw) {
+    const name = raw.trim();
+    if (!name || name === "." || name === "..") return null;
+    if (name.includes("/") || name.includes("\\")) return null;
+    if (name.startsWith(".") || name.length > 255) return null;
+    return name;
+  }
+
+  /**
+   * Creates the typed directory inside the one being browsed, then enters it.
+   *
+   * The name comes from the filter box because that is where it already is: by
+   * the time someone sees "no matching directory" they have typed the name they
+   * wanted. Asking for it again in a dialog would be asking twice.
+   */
+  async function createDir(name) {
+    error.textContent = "";
+    let res;
+    try {
+      res = await fetch("api/dirs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parent: current, name }),
+      });
+    } catch {
+      error.textContent = "无法连接到服务";
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      error.textContent = MKDIR_ERRORS[body.error] ?? "创建目录失败";
+      return;
+    }
+    const { path } = await res.json();
+    filter.value = "";
+    await browse(path);
+  }
+
   function drawList() {
     const matches = filterEntries(entries, filter.value);
     if (!matches.length) {
+      const typed = offerableName(filter.value);
+      if (typed) {
+        const make = el("button", "dir-make");
+        make.append(el("span", "dir-make-plus", "＋"), el("span", null, `在这里创建 ${typed}/`));
+        make.addEventListener("click", () => createDir(typed));
+        list.replaceChildren(make);
+        return;
+      }
       list.replaceChildren(el("p", "dir-empty", entries.length ? "没有匹配的目录" : "没有子目录"));
       return;
     }
