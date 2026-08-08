@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { basename } from "node:path";
 import { tmux } from "./run";
 import { WEB_SESSION_PREFIX } from "./session-manager";
+import { agentOf } from "../agents";
 
 /**
  * Characters that make a session unmanageable.
@@ -35,8 +36,8 @@ export const LAUNCH_COMMAND_SKIP_PERMISSIONS =
  * Strictly `=== true`, never truthiness: the value is untrusted JSON, and a
  * stray `"false"` string would otherwise let Claude Code act without asking.
  */
-export function launchCommand(skipPermissions: unknown): string {
-  return skipPermissions === true ? LAUNCH_COMMAND_SKIP_PERMISSIONS : LAUNCH_COMMAND;
+export function launchCommand(skipPermissions: unknown, agentId?: unknown): string {
+  return agentOf(agentId).launch({ skipPermissions: skipPermissions === true });
 }
 
 /**
@@ -55,10 +56,15 @@ const RESUME_ID = /^[A-Za-z0-9-]{1,64}$/;
  * commands above keep by carrying nothing interpolatable at all. Returning null
  * on a bad id keeps a malformed request from ever reaching tmux.
  */
-export function resumeCommand(id: unknown, skipPermissions: unknown): string | null {
-  if (typeof id !== "string" || !RESUME_ID.test(id)) return null;
-  const flags = skipPermissions === true ? " --dangerously-skip-permissions" : "";
-  return `exec "$SHELL" -lc "claude --resume ${id}${flags}"`;
+export function resumeCommand(
+  id: unknown,
+  skipPermissions: unknown,
+  agentId?: unknown,
+): string | null {
+  if (typeof id !== "string") return null;
+  const agent = agentOf(agentId);
+  if (!agent.resume) return null;
+  return agent.resume(id, { skipPermissions: skipPermissions === true });
 }
 
 export type NameCheck =

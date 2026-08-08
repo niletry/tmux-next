@@ -9,6 +9,7 @@ import {
   dedupeBySession,
 } from "../claude-sessions";
 import { nextStamp, type ActivityEntry } from "./activity-stamp";
+import { agentOf } from "../agents";
 import { readLastPrompt, transcriptPath } from "../claude-activity";
 
 export type SessionSummary = {
@@ -33,24 +34,21 @@ export type SessionSummary = {
 
 const PREVIEW_LINES = 4;
 
-/** Box drawing only, or Claude Code chrome that carries no information. */
-const CHROME = [
-  /^[\s─│╭╮╰╯━┃┏┓┗┛|]*$/,
-  /bypass permissions/,
-  /enter to collapse/,
-  /new task\? \/clear/,
-  /^\s*\/rc\s*$/,
-  /\? for shortcuts/,
-];
-
-/** Claude Code prints this when a turn finishes, e.g. "✻ Cogitated for 1m 21s". */
-const IDLE_MARKER = /^\s*[✻✽✢·*]\s+\S+ for \d/;
-
-export function extractPreview(screen: string): {
+/**
+ * Reads a screen, using the calling agent's idea of what its own TUI looks like.
+ *
+ * Defaults to Claude Code so every existing caller and test keeps its previous
+ * behaviour; sessions started under another agent pass that agent's rules.
+ */
+export function extractPreview(
+  screen: string,
+  agentId?: unknown,
+): {
   preview: string[];
   pendingInput: string | null;
   idle: boolean;
 } {
+  const { chrome: CHROME, idleMarker: IDLE_MARKER } = agentOf(agentId).screen;
   let pendingInput: string | null = null;
   const kept: string[] = [];
 
