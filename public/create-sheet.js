@@ -73,6 +73,40 @@ export function openCreateSheet() {
   // Deliberately unchecked every time and never remembered: this hands Claude
   // Code the machine without asking again, so it should be a decision made per
   // session rather than a setting that quietly stays on.
+  // Which agent to start. Fetched rather than hard-coded so the list and its
+  // capabilities stay in step with the server — notably which agents have a
+  // skip-permissions mode at all.
+  const agentRow = el("div", "agent-row");
+  let agents = [{ id: "claude", label: "Claude Code", supportsSkipPermissions: true }];
+  let chosenAgent = "claude";
+
+  function drawAgents() {
+    agentRow.replaceChildren();
+    if (agents.length < 2) return; // nothing to choose between
+    for (const a of agents) {
+      const btn = el("button", "agent-chip", a.label);
+      btn.type = "button";
+      if (a.id === chosenAgent) btn.classList.add("on");
+      // Not installed, or not on the login shell's PATH: starting it would make
+      // a session that disappears immediately, so say so instead of offering it.
+      if (a.available === false) {
+        btn.classList.add("missing");
+        btn.disabled = true;
+        btn.title = `${a.label} 不在 PATH 上，无法启动`;
+      }
+      btn.addEventListener("click", () => {
+        chosenAgent = a.id;
+        drawAgents();
+        // The checkbox is meaningless where the agent has no such mode, and a
+        // switch that silently does nothing is worse than no switch.
+        const supported = agents.find((x) => x.id === chosenAgent)?.supportsSkipPermissions;
+        skipRow.style.display = supported ? "" : "none";
+        if (!supported) skipBox.checked = false;
+      });
+      agentRow.append(btn);
+    }
+  }
+
   const skipRow = el("label", "check");
   const skipBox = document.createElement("input");
   skipBox.type = "checkbox";
@@ -83,7 +117,7 @@ export function openCreateSheet() {
   const resumeEntry = el("button", "resume-entry", "从历史恢复对话 →");
   resumeEntry.style.display = "none";
 
-  step1.append(favourites, crumb, filter, list, nameField, skipRow, resumeEntry);
+  step1.append(favourites, crumb, filter, list, nameField, agentRow, skipRow, resumeEntry);
 
   // --- screen 2: pick a past conversation ------------------------------------
   const step2 = el("div", "sheet-step");
@@ -286,6 +320,7 @@ export function openCreateSheet() {
     if (name) payload.name = name;
     // Only ever sent as true; the server treats anything else as off anyway.
     if (skipBox.checked) payload.skipPermissions = true;
+    if (chosenAgent !== "claude") payload.agent = chosenAgent;
     if (resume) payload.resume = resume;
 
     try {
@@ -322,6 +357,22 @@ export function openCreateSheet() {
 
   // Populate: favourites drive the default directory, so they load first.
   (async () => {
+    // Not awaited together with the directories: an older server without this
+    // endpoint should still give a working sheet with Claude Code only.
+    fetch("api/agents")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (body?.agents?.length) {
+          agents = body.agents;
+          const current = agents.find((a) => a.id === chosenAgent);
+          if (current && current.available === false) {
+            chosenAgent = (agents.find((a) => a.available !== false) || agents[0]).id;
+          }
+          drawAgents();
+        }
+      })
+      .catch(() => {});
+
     let dirs = [];
     try {
       const body = await (await fetch("api/directories")).json();

@@ -608,3 +608,52 @@ test("POST /api/dirs creates one level and refuses to escape the parent", async 
 
   expect((await post({ parent: joinPath(parent, "nope"), name: "x" })).status).toBe(404);
 });
+
+// --- choosing an agent ------------------------------------------------------
+
+test("POST /api/sessions accepts a known agent and refuses anything else", async () => {
+  const dir = realpathSync(mkdtempSync(joinPath(tmpdir(), "agent-api-")));
+  const made: string[] = [];
+  const post = (body: unknown) =>
+    fetch(`http://127.0.0.1:${server.port}/api/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  try {
+    // A hostile id must never reach a command. It is a table key, not a string
+    // spliced into one, so this has to be a plain rejection.
+    for (const agent of ["claude; rm -rf ~", "../claude", "", 42, {}]) {
+      const res = await post({ dir, agent, name: `bad-${Math.random().toString(36).slice(2, 6)}` });
+      expect(res.status).toBe(400);
+    }
+
+    const name = "agent-ok-" + Math.random().toString(36).slice(2, 6);
+    const res = await post({ dir, agent: "opencode", name });
+    expect(res.status).toBe(200);
+    made.push(name);
+
+    // The session really was started with opencode, not the default.
+    // list-panes, not `display-message -t =name`: the latter resolves a session
+    // target but comes back empty for pane-scoped formats.
+    const cmd = await Bun.$`tmux list-panes -t ${name + ":"} -F ${"#{pane_start_command}"}`
+      .quiet().nothrow();
+    expect(cmd.stdout.toString()).toContain("opencode");
+    expect(cmd.stdout.toString()).not.toContain("claude");
+  } finally {
+    for (const n of made) await Bun.$`tmux kill-session -t ${"=" + n}`.quiet().nothrow();
+  }
+});
+
+test("GET /api/agents lists what can be started", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/agents`);
+  expect(res.status).toBe(200);
+  const { agents } = (await res.json()) as {
+    agents: { id: string; label: string; supportsSkipPermissions: boolean }[];
+  };
+  expect(agents.map((a) => a.id)).toEqual(["claude", "opencode", "pi"]);
+  // The picker needs this to decide whether to show the checkbox at all.
+  expect(agents.find((a) => a.id === "claude")!.supportsSkipPermissions).toBe(true);
+  expect(agents.find((a) => a.id === "opencode")!.supportsSkipPermissions).toBe(false);
+});

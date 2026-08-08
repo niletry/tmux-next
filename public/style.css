@@ -838,3 +838,21 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 /* With a task line present the preview becomes supporting detail, so it steps
    back rather than competing. */
 .task + .preview { margin-top: 6px; opacity: 0.72; }
+
+/* Agent picker. Hidden entirely when only one agent is available, so the sheet
+   looks exactly as it did before for anyone who only has Claude Code. */
+.agent-row { display: flex; gap: 6px; margin: 4px 0 2px; flex-wrap: wrap; }
+
+.agent-chip {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 1px solid #3a4050;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font: 13px/1 -apple-system, system-ui, sans-serif;
+}
+
+.agent-chip.on { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+
+.agent-chip.missing { opacity: 0.4; text-decoration: line-through; }

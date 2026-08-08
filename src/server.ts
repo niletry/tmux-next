@@ -14,6 +14,8 @@ import { listHistory } from "./claude-history";
 import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
 import { readNotifications } from "./notifications";
 import { readTheme, writeTheme } from "./theme";
+import { AGENT_IDS, AGENTS, isKnownAgent } from "./agents";
+import { agentAvailability } from "./agents/availability";
 import pkg from "../package.json" with { type: "json" };
 import {
   killSession,
@@ -51,6 +53,8 @@ const CREATE_STATUS: Record<string, number> = {
   failed: 500,
 };
 
+const CREATE_AGENT_STATUS = 400;
+
 const MKDIR_STATUS: Record<string, number> = {
   badparent: 404,
   exists: 409,
@@ -75,7 +79,13 @@ const RENAME_STATUS: Record<string, number> = {
  * caller happened to send.
  */
 async function createSessionResponse(req: Request): Promise<Response> {
-  let body: { dir?: unknown; name?: unknown; skipPermissions?: unknown; resume?: unknown };
+  let body: {
+    dir?: unknown;
+    name?: unknown;
+    skipPermissions?: unknown;
+    resume?: unknown;
+    agent?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -88,17 +98,23 @@ async function createSessionResponse(req: Request): Promise<Response> {
   if (body.name !== undefined && typeof body.name !== "string") {
     return Response.json({ error: "invalid" }, { status: 400 });
   }
+  // Absent means the default. Present means it must name an agent we ship —
+  // the value is only ever used as a table key, never spliced into a command,
+  // and an unknown one is refused rather than quietly falling back.
+  if (body.agent !== undefined && !isKnownAgent(body.agent)) {
+    return Response.json({ error: "badagent" }, { status: 400 });
+  }
 
   // Resuming a past conversation swaps the launch command for `claude --resume
   // <id>`. The id is validated to id-safe characters before it can reach the
   // shell; a bad one is rejected rather than quietly started as a fresh session.
   let command: string;
   if (body.resume !== undefined) {
-    const resumed = resumeCommand(body.resume, body.skipPermissions);
+    const resumed = resumeCommand(body.resume, body.skipPermissions, body.agent);
     if (resumed === null) return Response.json({ error: "invalid" }, { status: 400 });
     command = resumed;
   } else {
-    command = launchCommand(body.skipPermissions);
+    command = launchCommand(body.skipPermissions, body.agent);
   }
 
   const dir = await resolveDirectory(body.dir);
@@ -295,6 +311,25 @@ export function startServer(
       // can still be found here.
       if (url.pathname === "/api/notifications" && req.method === "GET") {
         return Response.json({ notifications: await readNotifications() });
+      }
+
+      // What can be started, for the new-session picker. Capabilities travel
+      // with each entry so the client does not have to know which agent has
+      // which — notably a skip-permissions mode, which only Claude Code has.
+      if (url.pathname === "/api/agents" && req.method === "GET") {
+        // Availability is probed through a login shell, the same way a launch
+        // resolves the command — an agent the server can see but the login
+        // shell cannot would otherwise produce a session that vanishes.
+        const available = await agentAvailability();
+        return Response.json({
+          agents: AGENT_IDS.map((id) => ({
+            available: available[id] === true,
+            id,
+            label: AGENTS[id]!.label,
+            supportsSkipPermissions: AGENTS[id]!.supportsSkipPermissions,
+            supportsResume: AGENTS[id]!.resume !== undefined,
+          })),
+        });
       }
 
       // The colour theme this machine uses. The name only — the colours

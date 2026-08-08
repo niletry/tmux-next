@@ -96,3 +96,17 @@ test("claude keeps the exact launch commands it had before this abstraction", ()
     'exec "$SHELL" -lc "claude --dangerously-skip-permissions"',
   );
 });
+
+test("availability is probed through a login shell, as launching will be", async () => {
+  const { agentAvailability } = await import("./availability");
+  const found = await agentAvailability();
+
+  for (const id of AGENT_IDS) expect(typeof found[id]).toBe("boolean");
+
+  // The probe must use the same lookup the launch does — `$SHELL -lc` — not the
+  // server's own PATH. Under launchd those differ sharply, and an agent present
+  // in one but not the other is exactly the case that produced a session that
+  // vanished on creation with nothing reported.
+  const { PROBE_SHELL_FLAGS } = await import("./availability");
+  expect(PROBE_SHELL_FLAGS).toEqual(["-lc"]);
+});
