@@ -6,7 +6,7 @@
 
 **English** · [中文](README.zh-CN.md)
 
-**Watch Claude Code — running in tmux — from your phone.**
+**Watch your coding agent — running in tmux — from your phone.**
 
 A self-hosted web client for tmux. List every session on the machine, see the last few lines each one printed, tap in and keep going. Lock the screen, ride the subway, switch Wi-Fi, come back — the screen rebuilds itself.
 
@@ -33,7 +33,7 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 | | |
 |---|---|
 | **Session list** | What each session was last asked to do, a preview of the last lines, a "waiting on you" dot, unsent input, last-active time |
-| **New session** | Tap to pick a directory (drill down, or create one on the spot), optional name, optional skip-permissions, or resume a past conversation |
+| **New session** | Pick an agent (Claude Code / opencode / pi), tap to pick a directory (drill down, or create one on the spot), optional name, optional skip-permissions, or resume a past conversation |
 | **Terminal** | Width that adapts to the window, a soft-keyboard toolbar (Esc / Tab / ⇧Tab / Ctrl / arrows / ^C / ⏎), drag to scroll full-screen programs |
 | **Reconnect** | No buffering, no replay — a reconnect re-captures the whole screen from tmux |
 | **Lock-screen push** | Session ended, a turn finished and it's waiting, or Claude needs confirmation — pushed to your phone (Web Push; needs the hook + a subscription) |
@@ -96,6 +96,22 @@ The proxy needs to handle two things:
 ### Start on boot
 
 The repo ships no service file — paths and users differ per machine. Use a launchd plist on macOS, a systemd unit on Linux; the command is `bun run /path/to/tmux-next/src/index.ts`. Note that launchd gives a very bare environment where `tmux` may not be on `PATH`, so point at it explicitly.
+
+### Three agents
+
+Claude Code, [opencode](https://opencode.ai) and [pi](https://github.com/earendil-works/pi) are supported to the same depth: starting, resuming, the task line, and lock-screen notifications. The picker in the new-session sheet only appears when more than one is installed, so a machine with just Claude Code looks exactly as it did.
+
+Agents are probed through a login shell — the same way a launch resolves the command — and one that is not on that PATH is shown struck through rather than offered. This matters more than it sounds: `tmux new-session` happily creates a session for a command that does not exist, so without the check you get a session that vanishes the instant it appears, with nothing said.
+
+The parts that differ between agents are narrow, and they live in `src/agents/`:
+
+| | Resume | Sessions stored as | Task line comes from |
+|---|---|---|---|
+| Claude Code | `--resume <uuid>` | JSONL under `~/.claude/projects/` | its `last-prompt` record |
+| pi | `--session <uuid>` | JSONL under `~/.pi/agent/sessions/` | the newest user message |
+| opencode | `--session <ses_…>` | **SQLite** | `session.title`, already a summary |
+
+Notifications are shaped differently too. Claude Code runs external shell hooks; the other two load a module into their own process, so `bunx tmux-next hook` installs those as well. pi discovers its extension directory on its own; opencode additionally needs the path added to the `plugin` array in `opencode.json`, which is left to you because that file holds your provider credentials.
 
 ### Session restore (bring Claude sessions back after tmux restarts)
 

@@ -6,7 +6,7 @@
 
 [English](README.md) · **中文**
 
-**在手机上盯着跑在 tmux 里的 Claude Code。**
+**在手机上盯着 tmux 里跑的编码 agent。**
 
 一个自托管的 tmux web 客户端。列出本机所有 session、看到每个的最后几行输出、点进去接着聊——锁屏、进地铁、换 Wi-Fi 回来，画面自动重建。
 
@@ -33,7 +33,7 @@
 | | |
 |---|---|
 | **会话列表** | 每个会话最近被要求做什么、最后几行输出预览、「在等你」状态点、还没发出去的输入、最后活跃时间 |
-| **新建会话** | 点选目录（可一路往下钻，也可当场新建）、可选会话名、可选跳过权限确认、可从历史对话恢复 |
+| **新建会话** | 选 agent（Claude Code / opencode / pi）、点选目录（可一路往下钻，也可当场新建）、可选会话名、可选跳过权限确认、可从历史对话恢复 |
 | **终端** | 宽度自适应窗口、软键盘工具条（Esc / Tab / ⇧Tab / Ctrl / 方向键 / ^C / ⏎）、拖动滚动全屏程序 |
 | **断线重连** | 不缓冲、不重放——重连时从 tmux 重新抓一次完整画面 |
 | **锁屏通知** | 会话结束、一轮聊完在等你、Claude 要你确认时，推到手机锁屏（Web Push，需装 hook + 订阅） |
@@ -96,6 +96,22 @@ tmux-next [options]
 ### 开机自启
 
 仓库里不带 service 文件——路径和用户都因机器而异。macOS 用 launchd plist，Linux 用 systemd unit，命令都是 `bun run /path/to/tmux-next/src/index.ts`。注意 launchd 给的环境极其精简，`tmux` 未必在 `PATH` 里，需要显式指定。
+
+### 三种 agent
+
+Claude Code、[opencode](https://opencode.ai) 和 [pi](https://github.com/earendil-works/pi) 支持到同样的深度：新建、恢复、任务行、锁屏通知。新建弹层里的选择器只在装了不止一种时才出现，所以只有 Claude Code 的机器看到的界面和以前一样。
+
+agent 是通过 login shell 探测的——和启动时解析命令的方式一致——不在那条 PATH 上的会被划掉而不是照样提供。这比听上去要紧：`tmux new-session` 对一条不存在的命令照样建会话，没有这层检查你会得到一个刚出现就消失的会话，而且什么提示都没有。
+
+各 agent 之间真正不同的地方很窄，都收在 `src/agents/` 里：
+
+| | 恢复 | 会话存储 | 任务行来源 |
+|---|---|---|---|
+| Claude Code | `--resume <uuid>` | `~/.claude/projects/` 下的 JSONL | 它的 `last-prompt` 记录 |
+| pi | `--session <uuid>` | `~/.pi/agent/sessions/` 下的 JSONL | 最新一条用户消息 |
+| opencode | `--session <ses_…>` | **SQLite** | `session.title`，本身就是摘要 |
+
+通知的形态也不同。Claude Code 用的是外部 shell hook；另外两家把模块加载进自己的进程，所以 `bunx tmux-next hook` 会一并装好。pi 会自动发现它的扩展目录；opencode 还需要把路径加进 `opencode.json` 的 `plugin` 数组——这一步留给你自己做，因为那个文件里存着你的 provider 凭据。
 
 ### 会话恢复（tmux 重启后找回 Claude 会话）
 
