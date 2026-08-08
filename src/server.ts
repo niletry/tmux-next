@@ -14,6 +14,7 @@ import { listHistory } from "./claude-history";
 import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
 import { readNotifications } from "./notifications";
 import { readTheme, writeTheme } from "./theme";
+import { resolveLanguage, writeLanguage } from "./language";
 import { AGENT_IDS, AGENTS, isKnownAgent } from "./agents";
 import { agentAvailability } from "./agents/availability";
 import pkg from "../package.json" with { type: "json" };
@@ -330,6 +331,27 @@ export function startServer(
             supportsResume: AGENTS[id]!.resume !== undefined,
           })),
         });
+      }
+
+      // The interface language. GET resolves rather than merely reads: on a
+      // machine where nothing has been chosen yet it guesses from the browser
+      // and stores that, so someone arriving from npm gets a first screen they
+      // can read without touching a setting.
+      if (url.pathname === "/api/language" && req.method === "GET") {
+        const lang = await resolveLanguage(req.headers.get("accept-language") ?? undefined);
+        return Response.json({ lang });
+      }
+      if (url.pathname === "/api/language" && req.method === "POST") {
+        let body: { lang?: unknown };
+        try {
+          body = await req.json();
+        } catch {
+          return Response.json({ error: "invalid" }, { status: 400 });
+        }
+        if (!(await writeLanguage(body.lang))) {
+          return Response.json({ error: "unknown" }, { status: 400 });
+        }
+        return new Response(null, { status: 204 });
       }
 
       // The colour theme this machine uses. The name only — the colours

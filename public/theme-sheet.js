@@ -1,5 +1,7 @@
 import { THEMES, THEME_ORDER, ANSI_NAMES } from "./themes.js";
 import { setTheme, cachedTheme } from "./theme-apply.js";
+import { LANGS, LANG_LABELS } from "./i18n.js";
+import { setLang, lang as currentLang, tr } from "./i18n-apply.js";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -53,7 +55,27 @@ function preview(theme) {
 export function openThemeSheet() {
   const backdrop = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
-  sheet.append(el("h2", null, "外观"));
+  sheet.append(el("h2", null, tr("settings.title")));
+
+  // Language sits above the palette: it changes the words the rest of this
+  // sheet is written in, so choosing it first is the order that makes sense.
+  const langRow = el("div", "agent-row");
+  for (const code of LANGS) {
+    const btn = el("button", "agent-chip", LANG_LABELS[code]);
+    btn.type = "button";
+    if (code === currentLang()) btn.classList.add("on");
+    btn.addEventListener("click", async () => {
+      if (code === currentLang()) return;
+      await setLang(code);
+      // The sheet is built from strings in the old language, so rebuild it
+      // rather than trying to patch each node.
+      backdrop.remove();
+      openThemeSheet();
+    });
+    langRow.append(btn);
+  }
+  sheet.append(el("h3", "sheet-sub", tr("settings.language")), langRow);
+  sheet.append(el("h3", "sheet-sub", tr("settings.theme")));
 
   const list = el("div", "theme-list");
   const close = () => backdrop.remove();
@@ -94,7 +116,7 @@ export function openThemeSheet() {
       const stored = await setTheme(name);
       if (!stored) {
         // The page is already correct; only the machine-wide record failed.
-        note.textContent = "已应用，但没能保存到这台机器";
+        note.textContent = tr("settings.saveFailed");
         return;
       }
       close();
@@ -103,8 +125,8 @@ export function openThemeSheet() {
     list.append(row);
   }
 
-  const note = el("p", "sheet-note", "配色对所有设备生效；字号在终端页单独调。");
-  const cancel = el("button", "btn", "关闭");
+  const note = el("p", "sheet-note", tr("settings.note"));
+  const cancel = el("button", "btn", tr("common.close"));
   cancel.addEventListener("click", close);
   const actions = el("div", "sheet-actions");
   actions.append(cancel);
