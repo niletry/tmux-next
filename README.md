@@ -32,7 +32,7 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 
 | | |
 |---|---|
-| **Session list** | Preview of the last lines, a "waiting on you" dot, unsent input, last-active time |
+| **Session list** | What each session was last asked to do, a preview of the last lines, a "waiting on you" dot, unsent input, last-active time |
 | **New session** | Tap to pick a directory (drill down, or create one on the spot), optional name, optional skip-permissions, or resume a past conversation |
 | **Terminal** | Width that adapts to the window, a soft-keyboard toolbar (Esc / Tab / ⇧Tab / Ctrl / arrows / ^C / ⏎), drag to scroll full-screen programs |
 | **Reconnect** | No buffering, no replay — a reconnect re-captures the whole screen from tmux |
@@ -130,6 +130,14 @@ Then **subscribe once** in the web UI: tap the bell at the top-right of the list
 At most one push per session per 30 seconds (session-end is exempt). The `/api/notify` endpoint that triggers a push accepts loopback callers only, so no one can spoof one.
 
 **After upgrading the package, re-run `bunx tmux-next hook`.** The scripts are *copied* into `~/.claude/hooks/`, so npm cannot update them in place. A stale hook fails silently — that is what hooks are built to do — taking session restore and push notifications with it, so the server checks at startup and prints a line if the installed copies differ from the ones it ships.
+
+### Seeing what each session is working on
+
+The list shows the last thing each conversation was asked to do, above its screen preview. Mid-task the preview is usually tool output scrolling past — it says what is happening, not what it is for.
+
+The text comes from the `last-prompt` record Claude Code keeps in its transcript, read from the tail of the file: transcripts reach tens of megabytes, and a 32 KB tail was measured to find the record in 94.8% of the 192 on the development machine. Sessions with no binding record — or from before Claude Code wrote that record — simply show no task line.
+
+This needs the hook (`bunx tmux-next hook`), which is what ties a tmux session to its conversation id.
 
 ### Colour themes
 
