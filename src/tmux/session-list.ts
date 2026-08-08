@@ -10,7 +10,6 @@ import {
 } from "../claude-sessions";
 import { nextStamp, type ActivityEntry } from "./activity-stamp";
 import { agentOf } from "../agents";
-import { readLastPrompt, transcriptPath } from "../claude-activity";
 
 export type SessionSummary = {
   name: string;
@@ -274,9 +273,13 @@ export async function listSessions(): Promise<SessionSummary[]> {
       // where the hook recorded both an id and a cwd — the two together locate
       // the transcript without having to search for it.
       const record = recordByName.get(name);
+      // Whichever agent the binding record names. Only Claude Code writes those
+      // records today, so in practice this is claude — but routing through the
+      // registry means teaching another agent to record needs no change here.
+      const agent = agentOf(record?.agent);
       const task =
-        record?.cwd !== undefined
-          ? await readLastPrompt(transcriptPath(record.cwd, record.id))
+        record?.cwd !== undefined && agent.readTask
+          ? await agent.readTask(record.cwd, record.id)
           : null;
       
       return {
