@@ -36,6 +36,10 @@ process.env.TMUX_NEXT_NOTIFICATIONS_PATH = joinPath(
   tmpdir(),
   `notif-test-${Math.random().toString(36).slice(2, 10)}.jsonl`,
 );
+process.env.TMUX_NEXT_LANG_PATH = joinPath(
+  tmpdir(),
+  `lang-test-${Math.random().toString(36).slice(2, 10)}.json`,
+);
 process.env.TMUX_NEXT_THEME_PATH = joinPath(
   tmpdir(),
   `theme-test-${Math.random().toString(36).slice(2, 10)}.json`,
@@ -656,4 +660,27 @@ test("GET /api/agents lists what can be started", async () => {
   // The picker needs this to decide whether to show the checkbox at all.
   expect(agents.find((a) => a.id === "claude")!.supportsSkipPermissions).toBe(true);
   expect(agents.find((a) => a.id === "opencode")!.supportsSkipPermissions).toBe(false);
+});
+
+// --- interface language -----------------------------------------------------
+
+test("GET /api/language guesses from the browser once, then stays put", async () => {
+  const url = `http://127.0.0.1:${server.port}/api/language`;
+  const get = (accept: string) =>
+    fetch(url, { headers: { "accept-language": accept } }).then((r) => r.json());
+
+  // Nothing stored yet: the header decides.
+  expect(((await get("zh-CN,zh;q=0.9")) as { lang: string }).lang).toBe("zh");
+  // Stored now, so a different browser does not flip the machine.
+  expect(((await get("en-GB,en;q=0.9")) as { lang: string }).lang).toBe("zh");
+
+  const post = (lang: unknown) =>
+    fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ lang }),
+    });
+  expect((await post("en")).status).toBe(204);
+  expect(((await get("zh-CN")) as { lang: string }).lang).toBe("en");
+  expect((await post("klingon")).status).toBe(400);
 });

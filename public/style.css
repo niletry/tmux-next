@@ -856,3 +856,12 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 .agent-chip.on { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 
 .agent-chip.missing { opacity: 0.4; text-decoration: line-through; }
+
+/* Section heading inside the settings sheet. */
+.sheet-sub {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dim);
+}
+.sheet-sub:first-of-type { margin-top: 4px; }

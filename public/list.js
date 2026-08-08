@@ -12,10 +12,10 @@ const countEl = document.getElementById("count");
 
 function relativeTime(epochSeconds) {
   const secs = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds));
-  if (secs < 60) return "刚刚";
-  if (secs < 3600) return `${Math.floor(secs / 60)} 分钟前`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)} 小时前`;
-  return `${Math.floor(secs / 86400)} 天前`;
+  if (secs < 60) return tr("list.justNow");
+  if (secs < 3600) return tr("list.minutesAgo", { n: Math.floor(secs / 60) });
+  if (secs < 86400) return tr("list.hoursAgo", { n: Math.floor(secs / 3600) });
+  return tr("list.daysAgo", { n: Math.floor(secs / 86400) });
 }
 
 function el(tag, className, text) {
@@ -34,18 +34,18 @@ async function confirmAndKill(session) {
   const dialog = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
 
-  sheet.append(el("h2", null, "结束会话"));
+  sheet.append(el("h2", null, tr("list.endSession")));
   sheet.append(el("p", "sheet-name", session.name));
   sheet.append(
-    el("p", "sheet-warn", "里面正在运行的进程会被杀掉，未保存的内容会丢失。"),
+    el("p", "sheet-warn", tr("list.endWarn")),
   );
   if (session.preview.length) {
     sheet.append(el("p", "preview", session.preview.join("\n")));
   }
 
   const actions = el("div", "sheet-actions");
-  const cancel = el("button", "btn", "取消");
-  const confirm = el("button", "btn danger", "结束会话");
+  const cancel = el("button", "btn", tr("list.cancel"));
+  const confirm = el("button", "btn danger", tr("list.endSession"));
   actions.append(cancel, confirm);
   sheet.append(actions);
   dialog.append(sheet);
@@ -59,18 +59,18 @@ async function confirmAndKill(session) {
 
   confirm.addEventListener("click", async () => {
     confirm.disabled = true;
-    confirm.textContent = "正在结束…";
+    confirm.textContent = tr("list.ending");
     try {
       const res = await fetch(`api/sessions/${encodeURIComponent(session.name)}`, {
         method: "DELETE",
       });
       if (!res.ok && res.status !== 404) {
-        confirm.textContent = "失败: " + res.status;
+        confirm.textContent = tr("list.endFailedCode", { code: res.status });
         confirm.disabled = false;
         return;
       }
     } catch {
-      confirm.textContent = "失败，请重试";
+      confirm.textContent = tr("list.endFailed");
       confirm.disabled = false;
       return;
     }
@@ -81,7 +81,7 @@ async function confirmAndKill(session) {
 
 function pinBadge() {
   const span = el("span", "pin");
-  span.title = "已置顶";
+  span.title = tr("list.pinned");
   span.innerHTML =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true">' +
     '<path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5' +
@@ -99,9 +99,9 @@ function openActions(session) {
   sheet.append(el("p", "sheet-name", session.name));
 
   const menu = el("div", "sheet-menu");
-  const pinBtn = el("button", "btn", session.pinned ? "取消置顶" : "置顶");
-  const endBtn = el("button", "btn danger", "结束会话");
-  const cancel = el("button", "btn", "取消");
+  const pinBtn = el("button", "btn", tr(session.pinned ? "list.unpin" : "list.pin"));
+  const endBtn = el("button", "btn danger", tr("list.endSession"));
+  const cancel = el("button", "btn", tr("list.cancel"));
   menu.append(pinBtn, endBtn, cancel);
   sheet.append(menu);
   dialog.append(sheet);
@@ -143,7 +143,7 @@ function card(session) {
   if (session.pinned) row.append(pinBadge());
   if (session.idle) {
     const dot = el("span", "dot");
-    dot.title = "等待你的回复";
+    dot.title = tr("list.waitingDot");
     row.append(dot);
   }
   row.append(el("span", "name", session.name));
@@ -172,12 +172,12 @@ function card(session) {
 
   if (session.pendingInput) {
     const pending = el("div", "pending", "❯ " + session.pendingInput);
-    pending.append(el("b", null, "待发送"));
+    pending.append(el("b", null, tr("list.pendingInput")));
     link.append(pending);
   }
 
   const more = el("button", "more", "⋯");
-  more.setAttribute("aria-label", `${session.name} 的操作`);
+  more.setAttribute("aria-label", tr("list.actionsFor", { name: session.name }));
   more.addEventListener("click", (e) => {
     // The button sits on top of the card link; do not follow it.
     e.preventDefault();
@@ -191,7 +191,7 @@ function card(session) {
 
 /** Reflects "how many sessions are waiting on you" onto the browser tab. */
 function setTabWaiting(count) {
-  document.title = count ? `(${count}) tmux 会话` : "tmux 会话";
+  document.title = count ? `(${count}) ${tr("list.title")}` : tr("list.title");
   const link = document.querySelector('link[rel="icon"]');
   if (link) link.href = count ? "favicon-alert.svg" : "favicon.svg";
 }
@@ -211,11 +211,11 @@ async function fetchRestorable() {
  */
 function restoreBanner(count) {
   const bar = el("div", "restore-banner");
-  bar.append(el("span", null, `${count} 个上次的会话可恢复`));
-  const btn = el("button", "restore-btn", "恢复");
+  bar.append(el("span", null, tr("list.restorable", { n: count })));
+  const btn = el("button", "restore-btn", tr("list.restore"));
   btn.addEventListener("click", async () => {
     btn.disabled = true;
-    btn.textContent = "恢复中…";
+    btn.textContent = tr("list.restoring");
     try {
       await fetch("api/restore", {
         method: "POST",
@@ -237,18 +237,18 @@ async function render() {
       fetch("api/sessions").then((r) => r.json()),
       fetchRestorable(),
     ]);
-    countEl.textContent = sessions.length ? `${sessions.length} 个` : "";
+    countEl.textContent = sessions.length ? tr("list.count", { n: sessions.length }) : "";
     setTabWaiting(sessions.filter((s) => s.idle).length);
 
     const children = [];
     if (restorable.length) children.push(restoreBanner(restorable.length));
     children.push(
-      ...(sessions.length ? sessions.map(card) : [el("p", "empty", "没有 tmux 会话")]),
+      ...(sessions.length ? sessions.map(card) : [el("p", "empty", tr("list.noSessions"))]),
     );
     listEl.replaceChildren(...children);
   } catch {
     countEl.textContent = "";
-    listEl.replaceChildren(el("p", "empty", "无法连接到服务"));
+    listEl.replaceChildren(el("p", "empty", tr("list.offline")));
   }
 }
 

@@ -10,8 +10,8 @@
 </head>
 <body class="list-page">
   <header>
-    tmux 会话 <span class="count" id="count"></span>
-    <a class="ghead" href="gallery.html" title="制品" aria-label="制品">
+    <span data-i18n="list.title">tmux 会话</span> <span class="count" id="count"></span>
+    <a class="ghead" href="gallery.html" data-i18n-title="list.artifacts" data-i18n-aria="list.artifacts">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <rect x="3" y="3" width="7" height="7" rx="1.5"/>
@@ -20,30 +20,30 @@
         <rect x="14" y="14" width="7" height="7" rx="1.5"/>
       </svg>
     </a>
-    <a class="hbell" id="notify-history" href="notifications.html" title="通知历史" aria-label="通知历史">
+    <a class="hbell" id="notify-history" href="notifications.html" data-i18n-title="list.notifyHistory" data-i18n-aria="list.notifyHistory">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M22 12h-6l-2 3h-4l-2-3H2"/>
         <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
       </svg>
     </a>
-    <button class="hbell" id="notify-toggle" title="开启/关闭通知" aria-label="开启通知" aria-pressed="false">
+    <button class="hbell" id="notify-toggle" data-i18n-title="list.notifyToggle" data-i18n-aria="list.notifyToggle" aria-pressed="false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
         <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
       </svg>
     </button>
-    <button class="hbell" id="appearance" title="外观" aria-label="外观">
+    <button class="hbell" id="appearance" data-i18n-title="list.settings" data-i18n-aria="list.settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="3.2"/>
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
     </button>
-    <button class="new" id="new-session" aria-label="新建会话">＋</button>
+    <button class="new" id="new-session" data-i18n-aria="list.newSession">＋</button>
   </header>
-  <main id="list"><p class="empty">加载中…</p></main>
+  <main id="list"><p class="empty" data-i18n="list.loading">加载中…</p></main>
   <script type="module" src="list.js"></script>
 </body>
 </html>
