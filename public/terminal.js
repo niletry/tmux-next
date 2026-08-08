@@ -6,6 +6,7 @@ import { MIN_COLUMNS, computeGeometry } from "./terminal-fit.js";
 import { createCopyGate, decodeOsc52 } from "./copy-on-select.js";
 import { xtermTheme } from "./themes.js";
 import { initTheme, cachedTheme } from "./theme-apply.js";
+import { initLang, tr } from "./i18n-apply.js";
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
@@ -36,6 +37,8 @@ term.open(termEl);
 // Captured before initTheme() runs: that call updates the cache as a side
 // effect, so comparing against cachedTheme() afterwards would always match and
 // a changed theme would never reach the terminal.
+initLang();
+
 initTheme().then((name) => {
   if (name !== initialTheme) term.options.theme = xtermTheme(name);
 });
@@ -53,8 +56,8 @@ try {
 function copyToClipboard(text) {
   if (!text) return;
   navigator.clipboard?.writeText(text).then(
-    () => flashStatus("已复制"),
-    () => flashStatus("复制失败：需要 HTTPS"),
+    () => flashStatus(tr("term.copied")),
+    () => flashStatus(tr("term.copyNeedsHttps")),
   );
 }
 
@@ -151,12 +154,12 @@ function wsUrl() {
 }
 
 function connect() {
-  statusEl.textContent = "连接中…";
+  statusEl.textContent = tr("term.connecting");
   socket = new WebSocket(wsUrl());
   socket.binaryType = "arraybuffer";
 
   socket.onopen = () => {
-    statusEl.textContent = "已连接";
+    statusEl.textContent = tr("term.connected");
     reconnectDelay = 500;
     const { cols, rows } = fit();
     socket.send(JSON.stringify({ t: "open", target, rows, cols }));
@@ -171,7 +174,7 @@ function connect() {
       return;
     }
     const msg = JSON.parse(event.data);
-    if (msg.t === "error") statusEl.textContent = "错误: " + msg.message;
+    if (msg.t === "error") statusEl.textContent = tr("term.error", { message: msg.message });
   };
 
   socket.onclose = () => {
@@ -179,7 +182,7 @@ function connect() {
     // A rename navigates away to reconnect under the new name. In neither case
     // should we reconnect into the old name.
     if (killing || renaming) return;
-    statusEl.textContent = "已断开，重连中…";
+    statusEl.textContent = tr("term.reconnecting");
     reconnectOrPromptLogin();
   };
 }
@@ -221,7 +224,7 @@ function showLoginExpired() {
   const link = document.createElement("a");
   link.href = "#";
   link.className = "status-relogin";
-  link.textContent = "登录已过期 · 点此重新登录";
+  link.textContent = tr("term.loginExpired");
   link.addEventListener("click", (e) => {
     e.preventDefault();
     // Reloading walks into the proxy's auth redirect and, after login, back to
@@ -245,13 +248,13 @@ function disarmKill() {
   if (killArmTimer) clearTimeout(killArmTimer);
   killArmTimer = null;
   killBtn.classList.remove("armed");
-  killBtn.textContent = "结束";
+  killBtn.textContent = tr("term.end");
 }
 
 killBtn.addEventListener("click", async () => {
   if (!killBtn.classList.contains("armed")) {
     killBtn.classList.add("armed");
-    killBtn.textContent = "确认结束?";
+    killBtn.textContent = tr("term.endConfirm");
     killArmTimer = setTimeout(disarmKill, 3000);
     return;
   }
@@ -259,7 +262,7 @@ killBtn.addEventListener("click", async () => {
   disarmKill();
   if (!target) return;
   killBtn.disabled = true;
-  killBtn.textContent = "结束中…";
+  killBtn.textContent = tr("term.ending");
   killing = true;
   try {
     const res = await fetch(`api/sessions/${encodeURIComponent(target)}`, { method: "DELETE" });
@@ -273,8 +276,8 @@ killBtn.addEventListener("click", async () => {
   } catch {
     killing = false;
     killBtn.disabled = false;
-    killBtn.textContent = "结束失败";
-    setTimeout(() => (killBtn.textContent = "结束"), 2000);
+    killBtn.textContent = tr("term.endFailed");
+    setTimeout(() => (killBtn.textContent = tr("term.end")), 2000);
   }
 });
 
@@ -286,10 +289,10 @@ killBtn.addEventListener("click", async () => {
  * under the new name with a full reload, which rebuilds the socket, title, and
  * URL in one step.
  *
- * Tapping 改名 turns the title into an input and the button into 取消, so there
+ * Tapping Rename turns the title into an input and the button into Cancel, so
  * is always a visible way out on a phone: a second tap (or Escape) abandons the
  * edit; Enter commits. Blur is deliberately not a cancel — that would fight the
- * 取消 tap, which blurs the field on its way to the click.
+ * that Cancel tap, which blurs the field on its way to the click.
  */
 const renameBtn = document.getElementById("rename");
 const titleEl = document.getElementById("title");
@@ -298,7 +301,7 @@ let renameInput = null;
 
 function endRenameEdit() {
   renameInput = null;
-  renameBtn.textContent = "改名";
+  renameBtn.textContent = tr("term.rename");
   titleEl.textContent = target;
 }
 
@@ -309,7 +312,7 @@ async function commitRename() {
 
   renameInput.disabled = true;
   renaming = true;
-  statusEl.textContent = "重命名中…";
+  statusEl.textContent = tr("term.renaming");
   try {
     const res = await fetch(`api/sessions/${encodeURIComponent(target)}/rename`, {
       method: "POST",
@@ -322,9 +325,9 @@ async function commitRename() {
       return;
     }
     statusEl.textContent =
-      res.status === 409 ? "名字已被占用" : res.status === 400 ? "名字不合法" : "重命名失败";
+      res.status === 409 ? tr("term.nameTaken") : res.status === 400 ? tr("term.nameInvalid") : tr("term.renameFailed");
   } catch {
-    statusEl.textContent = "重命名失败";
+    statusEl.textContent = tr("term.renameFailed");
   }
   renaming = false;
   endRenameEdit();
@@ -340,7 +343,7 @@ renameBtn.addEventListener("click", () => {
   const input = document.createElement("input");
   input.className = "title-edit";
   input.value = target;
-  input.setAttribute("aria-label", "新的会话名");
+  input.setAttribute("aria-label", tr("term.newName"));
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -352,7 +355,7 @@ renameBtn.addEventListener("click", () => {
   });
   titleEl.replaceChildren(input);
   renameInput = input;
-  renameBtn.textContent = "取消";
+  renameBtn.textContent = tr("term.cancel");
   input.focus();
   input.select();
 });
@@ -501,7 +504,7 @@ let uploading = false;
 async function uploadImage(file) {
   if (uploading) return;
   uploading = true;
-  flashStatus("上传中…");
+  flashStatus(tr("term.uploading"));
   try {
     const res = await fetch("api/upload", {
       method: "POST",
@@ -510,16 +513,16 @@ async function uploadImage(file) {
     });
     if (!res.ok) {
       flashStatus(
-        res.status === 413 ? "图片过大" : res.status === 415 ? "格式不支持" : "上传失败",
+        res.status === 413 ? tr("term.imageTooBig") : res.status === 415 ? tr("term.imageBadType") : tr("term.uploadFailed"),
       );
       return;
     }
     const { path } = await res.json();
     send(path + " ");
     focusTerminal();
-    flashStatus("已插入路径");
+    flashStatus(tr("term.pathInserted"));
   } catch {
-    flashStatus("上传失败");
+    flashStatus(tr("term.uploadFailed"));
   } finally {
     uploading = false;
   }
@@ -555,14 +558,14 @@ pasteBtn.addEventListener("click", async () => {
           return pasteText(await (await item.getType("text/plain")).text());
         }
       }
-      flashStatus("剪贴板是空的");
+      flashStatus(tr("term.clipboardEmpty"));
     } else if (navigator.clipboard && navigator.clipboard.readText) {
       await pasteText(await navigator.clipboard.readText());
     } else {
-      flashStatus("此浏览器不支持粘贴");
+      flashStatus(tr("term.pasteUnsupported"));
     }
   } catch {
-    flashStatus("粘贴被拒绝或失败");
+    flashStatus(tr("term.pasteDenied"));
   }
 });
 
@@ -706,7 +709,7 @@ function extractLinks(text) {
 function showCopyOverlay() {
   const text = visibleScreenText();
   if (!text) {
-    flashStatus("屏幕是空的");
+    flashStatus(tr("term.screenEmpty"));
     return;
   }
 
@@ -717,7 +720,7 @@ function showCopyOverlay() {
 
   const hint = document.createElement("div");
   hint.className = "copy-hint";
-  hint.textContent = "选中文字复制 · 点链接直接复制 · 点空白处关闭";
+  hint.textContent = tr("term.copyHint");
   box.append(hint);
 
   const links = extractLinks(text);
@@ -732,13 +735,13 @@ function showCopyOverlay() {
         navigator.clipboard?.writeText(url).then(
           () => {
             row.classList.add("copied");
-            row.textContent = "已复制 ✓";
+            row.textContent = tr("term.copiedTick");
             setTimeout(() => {
               row.classList.remove("copied");
               row.textContent = url;
             }, 1200);
           },
-          () => (row.textContent = "复制失败（需 HTTPS）"),
+          () => (row.textContent = tr("term.copyFailedHttps")),
         );
       });
       sec.append(row);
@@ -1046,7 +1049,9 @@ function stepFont(delta) {
   localStorage.setItem(FONT_KEY, String(next));
   resizeAndNotify();
   flashStatus(
-    term.cols < MIN_COLUMNS ? `字号 ${next}px · ${term.cols} 列，可能换行` : `字号 ${next}px`,
+    term.cols < MIN_COLUMNS
+      ? tr("term.fontSizeWrap", { px: next, cols: term.cols })
+      : tr("term.fontSize", { px: next }),
   );
 }
 
