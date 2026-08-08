@@ -62,6 +62,41 @@ const NOTIFY_EVENTS = ["Stop", "SessionEnd", "Notification"];
  * registered in settings.json in a single write, backing the file up first and
  * refusing to add a duplicate, so running it twice is harmless.
  */
+/**
+ * Copies the opencode and pi extensions into place.
+ *
+ * Best-effort: an agent that is not installed has no directory to copy into,
+ * and that is not a failure of `tmux-next hook` — most people run one agent.
+ */
+async function installAgentExtensions(): Promise<void> {
+  const targets = [
+    {
+      name: "pi",
+      src: new URL("../extensions/pi/tmux-next.ts", import.meta.url).pathname,
+      dir: join(homedir(), ".pi", "agent", "extensions"),
+      note: "pi 会自动发现这个目录，无需额外配置",
+    },
+    {
+      name: "opencode",
+      src: new URL("../extensions/opencode/tmux-next.ts", import.meta.url).pathname,
+      dir: join(homedir(), ".config", "opencode", "extensions"),
+      note: "还需把该路径加入 opencode.json 的 plugin 数组",
+    },
+  ];
+
+  for (const t of targets) {
+    try {
+      await mkdir(t.dir, { recursive: true });
+      const dest = join(t.dir, "tmux-next.ts");
+      await copyFile(t.src, dest);
+      console.log(`installed ${t.name} extension → ${dest}`);
+      console.log(`  ${t.note}`);
+    } catch {
+      // Agent not installed here; nothing to do.
+    }
+  }
+}
+
 export async function installHook(): Promise<void> {
   const claudeDir = join(homedir(), ".claude");
   const hooksDir = join(claudeDir, "hooks");
@@ -77,6 +112,13 @@ export async function installHook(): Promise<void> {
     await chmod(dest, 0o755);
     console.log(`installed hook script → ${dest}`);
   }
+
+  // The other two agents load extensions from their own directories rather
+  // than through a settings file. Copying is enough for pi (it discovers
+  // ~/.pi/agent/extensions automatically); opencode additionally needs the
+  // path listed in its config, which is left to the user because that file is
+  // hand-maintained and holds their provider credentials.
+  await installAgentExtensions();
 
   const settingsPath = join(claudeDir, "settings.json");
   let settings: Settings = {};
