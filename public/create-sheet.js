@@ -1,4 +1,5 @@
 import { filterEntries, splitPath } from "./dir-filter.js";
+import { tr } from "./i18n-apply.js";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -10,28 +11,28 @@ function el(tag, className, text) {
 /** Same wording as the session list, kept local so the sheet stands alone. */
 function relativeTime(epochSeconds) {
   const secs = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds));
-  if (secs < 60) return "刚刚";
-  if (secs < 3600) return `${Math.floor(secs / 60)} 分钟前`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)} 小时前`;
-  return `${Math.floor(secs / 86400)} 天前`;
+  if (secs < 60) return tr("list.justNow");
+  if (secs < 3600) return tr("list.minutesAgo", { n: Math.floor(secs / 60) });
+  if (secs < 86400) return tr("list.hoursAgo", { n: Math.floor(secs / 3600) });
+  return tr("list.daysAgo", { n: Math.floor(secs / 86400) });
 }
 
 const MKDIR_ERRORS = {
-  empty: "名字不能为空",
-  invalid: "名字里不能有 / 或 \\",
-  hidden: "以 . 开头的目录不会显示在列表里",
-  toolong: "名字太长了",
-  exists: "这个目录已经存在",
-  badparent: "上级目录不见了",
-  failed: "创建失败，可能没有权限",
+  empty: () => tr("mkdir.empty"),
+  invalid: () => tr("mkdir.invalid"),
+  hidden: () => tr("mkdir.hidden"),
+  toolong: () => tr("mkdir.toolong"),
+  exists: () => tr("mkdir.exists"),
+  badparent: () => tr("mkdir.badparent"),
+  failed: () => tr("mkdir.failed"),
 };
 
 const ERRORS = {
-  baddir: "这个目录用不了",
-  empty: "名字不能只有空格",
-  reserved: "这个名字是内部保留的",
-  invalid: "名字里不能有 . 或 :",
-  failed: "创建失败，请重试",
+  baddir: () => tr("create.baddir"),
+  empty: () => tr("create.empty"),
+  reserved: () => tr("create.reserved"),
+  invalid: () => tr("create.invalid"),
+  failed: () => tr("create.failed"),
 };
 
 /**
@@ -54,19 +55,19 @@ export function openCreateSheet() {
 
   // --- screen 1: new session -------------------------------------------------
   const step1 = el("div", "sheet-step");
-  step1.append(el("h2", null, "新建会话"));
+  step1.append(el("h2", null, tr("new.title")));
 
   const favourites = el("div", "chips");
   const crumb = el("div", "crumb");
   const filter = el("input", "field");
-  filter.placeholder = "筛选目录";
+  filter.placeholder = tr("new.filterDirs");
   filter.autocapitalize = "none";
   filter.autocomplete = "off";
 
   const list = el("div", "dir-list");
 
   const nameField = el("input", "field");
-  nameField.placeholder = "会话名（选填，如 PROJ-1088）";
+  nameField.placeholder = tr("new.namePlaceholder");
   nameField.autocapitalize = "none";
   nameField.autocomplete = "off";
 
@@ -92,7 +93,7 @@ export function openCreateSheet() {
       if (a.available === false) {
         btn.classList.add("missing");
         btn.disabled = true;
-        btn.title = `${a.label} 不在 PATH 上，无法启动`;
+        btn.title = tr("new.agentMissing", { label: a.label });
       }
       btn.addEventListener("click", () => {
         chosenAgent = a.id;
@@ -110,11 +111,11 @@ export function openCreateSheet() {
   const skipRow = el("label", "check");
   const skipBox = document.createElement("input");
   skipBox.type = "checkbox";
-  skipRow.append(skipBox, el("span", null, "跳过权限确认"));
-  skipRow.append(el("b", "check-warn", "Claude 将无需确认直接执行"));
+  skipRow.append(skipBox, el("span", null, tr("new.skipPermissions")));
+  skipRow.append(el("b", "check-warn", tr("new.skipWarn")));
 
   // Shown only when the chosen directory has past conversations; opens screen 2.
-  const resumeEntry = el("button", "resume-entry", "从历史恢复对话 →");
+  const resumeEntry = el("button", "resume-entry", tr("new.resumeEntry"));
   resumeEntry.style.display = "none";
 
   step1.append(favourites, crumb, filter, list, nameField, agentRow, skipRow, resumeEntry);
@@ -122,15 +123,15 @@ export function openCreateSheet() {
   // --- screen 2: pick a past conversation ------------------------------------
   const step2 = el("div", "sheet-step");
   step2.style.display = "none";
-  const back = el("button", "sheet-back", "‹ 选一段历史对话");
+  const back = el("button", "sheet-back", tr("new.backToHistory"));
   const historyBox = el("div", "history");
   step2.append(back, historyBox);
 
   // --- shared footer ---------------------------------------------------------
   const error = el("p", "sheet-error");
   const actions = el("div", "sheet-actions");
-  const cancel = el("button", "btn", "取消");
-  const submit = el("button", "btn primary", "创建");
+  const cancel = el("button", "btn", tr("new.cancel"));
+  const submit = el("button", "btn primary", tr("new.create"));
   actions.append(cancel, submit);
 
   sheet.append(step1, step2, error, actions);
@@ -189,12 +190,12 @@ export function openCreateSheet() {
         body: JSON.stringify({ parent: current, name }),
       });
     } catch {
-      error.textContent = "无法连接到服务";
+      error.textContent = tr("new.offline");
       return;
     }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      error.textContent = MKDIR_ERRORS[body.error] ?? "创建目录失败";
+      error.textContent = (MKDIR_ERRORS[body.error]?.() ) ?? tr("new.mkdirFailed");
       return;
     }
     const { path } = await res.json();
@@ -208,12 +209,12 @@ export function openCreateSheet() {
       const typed = offerableName(filter.value);
       if (typed) {
         const make = el("button", "dir-make");
-        make.append(el("span", "dir-make-plus", "＋"), el("span", null, `在这里创建 ${typed}/`));
+        make.append(el("span", "dir-make-plus", "＋"), el("span", null, tr("new.makeHere", { name: typed })));
         make.addEventListener("click", () => createDir(typed));
         list.replaceChildren(make);
         return;
       }
-      list.replaceChildren(el("p", "dir-empty", entries.length ? "没有匹配的目录" : "没有子目录"));
+      list.replaceChildren(el("p", "dir-empty", tr(entries.length ? "new.noMatch" : "new.noSubdirs")));
       return;
     }
     list.replaceChildren(
@@ -228,7 +229,7 @@ export function openCreateSheet() {
   function drawCrumb(parent) {
     crumb.replaceChildren();
     if (parent) {
-      const up = el("button", "up", "↑ 上级");
+      const up = el("button", "up", tr("new.parentDir"));
       up.addEventListener("click", () => browse(parent));
       crumb.append(up);
     }
@@ -247,11 +248,11 @@ export function openCreateSheet() {
     try {
       res = await fetch(`api/dirs?path=${encodeURIComponent(path)}`);
     } catch {
-      error.textContent = "无法连接到服务";
+      error.textContent = tr("new.offline");
       return;
     }
     if (!res.ok) {
-      error.textContent = "这个目录不让访问";
+      error.textContent = tr("new.dirForbidden");
       return;
     }
     const body = await res.json();
@@ -283,7 +284,7 @@ export function openCreateSheet() {
     // A later browse() may have moved on while this was in flight.
     if (dir !== current || !conversations || !conversations.length) return;
     history = conversations;
-    resumeEntry.textContent = `从历史恢复对话 (${history.length}) →`;
+    resumeEntry.textContent = tr("new.resumeEntryCount", { n: history.length });
     resumeEntry.style.display = "";
   }
 
@@ -312,7 +313,7 @@ export function openCreateSheet() {
     busy = true;
     const label = trigger.textContent;
     trigger.disabled = true;
-    trigger.textContent = resume ? "恢复中…" : "创建中…";
+    trigger.textContent = tr(resume ? "new.resuming" : "new.creating");
     error.textContent = "";
 
     const name = nameField.value.trim();
@@ -331,7 +332,7 @@ export function openCreateSheet() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        error.textContent = ERRORS[body.error] ?? "创建失败";
+        error.textContent = (ERRORS[body.error]?.()) ?? tr("new.createFailed");
         busy = false;
         trigger.disabled = false;
         trigger.textContent = label;
@@ -340,7 +341,7 @@ export function openCreateSheet() {
       const body = await res.json();
       location.href = `terminal.html?target=${encodeURIComponent(body.name)}`;
     } catch {
-      error.textContent = "无法连接到服务";
+      error.textContent = tr("new.offline");
       busy = false;
       trigger.disabled = false;
       trigger.textContent = label;
@@ -379,7 +380,7 @@ export function openCreateSheet() {
       home = body.home;
       dirs = body.recent;
     } catch {
-      error.textContent = "无法连接到服务";
+      error.textContent = tr("new.offline");
       return;
     }
 
