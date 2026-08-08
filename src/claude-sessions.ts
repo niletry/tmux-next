@@ -21,6 +21,12 @@ export type SessionRecord = {
   id: string;
   session: string;
   cwd?: string;
+  /**
+   * Which agent wrote this record. Absent on every record written before
+   * multi-agent support, which is why readers must treat undefined as
+   * Claude Code rather than as an error.
+   */
+  agent?: string;
   mtime: number;
   file: string;
 };
@@ -55,13 +61,19 @@ export async function readSessionRecords(): Promise<SessionRecord[]> {
     if (!name.endsWith(".json")) continue;
     const file = join(sessionsDir(), name);
     try {
-      const data = (await Bun.file(file).json()) as { id?: unknown; session?: unknown; cwd?: unknown };
+      const data = (await Bun.file(file).json()) as {
+        id?: unknown;
+        session?: unknown;
+        cwd?: unknown;
+        agent?: unknown;
+      };
       if (!ok(data.id) || !ok(data.session)) continue;
       const { mtimeMs } = await stat(file);
       out.push({
         id: data.id,
         session: data.session,
         ...(ok(data.cwd) ? { cwd: data.cwd } : {}),
+        ...(ok(data.agent) ? { agent: data.agent } : {}),
         mtime: mtimeMs,
         file,
       });

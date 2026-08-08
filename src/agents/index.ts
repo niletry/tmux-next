@@ -15,17 +15,38 @@
  * is ever interpolated into one, because these strings reach `sh -c`. An agent
  * is selected by looking up this table by id; the id itself never appears in a
  * command. Resume ids are the single caller-supplied value that reaches a
- * command string, and they are admitted only after matching RESUME_ID.
+ * command string, and they are admitted only after matching the id pattern
+ * declared for that agent below.
  */
 
 /** Id-safe characters only — uuids and the like, nothing shell-shaped. */
-const RESUME_ID = /^[A-Za-z0-9-]{1,64}$/;
+import { readPiTask } from "./pi";
+import { readOpencodeTask } from "./opencode";
+import { readLastPrompt, transcriptPath } from "../claude-activity";
+
+/**
+ * Per-agent session id shapes.
+ *
+ * Not one shared pattern: real ids differ. Claude Code and pi write uuids
+ * (`0edc8e4f-f7fe-…`), while opencode writes `ses_05d709e3cffehI0t7IvoOR0zjb` —
+ * underscore and mixed case. A single uuid-only rule silently refused every
+ * opencode resume, which is how this was found.
+ *
+ * Each stays anchored and limited to characters inert in a shell. Widening one
+ * is a security decision, not a formatting one: the id is the only
+ * caller-supplied value that ever reaches a command string.
+ */
+const UUID_ID = /^[A-Za-z0-9-]{1,64}$/;
+const OPENCODE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 export type LaunchOptions = { skipPermissions: boolean };
 
 export type Agent = {
   id: string;
   label: string;
+
+  /** The latest thing this conversation was asked to do, if reachable. */
+  readTask?: (cwd: string, id: string) => Promise<string | null>;
 
   /**
    * Whether this agent has a "run without asking" mode.
@@ -63,12 +84,13 @@ const claude: Agent = {
   id: "claude",
   label: "Claude Code",
   supportsSkipPermissions: true,
+  readTask: (cwd, id) => readLastPrompt(transcriptPath(cwd, id)),
   launch: ({ skipPermissions }) =>
     skipPermissions
       ? 'exec "$SHELL" -lc "claude --dangerously-skip-permissions"'
       : 'exec "$SHELL" -lc claude',
   resume: (id, { skipPermissions }) => {
-    if (!RESUME_ID.test(id)) return null;
+    if (!UUID_ID.test(id)) return null;
     const flags = skipPermissions ? " --dangerously-skip-permissions" : "";
     return `exec "$SHELL" -lc "claude --resume ${id}${flags}"`;
   },
@@ -90,9 +112,10 @@ const opencode: Agent = {
   id: "opencode",
   label: "opencode",
   supportsSkipPermissions: false,
+  readTask: (cwd, id) => readOpencodeTask(cwd, id),
   launch: () => 'exec "$SHELL" -lc opencode',
   resume: (id, _opts) => {
-    if (!RESUME_ID.test(id)) return null;
+    if (!OPENCODE_ID.test(id)) return null;
     return `exec "$SHELL" -lc "opencode --session ${id}"`;
   },
   screen: {
@@ -105,9 +128,10 @@ const pi: Agent = {
   id: "pi",
   label: "pi",
   supportsSkipPermissions: false,
+  readTask: (cwd, id) => readPiTask(cwd, id),
   launch: () => 'exec "$SHELL" -lc pi',
   resume: (id, _opts) => {
-    if (!RESUME_ID.test(id)) return null;
+    if (!UUID_ID.test(id)) return null;
     return `exec "$SHELL" -lc "pi --session ${id}"`;
   },
   screen: {
