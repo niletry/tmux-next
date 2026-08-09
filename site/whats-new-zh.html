@@ -1,0 +1,287 @@
+<title>tmux-next 0.11 更新了什么</title>
+<meta name="description" content="tmux-next 0.9 到 0.11：三种编码 agent、配色主题、英文界面、常驻顶栏——以及每个决定背后的取舍。">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<style>
+  :root {
+    --paper: #edeff3;
+    --paper-2: #e3e6ec;
+    --ink: #12151b;
+    --muted: #666e7d;
+    --line: #d2d7e0;
+    --accent: #2f5fe0;
+    --accent-soft: #dfe6fb;
+    --term-bg: #14161a;
+    --term-fg: #e6e8ec;
+    --term-dim: #8b919c;
+    --danger: #c0392b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+      --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+    --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+  }
+  :root[data-theme="light"] {
+    --paper: #edeff3; --paper-2: #e3e6ec; --ink: #12151b; --muted: #666e7d;
+    --line: #d2d7e0; --accent: #2f5fe0; --accent-soft: #dfe6fb; --danger: #c0392b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.7 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 1.5rem 5rem; }
+
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 3rem;
+  }
+
+  .top a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+  .top a:hover { color: var(--accent); }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(1.7rem, 5vw, 2.6rem);
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+    margin: 0 0 0.8rem;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    letter-spacing: -0.02em;
+    margin: 3rem 0 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  h2 .n {
+    color: var(--accent);
+    margin-right: 0.5rem;
+  }
+
+  .lede { font-size: 1.12rem; color: var(--muted); margin: 0 0 1rem; }
+
+  p { margin: 0 0 1rem; }
+
+  strong { font-weight: 600; }
+
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--accent-soft);
+    padding: 0.1em 0.36em;
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    font: 13px/1.65 var(--mono);
+    color: var(--term-fg);
+    background: var(--term-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 0 0 1.2rem;
+  }
+
+  pre .c { color: var(--term-dim); }
+  pre .k { color: #7aa2f7; }
+  pre .s { color: #9ece6a; }
+
+  .box {
+    border-left: 3px solid var(--accent);
+    background: var(--paper-2);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 0 0 1.2rem;
+    font-size: 0.96rem;
+  }
+
+  .box.warn { border-left-color: var(--danger); }
+  .box strong { color: var(--ink); }
+  .box p:last-child { margin: 0; }
+
+  ul { margin: 0 0 1rem; padding-left: 1.3rem; }
+  li { margin-bottom: 0.4rem; }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.87rem;
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <a href="/zh">← tmux-next</a>
+    <span><a href="/whats-new">EN</a> · <a href="/whats-new-zh" style="color:var(--ink);font-weight:600">中文</a></span>
+  </div>
+
+  <h1>0.11 更新了什么</h1>
+
+  <p class="lede">
+    从 0.8 到现在四个版本，这东西的定位变了：它不再是一个「碰巧跑在 tmux 上的 Claude&nbsp;Code
+    查看器」。下面是这几版做了什么，以及那些不那么显然的决定为什么是这样。
+  </p>
+
+  <h2>现在能跑三种 agent</h2>
+
+  <p>
+    终端那条路本来就和里面跑什么无关。<code>capture-pane</code> 和 <code>send-keys</code>
+    不关心谁在里面；真正与 agent 绑定的只有四件事：怎么启动、怎么恢复、transcript 在哪、
+    界面在屏幕上长什么样。这四件事收进了 <code>src/agents/</code>，
+    <a href="https://opencode.ai">opencode</a> 和
+    <a href="https://github.com/earendil-works/pi">pi</a> 就此和 Claude Code 平起平坐——新建、
+    恢复、任务行、锁屏通知，三家都能用。
+  </p>
+
+  <p>
+    选择器只在装了不止一种时才出现，所以只有 Claude Code 的机器，界面和以前完全一样。
+  </p>
+
+  <div class="box">
+    <p class="c" style="margin-top:0"><b>不那么显然的地方</b></p>
+    <p class="c" style="margin-bottom:0">
+      检测 agent 是否可用，走的是 login shell——和启动时解析命令的方式一致——而不是查服务自己的
+      <code>PATH</code>。这比听上去要紧：<code>tmux new-session</code> 对一条根本不存在的命令
+      照样会建出会话，所以没有这层检测，你会得到一个刚出现就消失的会话，而且什么提示都没有。
+      这不是假想：第一次把 pi 装到 login shell 看不见的地方时，就是这个现象。
+    </p>
+  </div>
+
+  <h2>配色主题</h2>
+
+  <p>
+    四套预设——Tokyo Night、Catppuccin Mocha、One Dark、Nord——从齿轮里切换，不用刷新。
+    在此之前终端一直用的是 xterm.js 自带的默认值，也就是 Tango 调色板：它是为中灰底的终端设计的，
+    配上这个应用近乎全黑的背景就发闷。
+  </p>
+
+  <p>
+    每套配色都由测试按 WCAG 对比度下限校验。其中两条结果值得单独说，而且都不是我事先以为的：
+  </p>
+
+  <p class="s">
+    <b>四套里没有一套的 <code>brightBlack</code> 是能用的。</b>相对各自背景，它们落在
+    1.7:1 到 2.5:1 之间——而那正是 Claude Code 用来画次要信息的颜色：状态行、<code>⎿</code>
+    前缀、时间戳。手机拿到户外根本看不清。各自换成了同一官方色板里更亮的一档，色调不动，
+    只动亮度。
+  </p>
+
+  <p class="s">
+    <b>标准只能定 AA，不能定 AAA。</b>我一开始定的是 AAA，测试当场就红了：One&nbsp;Dark
+    的正文只有 6.6:1，Nord 有两个颜色低于 4.5:1。当四套成熟配色都过不了某条线时，
+    是那条线错了，不是配色错了。
+  </p>
+
+  <h2>英文界面</h2>
+
+  <p>
+    界面是中文，而 README 和 npm 页面是英文——意味着从 npm 找过来的人，打开就是一屏看不懂的字。
+    现在两种语言都有。从没选过的机器上，第一次请求会按浏览器的 <code>Accept-Language</code>
+    猜一次并存下来，所以默认就是对的，不用先去翻设置。
+  </p>
+
+  <p>
+    锁屏通知跟随同一个设置——推送是唯一会脱离界面出现的文本，界面英文而锁屏中文最突兀。
+    agent 自己发来的消息则原样透传、不翻译：它比任何预设文案都具体，而且已经是 agent
+    选择的语言。
+  </p>
+
+  <div class="box">
+    <p class="c" style="margin-top:0"><b>让这件事没翻车的那条检查</b></p>
+    <p class="c" style="margin-bottom:0">
+      大约 200 处文案要挪进字典，而它们所在的文件不做类型检查——所以键名打错不会有任何报错，
+      界面上只是一片空白。有一条测试扫描所有调用点、比对两本字典，缺键、多余的键、
+      以及只在一种语言里有的键，都会让它失败。最后这条才是最值钱的：英文字典少一个键，
+      对一个读中文的作者是完全隐形的。第一次跑就抓到了三个真错误。
+    </p>
+  </div>
+
+  <h2>在页面之间走动</h2>
+
+  <p>
+    会话列表、制品、通知本是平级的三页，但标记结构把列表当成了枢纽：图标全在列表页，
+    另两页只有一个返回链接。从制品去通知得先绕回列表，屏幕上也没有任何东西告诉你在哪一页。
+    现在每页顶栏都一样——左边是切换用的分段控件，右边是操作，当前页的计数就在它自己那一段里。
+  </p>
+
+  <p>
+    新建会话则从弹层改成了独立页面。底部弹层是向上生长的，目录一多就会把自己的顶部顶出屏幕；
+    原先目录列表被限制在视口的 34%，手机上大概就是五六个目录——而这一屏的全部意义就是浏览目录。
+    它还有三个输入框，而弹层正是 iOS 软键盘最容易出问题的地方。
+  </p>
+
+  <p>
+    真正的收益是目录进了 URL。后退键沿着你钻下去的路径一层层退回，而不是把它整个丢掉；
+    <code>new.html?dir=/some/project</code> 也能当链接存下来。设置则保留了弹层：
+    它的内容是有界的——两种语言、四套配色——而且没有输入框。
+  </p>
+
+  <h2>两个值得点名的 bug</h2>
+
+  <p class="s">
+    <b>hook 在悄悄把自己关掉。</b>两个 shell hook 开头都要问 tmux：当前 pane 属于哪个会话。
+    但一个 pane 属于<em>所有</em> grouped 到它那个 window 上的会话，而这个查询必须把集合坍缩成
+    一个答案——它返回最近创建的那个，也就是只要你正在网页上看着，就一定是 tmux-next 自己的挂载点。
+    于是一个本意为「这是我们自己的挂载点，跳过」的守卫，实际语义变成了「用户正在看这个会话，
+    所以什么都别做」：不写绑定记录、不发推送，而且哪里都不报错。一次 tmux server 挂掉时，
+    它让三个会话找不回来。修法是换一个不坍缩的问法——列出全部归属，再自己筛。
+  </p>
+
+  <p class="s">
+    <b>发出去过一个渲染不出来的页面。</b>某个模块调用翻译函数 25 次却没有 import 它。
+    这是合法的 JavaScript——只在那一行真正执行时才失败——所以打包器很满意、整套测试全绿，
+    而页面一打开就死。现在有一条测试专门查这个；另外还有一条会把页面挂进 DOM 真的渲染出来、
+    再对结果断言。<b>证明一个文件能解析，不等于证明它能画出东西。</b>
+  </p>
+
+  <h2>怎么装</h2>
+
+  <p>
+    <code class="k">bunx tmux-next@latest</code>
+  </p>
+
+  <p class="s">
+    如果你之前装过 Claude 的 hook，升级后请重跑一次 <code>bunx tmux-next hook</code>。
+    那些脚本是<em>复制</em>进 <code>~/.claude/hooks/</code> 的，npm 没法就地更新它们——
+    而过期的 hook 会静默失效，正是上面描述的那种故障。现在服务启动时会比对一次，
+    发现已装副本与自带的不一致就打一行提示。
+  </p>
+
+  <div class="foot">
+    <a href="https://github.com/niletry/tmux-next">GitHub</a> ·
+    <a href="https://www.npmjs.com/package/tmux-next">npm</a> ·
+    <a href="/zh">首页</a>
+  </div>
+
+</div>

@@ -1,0 +1,308 @@
+<title>What's new in tmux-next 0.11</title>
+<meta name="description" content="tmux-next 0.9 to 0.11: three coding agents, colour themes, an English interface, and a header that stays put — with the reasoning behind each.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<style>
+  :root {
+    --paper: #edeff3;
+    --paper-2: #e3e6ec;
+    --ink: #12151b;
+    --muted: #666e7d;
+    --line: #d2d7e0;
+    --accent: #2f5fe0;
+    --accent-soft: #dfe6fb;
+    --term-bg: #14161a;
+    --term-fg: #e6e8ec;
+    --term-dim: #8b919c;
+    --danger: #c0392b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+      --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+    --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+  }
+  :root[data-theme="light"] {
+    --paper: #edeff3; --paper-2: #e3e6ec; --ink: #12151b; --muted: #666e7d;
+    --line: #d2d7e0; --accent: #2f5fe0; --accent-soft: #dfe6fb; --danger: #c0392b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.7 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 1.5rem 5rem; }
+
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 3rem;
+  }
+
+  .top a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+  .top a:hover { color: var(--accent); }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(1.7rem, 5vw, 2.6rem);
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+    margin: 0 0 0.8rem;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    letter-spacing: -0.02em;
+    margin: 3rem 0 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  h2 .n {
+    color: var(--accent);
+    margin-right: 0.5rem;
+  }
+
+  .lede { font-size: 1.12rem; color: var(--muted); margin: 0 0 1rem; }
+
+  p { margin: 0 0 1rem; }
+
+  strong { font-weight: 600; }
+
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--accent-soft);
+    padding: 0.1em 0.36em;
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    font: 13px/1.65 var(--mono);
+    color: var(--term-fg);
+    background: var(--term-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 0 0 1.2rem;
+  }
+
+  pre .c { color: var(--term-dim); }
+  pre .k { color: #7aa2f7; }
+  pre .s { color: #9ece6a; }
+
+  .box {
+    border-left: 3px solid var(--accent);
+    background: var(--paper-2);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 0 0 1.2rem;
+    font-size: 0.96rem;
+  }
+
+  .box.warn { border-left-color: var(--danger); }
+  .box strong { color: var(--ink); }
+  .box p:last-child { margin: 0; }
+
+  ul { margin: 0 0 1rem; padding-left: 1.3rem; }
+  li { margin-bottom: 0.4rem; }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.87rem;
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <a href="/">← tmux-next</a>
+    <span><a href="/whats-new" style="color:var(--ink);font-weight:600">EN</a> · <a href="/whats-new-zh">中文</a></span>
+  </div>
+
+  <h1>What's new in 0.11</h1>
+
+  <p class="lede">
+    Four releases since 0.8, and the shape of the thing changed: it is no longer a
+    Claude&nbsp;Code viewer that happens to run tmux. Below is what landed, and — where the
+    decision was not obvious — why it went that way.
+  </p>
+
+  <h2>It runs three agents now</h2>
+
+  <p>
+    Nothing in the terminal path was ever specific to Claude Code. <code>capture-pane</code> and
+    <code>send-keys</code> do not care what is running inside; only four things did: how to start
+    an agent, how to resume one, where its transcript lives, and what its interface looks like on
+    screen. Those four moved into <code>src/agents/</code>, and
+    <a href="https://opencode.ai">opencode</a> and
+    <a href="https://github.com/earendil-works/pi">pi</a> joined Claude Code as equals — starting,
+    resuming, the task line, and lock-screen notifications all work for each.
+  </p>
+
+  <p>
+    The picker only appears when more than one is installed, so a machine with just Claude Code
+    looks exactly as it did.
+  </p>
+
+  <div class="box">
+    <p class="c" style="margin-top:0"><b>The part that was not obvious</b></p>
+    <p class="c" style="margin-bottom:0">
+      Agents are probed through a login shell — the same way a launch resolves the command — rather
+      than by checking the server's own <code>PATH</code>. This matters more than it sounds:
+      <code>tmux new-session</code> will happily create a session for a command that does not exist,
+      so without the check you get a session that vanishes the instant it appears and nothing is
+      reported. That is not hypothetical; it is what happened the first time pi was installed
+      somewhere the login shell could not see.
+    </p>
+  </div>
+
+  <h2>Colour themes</h2>
+
+  <p>
+    Four presets — Tokyo Night, Catppuccin Mocha, One Dark and Nord — switched from the gear icon,
+    applied without a reload. Until now the terminal used whatever xterm.js ships by default, which
+    is the Tango palette: designed for a mid-grey terminal, and washed out on this app's near-black
+    background.
+  </p>
+
+  <p>
+    Every palette is checked against WCAG contrast floors by the test suite. Two results from that
+    were worth acting on, and neither was what I expected going in:
+  </p>
+
+  <p class="s">
+    <b>None of the four ships a usable <code>brightBlack</code>.</b> Measured against their own
+    backgrounds they land between 1.7:1 and 2.5:1 — and that is the colour Claude Code draws its
+    secondary text in: the status line, the <code>⎿</code> prefixes, timestamps. Unreadable on a
+    phone outdoors. Each is replaced by a lighter step from the same upstream palette, so the hue
+    is untouched and only the luminance moves.
+  </p>
+
+  <p class="s">
+    <b>The bar had to be AA, not AAA.</b> I started with AAA and the tests failed immediately:
+    One&nbsp;Dark's foreground is 6.6:1 and two of Nord's colours fall under 4.5:1. When four
+    established palettes cannot clear a bar, the bar is wrong, not the palettes.
+  </p>
+
+  <h2>An English interface</h2>
+
+  <p>
+    The interface was Chinese while the README and the npm page were English, which meant anyone
+    arriving from npm opened a screen they could not read. Both languages now ship. On a machine
+    that has never chosen one, the first request guesses from the browser's
+    <code>Accept-Language</code> and stores that, so the default is right without touching a
+    setting.
+  </p>
+
+  <p>
+    Lock-screen notifications follow the same setting — a push is the one piece of text that
+    appears away from the interface, so an English interface with a Chinese lock screen would be
+    the odd one out. A message the agent itself sent is passed through untranslated: it is more
+    specific than anything canned, and already in the language the agent chose.
+  </p>
+
+  <div class="box">
+    <p class="c" style="margin-top:0"><b>The check that made this survivable</b></p>
+    <p class="c" style="margin-bottom:0">
+      Roughly 200 strings had to move into a dictionary, in files that are not type-checked — so a
+      mistyped key raises nothing and simply renders blank. A test scans every call site against
+      both dictionaries and fails on a missing key, an unused key, or a key present in one language
+      and not the other. That last case is the one worth having: a key missing from English is
+      invisible to an author who reads Chinese. It caught three real mistakes on the first run.
+    </p>
+  </div>
+
+  <h2>Getting around</h2>
+
+  <p>
+    The session list, artifacts and notifications are siblings, but the markup treated the list as
+    a hub: it carried the icons and the other two carried a back link. Going from artifacts to
+    notifications meant passing through the list, and nothing on screen said which page you were
+    on. Every page now carries the same header — a segmented control on the left, the actions on
+    the right, and the count for the page you are on inside its own segment.
+  </p>
+
+  <p>
+    Starting a session became a page of its own rather than a sheet. A bottom sheet grows upward,
+    so a long directory list pushes its own top off the screen; the list had been capped at 34% of
+    the viewport, which on a phone is five or six directories — for the one screen whose whole
+    purpose is browsing directories. It also has three input fields, and a sheet is where the iOS
+    soft keyboard causes the most trouble.
+  </p>
+
+  <p>
+    The real gain is that the directory now lives in the URL. Back walks up the path you came down
+    instead of discarding it, and <code>new.html?dir=/some/project</code> can be kept as a link.
+    Settings stayed a sheet: its contents are bounded — two languages, four palettes — and it has
+    no input fields.
+  </p>
+
+  <h2>Two bugs worth naming</h2>
+
+  <p class="s">
+    <b>The hooks were silently disabling themselves.</b> Both shell hooks began by asking tmux
+    which session the current pane belonged to. But a pane belongs to <em>every</em> session
+    grouped onto its window, and that query has to collapse the set to one answer — it returns the
+    most recently created, which is always tmux-next's own mount point while a browser is watching.
+    So a guard meant to exclude "this is our own attach point" actually meant "the user is looking
+    at this session, so do nothing": no binding record, no push notification, no error anywhere.
+    It cost three sessions when a tmux server went down. The fix asks a question that does not
+    collapse — list every owner, then filter.
+  </p>
+
+  <p class="s">
+    <b>A page shipped that could not render.</b> One module called a translation helper 25 times
+    without importing it. That is valid JavaScript — it fails only when the line runs — so the
+    bundler was happy and every test stayed green while the page died on load. There is a test for
+    that now, and, separately, one that mounts a page in a DOM and asserts on what it drew.
+    Proving a file parses is not proving it renders.
+  </p>
+
+  <h2>Getting it</h2>
+
+  <p>
+    <code class="k">bunx tmux-next@latest</code>
+  </p>
+
+  <p class="s">
+    If you already installed the Claude hooks, re-run <code>bunx tmux-next hook</code> after
+    upgrading. The scripts are <em>copied</em> into <code>~/.claude/hooks/</code>, so npm cannot
+    update them in place — and a stale hook fails silently, which is exactly the failure described
+    above. The server now checks at startup and prints a line if the installed copies differ from
+    the ones it ships.
+  </p>
+
+  <div class="foot">
+    <a href="https://github.com/niletry/tmux-next">GitHub</a> ·
+    <a href="https://www.npmjs.com/package/tmux-next">npm</a> ·
+    <a href="/">Home</a>
+  </div>
+
+</div>
