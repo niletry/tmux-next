@@ -868,13 +868,11 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 
 /* ---- shared header navigation ---- */
 
-/* A segmented control: three sibling pages, each with a word rather than an
-   icon to guess at. It takes the width the page title used to have, which is
-   why the title is gone and the count lives inside the active segment. */
+/* A segmented control of icons. The shared trough is what says these three are
+   alternatives to one another; scattered icons would not. Labels live on
+   title/aria-label so the control stays narrow. */
 .hseg {
   display: flex;
-  flex: 1;
-  min-width: 0;
   gap: 2px;
   padding: 3px;
   border-radius: 10px;
@@ -882,22 +880,18 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 }
 
 .hseg-item {
-  flex: 1;
-  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 6px 4px;
+  width: 36px;
+  height: 30px;
   border-radius: 8px;
   color: var(--dim);
   text-decoration: none;
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
 }
 
-.hseg-item svg { width: 15px; height: 15px; flex: none; }
+.hseg-item svg { width: 17px; height: 17px; flex: none; }
 
 /* The page you are on. A span, so there is nothing to tap. */
 .hseg-item.on {
@@ -907,16 +901,13 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 
 .hseg-item:not(.on):active { color: var(--fg); }
 
-/* Inside the active segment now, so it needs no separate slot in the header. */
+/* Only the active segment carries one, so it widens to fit rather than
+   squeezing the icon. */
+.hseg-item.on:has(.count:not(:empty)) { width: auto; padding: 0 9px 0 8px; }
+
 .hseg-item .count {
   font-size: 12px;
   font-weight: 400;
   color: var(--dim);
-}
-
-/* Narrow phones: the labels go and the icons carry it, rather than letting
-   three words wrap and double the header height. */
-@media (max-width: 380px) {
-  .hseg-label { display: none; }
-  .hseg-item svg { width: 17px; height: 17px; }
+  white-space: nowrap;
 }
