@@ -74,11 +74,16 @@ export function createVoicePanel(deps) {
 
       const insert = el("button", "btn primary", tr("voice.insert"));
       insert.dataset.role = "insert";
-      // No Enter: the text lands at the prompt and the user sends it, the same
-      // contract as an uploaded image path.
       insert.addEventListener("click", () => {
+        // No Enter: the text lands at the prompt and the user sends it, the
+        // same contract as an uploaded image path.
         onInsert(box.value);
-        close();
+        // Back to ready rather than closed. Dictation comes in bursts — say a
+        // sentence, look at what landed, say the next — and closing here would
+        // charge a reopen and a fresh glance for every one of them.
+        text = "";
+        mode = "idle";
+        render();
       });
 
       const actions = el("div", "voice-actions");
