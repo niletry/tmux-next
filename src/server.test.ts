@@ -522,6 +522,43 @@ test("theme endpoint rejects a malformed body", async () => {
   expect(res.status).toBe(400);
 });
 
+// --- voice input ------------------------------------------------------------
+//
+// Only the unconfigured paths are covered here. Posting audio with a key
+// present would hit the real recogniser: it costs money, needs the network, and
+// would put a private credential in CI. The forwarding itself is covered in
+// asr.test.ts against an injected fetch.
+
+function throwawayAsrPath() {
+  return joinPath(tmpdir(), `asr-srv-${Math.random().toString(36).slice(2, 10)}.json`);
+}
+
+test("without a key configured, voice input reports itself off", async () => {
+  process.env.TMUX_NEXT_ASR_PATH = throwawayAsrPath();
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/asr`);
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ enabled: false });
+});
+
+test("posting audio without a key configured is a 404, not a crash", async () => {
+  process.env.TMUX_NEXT_ASR_PATH = throwawayAsrPath();
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/asr`, {
+    method: "POST",
+    headers: { "content-type": "audio/webm" },
+    body: new Uint8Array([1, 2, 3]),
+  });
+  expect(res.status).toBe(404);
+  expect(await res.json()).toEqual({ error: "unconfigured" });
+});
+
+test("a configured key makes the button appear", async () => {
+  const path = throwawayAsrPath();
+  process.env.TMUX_NEXT_ASR_PATH = path;
+  await Bun.write(path, JSON.stringify({ key: "fake-key-0000" }));
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/asr`);
+  expect(await res.json()).toEqual({ enabled: true });
+});
+
 // --- push notifications -----------------------------------------------------
 
 test("isLoopback accepts only local addresses", () => {
