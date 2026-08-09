@@ -52,6 +52,16 @@ if (parsed.kind === "hook") {
   process.exit(0);
 }
 
+if (parsed.kind === "asr") {
+  const { writeAsrConfig, asrPath } = await import("./asr");
+  if (!(await writeAsrConfig(parsed.key))) {
+    console.error("tmux-next: that key is empty");
+    process.exit(2);
+  }
+  console.log(`saved to ${asrPath()}`);
+  process.exit(0);
+}
+
 if (parsed.kind === "error") {
   console.error(`tmux-next: ${parsed.message}`);
   console.error("try --help");

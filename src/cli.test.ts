@@ -70,3 +70,23 @@ test("the running tmux on this machine satisfies the minimum", async () => {
   expect(v).not.toBe(null);
   expect(meetsMinimum(v!, MIN_TMUX)).toBe(true);
 });
+
+// --- the asr subcommand -----------------------------------------------------
+
+test("asr takes a key", () => {
+  expect(parseArgs(["asr", "fake-key-0000"])).toEqual({ kind: "asr", key: "fake-key-0000" });
+});
+
+test("asr without a key is an error, not a silent no-op", () => {
+  expect(parseArgs(["asr"])).toEqual({ kind: "error", message: "asr needs a key" });
+});
+
+// A key that got shell-split would otherwise be stored truncated, and the
+// failure would surface much later as an unexplained "credential" error.
+test("asr refuses extra arguments", () => {
+  expect(parseArgs(["asr", "a", "b"])).toEqual({ kind: "error", message: "asr takes one key" });
+});
+
+test("asr does not swallow a following flag as its key", () => {
+  expect(parseArgs(["asr", "--help"])).toEqual({ kind: "error", message: "asr needs a key" });
+});
