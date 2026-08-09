@@ -4,6 +4,7 @@
 // pages through items directly, without going back to the grid each time.
 
 import { initLang, tr } from "./i18n-apply.js";
+import { renderNav } from "./nav.js";
 
 const listEl = /** @type {HTMLElement} */ (document.getElementById("gallery"));
 const countEl = /** @type {HTMLElement} */ (document.getElementById("count"));
@@ -172,4 +173,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 // Language first: the empty and error states are rendered from it.
-initLang().then(load);
+initLang().then(() => {
+  renderNav(/** @type {HTMLElement} */ (document.getElementById("header")), "gallery");
+  load();
+});
