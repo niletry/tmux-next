@@ -2,6 +2,7 @@
 // on the phone can still be found. Each row links to its session's terminal.
 
 import { initLang, tr } from "./i18n-apply.js";
+import { renderNav } from "./nav.js";
 
 const listEl = document.getElementById("list");
 const countEl = document.getElementById("count");
@@ -53,7 +54,10 @@ async function load() {
 }
 
 // Language first: the empty and error states are rendered from it.
-initLang().then(load);
+initLang().then(() => {
+  renderNav(/** @type {HTMLElement} */ (document.getElementById("header")), "notifications");
+  load();
+});
 
 // Marks this file as a module so its top-level names don't collide with the
 // other page scripts under tsc; it's already loaded as type="module".

@@ -3,11 +3,16 @@ import { initNotifyToggle } from "./push.js";
 import { openThemeSheet } from "./theme-sheet.js";
 import { initTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
+import { renderNav } from "./nav.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
 initTheme();
-initLang().then(render);
+initLang().then(() => {
+  // After the language is known: the nav labels come from the dictionary.
+  renderNav(document.getElementById("header"), "sessions");
+  render();
+});
 
 const listEl = document.getElementById("list");
 const countEl = document.getElementById("count");

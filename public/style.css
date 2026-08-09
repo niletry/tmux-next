@@ -865,3 +865,30 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   color: var(--dim);
 }
 .sheet-sub:first-of-type { margin-top: 4px; }
+
+/* ---- shared header navigation ---- */
+
+/* Pushes itself and everything after it to the right edge; the page title and
+   count keep the left. On the list page the existing action icons follow. */
+.hnav { display: flex; gap: 2px; margin-left: auto; }
+
+.hnav-item {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--dim);
+  text-decoration: none;
+}
+
+.hnav-item svg { width: 18px; height: 18px; }
+.hnav-item:active { opacity: 0.7; }
+
+/* The page you are on. A span rather than a link, so there is nothing to tap. */
+.hnav-item.on { background: var(--accent); color: var(--on-accent); }
+
+/* The list page's own actions sit after the nav, separated so the two groups
+   read as navigation and actions rather than one undifferentiated row. */
+header .hbell:first-of-type { margin-left: 6px; }

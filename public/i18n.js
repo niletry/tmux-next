@@ -18,8 +18,6 @@
 const zh = {
   "list.title": "tmux 会话",
   "list.loading": "加载中…",
-  "list.artifacts": "制品",
-  "list.notifyHistory": "通知历史",
   "list.notifyToggle": "开启/关闭通知",
   "list.settings": "设置",
   "list.newSession": "新建会话",
@@ -114,6 +112,7 @@ const zh = {
   "create.failed": "创建失败，请重试",
 
   "nav.backToSessions": "‹ 会话",
+  "nav.label": "主导航",
   "term.renameTitle": "重命名会话",
   "term.endTitle": "结束会话",
   "term.sendImage": "发送图片",
@@ -162,8 +161,6 @@ const zh = {
 const en = {
   "list.title": "tmux sessions",
   "list.loading": "Loading…",
-  "list.artifacts": "Artifacts",
-  "list.notifyHistory": "Notification history",
   "list.notifyToggle": "Turn notifications on/off",
   "list.settings": "Settings",
   "list.newSession": "New session",
@@ -258,6 +255,7 @@ const en = {
   "create.failed": "Could not create the session, try again",
 
   "nav.backToSessions": "‹ Sessions",
+  "nav.label": "Main navigation",
   "term.renameTitle": "Rename session",
   "term.endTitle": "End session",
   "term.sendImage": "Send an image",
