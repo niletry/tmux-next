@@ -109,7 +109,9 @@ bunx tmux-next asr <key>
 | `src/asr.ts` | 读配置、转发火山、取文本（新） |
 | `src/asr.test.ts` | 缺配置降级、请求构造、错误映射（不打真实接口） |
 | `src/server.ts` | `GET/POST /api/asr` 两个分支 |
-| `src/cli.ts` / 入口 | `asr <key>` 子命令 |
+| `src/cli.ts` | `parseArgs` 认 `asr <key>`，产出新的 `CliResult` 变体 |
+| `src/cli.test.ts` | 参数解析用例（缺 key、多余参数） |
+| `src/index.ts` | 分派该子命令，与既有的 `hook` 同形 |
 | `public/voice-recorder.js` | MediaRecorder 状态机、计时（`// @ts-check` + JSDoc） |
 | `src/voice-recorder.test.ts` | 假 MediaRecorder 驱动状态机 |
 | `public/voice-panel.js` | 面板 DOM |
