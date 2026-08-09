@@ -16,12 +16,25 @@ import { DICTS, LANGS, DEFAULT_LANG, t, pickLang } from "../public/i18n.js";
  */
 
 const dir = new URL("../public/", import.meta.url).pathname;
+const srcDir = new URL("../src/", import.meta.url).pathname;
 
-/** Every key referenced from a browser file, however it is referenced. */
+/**
+ * Every key referenced anywhere, however it is referenced.
+ *
+ * Both trees, not just the browser: push notification text is built on the
+ * server from the same dictionary, and scanning only public/ reported those
+ * keys as dead. A dead-key check that cries wolf gets ignored, which costs more
+ * than not having one.
+ */
 function usedKeys(): Map<string, string[]> {
   const found = new Map<string, string[]>();
-  for (const file of readdirSync(dir).filter((f) => /\.(js|html)$/.test(f))) {
-    const source = readFileSync(dir + file, "utf8");
+  const files = [
+    ...readdirSync(dir).filter((f) => /\.(js|html)$/.test(f)).map((f) => dir + f),
+    ...readdirSync(srcDir).filter((f) => /\.ts$/.test(f) && !f.includes(".test.")).map((f) => srcDir + f),
+  ];
+  for (const path of files) {
+    const file = path.slice(path.lastIndexOf("/") + 1);
+    const source = readFileSync(path, "utf8");
     const patterns = [
       // Both spellings: `t(key, lang)` in the pure module, `tr(key)` in the
       // browser wrapper that already knows the active language.
@@ -32,6 +45,8 @@ function usedKeys(): Map<string, string[]> {
       // worse than not checking, because a noisy check gets ignored.
       /\btr?\([^)]*\?[^)]*"([A-Za-z0-9_.]+)"\s*:\s*"([A-Za-z0-9_.]+)"/g,
       /data-i18n(?:-aria|-title|-placeholder)?="([A-Za-z0-9_.]+)"/g,
+      // Server side: t("push.waiting", lang)
+      /\bt\(\s*"([A-Za-z0-9_.]+)"\s*,/g,
     ];
     for (const re of patterns) {
       for (const m of source.matchAll(re)) {

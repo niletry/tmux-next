@@ -17,7 +17,9 @@ self.addEventListener("push", (event) => {
   } catch {
     // A push with a missing or malformed body still deserves a generic nudge.
   }
-  const title = data.title || "tmux 会话";
+  // The server always sends a title (the session name); this only covers a
+  // malformed payload, so it stays language-neutral rather than guessing.
+  const title = data.title || "tmux-next";
   const session = data.session || "";
   event.waitUntil(
     self.registration.showNotification(title, {

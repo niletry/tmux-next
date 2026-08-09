@@ -9,6 +9,8 @@ import {
   type Fetch,
 } from "./web-push";
 import { recordNotification } from "./notifications";
+import { t } from "../public/i18n.js";
+import { readLanguage, DEFAULT_LANG } from "./language";
 
 /**
  * Push notifications for Claude events: stores the VAPID identity and the
@@ -131,14 +133,20 @@ export function eventText(
   event: PushEvent,
   session: string,
   message?: string,
+  lang: string = DEFAULT_LANG,
 ): { title: string; body: string } {
+  // The agent's own message wins when it sent one: it is more specific than
+  // anything here, and it is already in whatever language the agent speaks.
   const body =
-    event === "ended"
-      ? "会话已结束"
-      : event === "waiting"
-        ? "聊完了，在等你"
-        : message?.trim() || "需要你确认";
+    event === "attention"
+      ? message?.trim() || t("push.attention", lang)
+      : t(event === "ended" ? "push.ended" : "push.waiting", lang);
   return { title: session, body };
+}
+
+/** The interface language, for text that leaves the browser entirely. */
+async function notifyLang(): Promise<string> {
+  return (await readLanguage()) ?? DEFAULT_LANG;
 }
 
 // --- notify -----------------------------------------------------------------
@@ -159,7 +167,7 @@ export async function notify(
 
   // Log it before delivery, so the history holds what happened even if there is
   // no subscription or the push fails — that is the whole point of the log.
-  const { title, body } = eventText(event, session, opts.message);
+  const { title, body } = eventText(event, session, opts.message, await notifyLang());
   await recordNotification({ ts: Math.floor(nowMs / 1000), event, session, title, body });
 
   const subs = await readSubscriptions();

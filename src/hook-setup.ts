@@ -74,13 +74,13 @@ async function installAgentExtensions(): Promise<void> {
       name: "pi",
       src: new URL("../extensions/pi/tmux-next.ts", import.meta.url).pathname,
       dir: join(homedir(), ".pi", "agent", "extensions"),
-      note: "pi 会自动发现这个目录，无需额外配置",
+      note: "pi discovers this directory on its own — nothing else to configure",
     },
     {
       name: "opencode",
       src: new URL("../extensions/opencode/tmux-next.ts", import.meta.url).pathname,
       dir: join(homedir(), ".config", "opencode", "extensions"),
-      note: "还需把该路径加入 opencode.json 的 plugin 数组",
+      note: "also add this path to the `plugin` array in opencode.json",
     },
   ];
 
