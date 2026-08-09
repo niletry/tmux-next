@@ -933,33 +933,52 @@ header .htitle { font-size: 17px; font-weight: 600; }
 
 /* ---- voice panel ---- */
 
-/* Roughly a soft keyboard's height, in the place it would have taken. */
+/* Shorter than a soft keyboard: the draft is a few lines and the controls sit
+   on one row, so taking the full keyboard's height would just be dead space. */
 .voice-panel {
   flex: 0 0 auto;
-  height: 240px;
+  height: 180px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
   background: var(--card);
 }
 
+/* Record, its cancel, the status, and send — one row. Cancel used to sit on a
+   row of its own, which cost more height than the button it qualifies. */
+.voice-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.voice-row .voice-hint { flex: 1 1 auto; min-width: 0; }
+.voice-row .btn { flex: 0 0 auto; }
+
 .voice-rec {
-  width: 72px;
-  height: 72px;
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
   border: 0;
   border-radius: 50%;
   background: var(--accent);
   color: var(--bg);
-  font-size: 26px;
+  font-size: 20px;
   line-height: 1;
 }
+.voice-rec:disabled { opacity: 0.4; }
 .voice-rec[data-state="recording"] { background: var(--term-red, var(--accent)); }
 .voice-rec:active { opacity: 0.7; }
 
-.voice-hint { color: var(--dim); font-size: 14px; font-variant-numeric: tabular-nums; }
+.voice-hint {
+  color: var(--dim);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .voice-note {
   color: var(--dim);
@@ -982,5 +1001,3 @@ header .htitle { font-size: 17px; font-weight: 600; }
   font-size: 16px; /* under 16px iOS zooms the page on focus */
 }
 
-.voice-actions { display: flex; gap: 10px; align-self: stretch; }
-.voice-actions .btn { flex: 1 1 0; }

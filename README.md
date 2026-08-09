@@ -40,7 +40,7 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 | **Lock-screen push** | Session ended, a turn finished and it's waiting, or Claude needs confirmation — pushed to your phone (Web Push; needs the hook + a subscription) |
 | **Notification history** | Every push is logged, so one swiped away on the phone can still be found |
 | **Colour themes** | Four presets (Tokyo Night, Catppuccin Mocha, One Dark, Nord), switched from the list header, applied without a reload |
-| **Voice input** | Speak instead of typing; the text lands at the prompt for you to edit and send (optional, needs a recognition key) |
+| **Voice input** | Speak instead of typing; takes pile up in an editable draft, then go over as one line plus Enter (optional, needs a recognition key) |
 | **Artifacts** | Anything dropped in `~/.tmux-next/gallery/` shows up in the UI — images and self-contained HTML render in place |
 | **CJK input** | Works around the xterm.js 5.5.0 guard that swallows CJK punctuation |
 
@@ -196,10 +196,12 @@ button never appears.
 
 Tap the microphone in the terminal toolbar and the panel takes the soft
 keyboard's place — there is only room for one of them. One button starts and
-stops; there is no time limit. What comes back lands in an editable box first,
-because recognisers get names and jargon wrong and fixing a line at a tmux
-prompt on a phone is miserable. Inserting types the text **without** Enter, the
-same contract as an uploaded image path: you add your own words and send.
+stops; there is no time limit.
+
+Takes accumulate into an editable draft rather than going to the terminal one at
+a time, because speech arrives in bursts: say a sentence, check what landed, say
+the next, fix a name the recogniser got wrong. Send delivers the whole draft and
+presses Enter, then the panel stays open for the next one.
 
 The audio goes to the server and straight upstream; it is never written to
 disk. The key never leaves the machine — the browser talks only to tmux-next,

@@ -66,22 +66,27 @@ class FakeRecorder {
   }
 }
 
-const track = () => ({ stopped: false, stop(this: { stopped: boolean }) { this.stopped = true; } });
+const track = () => ({
+  stopped: false,
+  stop(this: { stopped: boolean }) {
+    this.stopped = true;
+  },
+});
 
 async function panelWith(over: Record<string, unknown> = {}) {
   mountDom();
   const { createVoicePanel } = await import("../public/voice-panel.js");
   const tracks = [track()];
-  const calls = { transcribed: 0, inserted: [] as string[], closed: 0 };
+  const calls = { transcribed: 0, sent: [] as string[], closed: 0 };
+  const said = ["这是第一句。", "这是第二句。", "这是第三句。"];
   const panel = createVoicePanel({
     getStream: async () => ({ getTracks: () => tracks }),
     makeRecorder: () => new FakeRecorder(),
-    transcribe: async () => {
-      calls.transcribed++;
-      return "把 hook 修好";
+    transcribe: async () => said[calls.transcribed++] ?? "又一句。",
+    onSend: (t: string) => calls.sent.push(t),
+    onClose: () => {
+      calls.closed++;
     },
-    onInsert: (t: string) => calls.inserted.push(t),
-    onClose: () => { calls.closed++; },
     tr: (k: string) => k,
     ...over,
   });
@@ -93,10 +98,21 @@ async function panelWith(over: Record<string, unknown> = {}) {
 const role = (el: HTMLElement, name: string) =>
   el.querySelector(`[data-role="${name}"]`) as HTMLElement | null;
 
-test("an opened panel offers the record button", async () => {
+const draftOf = (el: HTMLElement) =>
+  (el.querySelector("textarea") as HTMLTextAreaElement).value;
+
+/** One full take: start, stop, wait for the transcription to land. */
+async function dictate(el: HTMLElement) {
+  role(el, "record")!.click();
+  role(el, "record")!.click();
+  await flush();
+}
+
+test("an opened panel offers the record button and an empty draft", async () => {
   const { panel } = await panelWith();
   expect(panel.element.dataset.mode).toBe("idle");
   expect(role(panel.element, "record")).not.toBeNull();
+  expect(draftOf(panel.element)).toBe("");
 });
 
 test("the one state button switches to recording, and cancel appears with it", async () => {
@@ -108,73 +124,76 @@ test("the one state button switches to recording, and cancel appears with it", a
   expect(role(panel.element, "cancel")).not.toBeNull();
 });
 
-test("stopping transcribes and shows the text for review", async () => {
+test("a take lands in the draft rather than going straight to the terminal", async () => {
   const { panel, calls } = await panelWith();
-  role(panel.element, "record")!.click();
-  role(panel.element, "record")!.click();
-  await flush();
+  await dictate(panel.element);
   expect(calls.transcribed).toBe(1);
-  expect(panel.element.dataset.mode).toBe("review");
-  const box = panel.element.querySelector("textarea") as HTMLTextAreaElement;
-  expect(box.value).toBe("把 hook 修好");
+  expect(draftOf(panel.element)).toBe("这是第一句。");
+  // Nothing reaches the terminal until the user says so.
+  expect(calls.sent).toEqual([]);
 });
 
-// The whole point of the review box: what gets inserted is what the user
-// approved, not what the recogniser guessed.
-test("inserting sends the edited text, not the recognised text", async () => {
+// The reason the draft exists: dictation comes in bursts, and each burst should
+// add to what is already there instead of replacing it or firing off on its own.
+test("further takes append to the draft", async () => {
+  const { panel } = await panelWith();
+  await dictate(panel.element);
+  await dictate(panel.element);
+  await dictate(panel.element);
+  expect(draftOf(panel.element)).toBe("这是第一句。这是第二句。这是第三句。");
+});
+
+test("edits to the draft survive the next take", async () => {
+  const { panel } = await panelWith();
+  await dictate(panel.element);
+  const box = panel.element.querySelector("textarea") as HTMLTextAreaElement;
+  box.value = "改过的开头。";
+  box.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await dictate(panel.element);
+  expect(draftOf(panel.element)).toBe("改过的开头。这是第二句。");
+});
+
+test("sending delivers the whole draft and then empties it", async () => {
   const { panel, calls } = await panelWith();
-  role(panel.element, "record")!.click();
-  role(panel.element, "record")!.click();
-  await flush();
-  const box = panel.element.querySelector("textarea") as HTMLTextAreaElement;
-  box.value = "把 hook 修好，再跑一遍测试";
-  role(panel.element, "insert")!.click();
-  expect(calls.inserted).toEqual(["把 hook 修好，再跑一遍测试"]);
+  await dictate(panel.element);
+  await dictate(panel.element);
+  role(panel.element, "send")!.click();
+  expect(calls.sent).toEqual(["这是第一句。这是第二句。"]);
+  expect(draftOf(panel.element)).toBe("");
 });
 
-// Dictation comes in bursts: say a sentence, look at what landed, say the next.
-// Closing after one insert would mean reopening and re-granting attention for
-// every sentence.
-test("inserting leaves the panel open and ready for the next sentence", async () => {
+test("sending leaves the panel open and still holding the microphone", async () => {
   const { panel, calls, tracks } = await panelWith();
-  role(panel.element, "record")!.click();
-  role(panel.element, "record")!.click();
-  await flush();
-  role(panel.element, "insert")!.click();
-
-  expect(panel.element.dataset.mode).toBe("idle");
-  expect(role(panel.element, "record")).not.toBeNull();
+  await dictate(panel.element);
+  role(panel.element, "send")!.click();
   expect(panel.element.isConnected).toBe(true);
   expect(calls.closed).toBe(0);
-  // Still holding the microphone, so the next take starts without a new prompt.
   expect(tracks[0]!.stopped).toBe(false);
-
   // And a second round really works, rather than merely looking ready.
-  role(panel.element, "record")!.click();
-  role(panel.element, "record")!.click();
-  await flush();
-  role(panel.element, "insert")!.click();
-  expect(calls.inserted).toHaveLength(2);
+  await dictate(panel.element);
+  role(panel.element, "send")!.click();
+  expect(calls.sent).toHaveLength(2);
 });
 
-// The old take must not linger in the box on the next round.
-test("a second recording starts from an empty review box", async () => {
-  const { panel } = await panelWith();
-  role(panel.element, "record")!.click();
-  role(panel.element, "record")!.click();
-  await flush();
-  (panel.element.querySelector("textarea") as HTMLTextAreaElement).value = "改过的内容";
-  role(panel.element, "insert")!.click();
-  expect(panel.element.querySelector("textarea")).toBeNull();
-});
-
-test("cancelling a recording transcribes nothing and returns to idle", async () => {
+// Sending is what presses Enter, so an accidental tap on an empty draft would
+// fire a bare newline at whatever is running.
+test("sending is unavailable while the draft is empty", async () => {
   const { panel, calls } = await panelWith();
+  const send = role(panel.element, "send") as HTMLButtonElement;
+  expect(send.disabled).toBe(true);
+  send.click();
+  expect(calls.sent).toEqual([]);
+});
+
+test("cancelling a recording transcribes nothing and leaves the draft alone", async () => {
+  const { panel, calls } = await panelWith();
+  await dictate(panel.element);
   role(panel.element, "record")!.click();
   role(panel.element, "cancel")!.click();
   await flush();
-  expect(calls.transcribed).toBe(0);
+  expect(calls.transcribed).toBe(1);
   expect(panel.element.dataset.mode).toBe("idle");
+  expect(draftOf(panel.element)).toBe("这是第一句。");
 });
 
 test("a refused microphone explains itself instead of showing a dead button", async () => {
@@ -183,22 +202,38 @@ test("a refused microphone explains itself instead of showing a dead button", as
       throw new Error("denied");
     },
   });
-  expect(panel.element.dataset.mode).toBe("error");
+  expect(panel.element.dataset.mode).toBe("denied");
   expect(role(panel.element, "record")).toBeNull();
   expect(panel.element.textContent).toContain("voice.denied");
 });
 
-test("a failed transcription says so and offers another take", async () => {
+// A failed take must not take the sentences already collected with it.
+test("a failed transcription says so and keeps the draft", async () => {
+  let fail = false;
   const { panel } = await panelWith({
     transcribe: async () => {
-      throw new Error("502");
+      if (fail) throw new Error("502");
+      return "这是第一句。";
     },
   });
-  role(panel.element, "record")!.click();
-  role(panel.element, "record")!.click();
-  await flush();
-  expect(panel.element.dataset.mode).toBe("error");
-  expect(role(panel.element, "again")).not.toBeNull();
+  await dictate(panel.element);
+  fail = true;
+  await dictate(panel.element);
+  expect(panel.element.textContent).toContain("voice.failed");
+  expect(draftOf(panel.element)).toBe("这是第一句。");
+  expect(role(panel.element, "record")).not.toBeNull();
+});
+
+test("silence says so and keeps the draft", async () => {
+  let silent = false;
+  const { panel } = await panelWith({
+    transcribe: async () => (silent ? "" : "这是第一句。"),
+  });
+  await dictate(panel.element);
+  silent = true;
+  await dictate(panel.element);
+  expect(panel.element.textContent).toContain("voice.empty");
+  expect(draftOf(panel.element)).toBe("这是第一句。");
 });
 
 // iOS shows a system-wide recording indicator for as long as a track is live;
@@ -209,4 +244,21 @@ test("closing releases the microphone and tells the host", async () => {
   expect(tracks[0]!.stopped).toBe(true);
   expect(calls.closed).toBe(1);
   expect(panel.element.isConnected).toBe(false);
+});
+
+// --- joining takes ----------------------------------------------------------
+
+test("takes join without a space in CJK and with one between words", async () => {
+  mountDom();
+  const { joinTakes } = await import("../public/voice-panel.js");
+  // Chinese needs no separator; the recogniser already supplies punctuation.
+  expect(joinTakes("这是第一句。", "这是第二句。")).toBe("这是第一句。这是第二句。");
+  // English would otherwise run together into one unreadable word.
+  expect(joinTakes("fix the hook", "then run the tests")).toBe("fix the hook then run the tests");
+  // A full stop still needs the space after it when words follow.
+  expect(joinTakes("fix the hook.", "then run it")).toBe("fix the hook. then run it");
+  // Crossing scripts, the CJK side decides: no space.
+  expect(joinTakes("这是第一句。", "then run it")).toBe("这是第一句。then run it");
+  expect(joinTakes("", "first")).toBe("first");
+  expect(joinTakes("first", "")).toBe("first");
 });
