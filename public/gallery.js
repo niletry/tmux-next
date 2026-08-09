@@ -7,7 +7,17 @@ import { initLang, tr } from "./i18n-apply.js";
 import { renderNav } from "./nav.js";
 
 const listEl = /** @type {HTMLElement} */ (document.getElementById("gallery"));
-const countEl = /** @type {HTMLElement} */ (document.getElementById("count"));
+/**
+ * Looked up on use, not at module load.
+ *
+ * The element lives inside the active nav segment now, and renderNav creates it
+ * — so a reference taken at the top of the module would be null on any page
+ * whose nav is rendered later.
+ */
+const setCount = (/** @type {string} */ text) => {
+  const el = document.getElementById("count");
+  if (el) el.textContent = text;
+};
 const viewer = /** @type {HTMLElement} */ (document.getElementById("viewer"));
 
 /** @typedef {{ name: string, kind: "image" | "html" | "other" }} Item */
@@ -27,7 +37,7 @@ async function load() {
     return;
   }
 
-  countEl.textContent = items.length ? tr("gallery.count", { n: items.length }) : "";
+  setCount(items.length ? tr("gallery.count", { n: items.length }) : "");
   if (!items.length) {
     listEl.innerHTML =
       `<p class="empty">${tr("gallery.empty")}<br>` +
