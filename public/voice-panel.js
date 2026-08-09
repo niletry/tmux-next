@@ -30,18 +30,18 @@ function clock(ms) {
 }
 
 /**
- * Appends one take to the draft.
+ * Joins two pieces of dictated text.
  *
  * Chinese needs no separator — the recogniser already supplies punctuation, and
  * a space between clauses would be wrong. English run together would produce
  * one unreadable word. So the join is decided by the characters that actually
  * meet: a space only where an ASCII word follows something ASCII.
  */
-export function joinTakes(draft, take) {
-  if (!draft) return take;
-  if (!take) return draft;
-  const needsSpace = /[\x21-\x7e]$/.test(draft) && /^[A-Za-z0-9]/.test(take);
-  return draft + (needsSpace ? " " : "") + take;
+export function joinTakes(left, right) {
+  if (!left) return right;
+  if (!right) return left;
+  const needsSpace = /[\x21-\x7e]$/.test(left) && /^[A-Za-z0-9]/.test(right);
+  return left + (needsSpace ? " " : "") + right;
 }
 
 export function createVoicePanel(deps) {
@@ -57,9 +57,79 @@ export function createVoicePanel(deps) {
   let note = "";
   let ticker = 0;
 
-  function stopTicker() {
-    if (ticker) clearInterval(ticker);
-    ticker = 0;
+  // --- the draft box --------------------------------------------------------
+  //
+  // Built once and never replaced. Re-creating it on each render threw the
+  // caret away, and the caret is the whole mechanism for saying where the next
+  // sentence should go.
+
+  const box = el("textarea", "voice-text");
+  box.dataset.role = "draft";
+
+  /**
+   * Where the next take goes.
+   *
+   * Read back from the element while it has focus, and remembered here for when
+   * it does not — tapping the record button blurs the box, and the answer to
+   * "where were you?" has to survive that.
+   */
+  let caret = 0;
+  /** The far end of a selection, so speaking over a passage still replaces it. */
+  let caretEnd = 0;
+
+  for (const evt of ["input", "select", "keyup", "click", "focus", "blur"]) {
+    box.addEventListener(evt, () => {
+      if (typeof box.selectionStart !== "number") return;
+      caret = box.selectionStart;
+      caretEnd = typeof box.selectionEnd === "number" ? box.selectionEnd : caret;
+    });
+  }
+  box.addEventListener("input", () => {
+    draft = box.value;
+    syncSend();
+  });
+
+  /** The caret, or the selection it sits in, clamped to the current draft. */
+  function selection() {
+    const live = typeof document !== "undefined" && document.activeElement === box;
+    const rawStart = live ? box.selectionStart : caret;
+    const rawEnd = live ? box.selectionEnd : caretEnd;
+    const start = Math.max(0, Math.min(rawStart ?? draft.length, draft.length));
+    const end = Math.max(start, Math.min(rawEnd ?? start, draft.length));
+    return [start, end];
+  }
+
+  /**
+   * Splices a take into the draft where the caret is.
+   *
+   * Speaking over a selected passage replaces it, the same as typing would, and
+   * the caret ends up after the new words so the following take continues from
+   * there rather than jumping back to the end.
+   */
+  function absorb(take) {
+    const [start, end] = selection();
+    const head = joinTakes(draft.slice(0, start), take);
+    draft = joinTakes(head, draft.slice(end));
+    caret = caretEnd = head.length;
+  }
+
+  function applyCaret() {
+    try {
+      box.setSelectionRange(caret, caret);
+    } catch {
+      // Not every environment implements selection on a detached textarea.
+    }
+  }
+
+  // --- the control row ------------------------------------------------------
+
+  const noteEl = el("p", "voice-note");
+  const row = el("div", "voice-row");
+  let sendBtn = null;
+  root.append(noteEl, box, row);
+
+  function syncSend() {
+    if (sendBtn) sendBtn.disabled = !draft.trim();
   }
 
   function render() {
@@ -67,24 +137,30 @@ export function createVoicePanel(deps) {
 
     // No microphone at all: there is nothing to draft, so say why and stop.
     if (mode === "denied") {
-      root.replaceChildren(el("p", "voice-note", tr("voice.denied")));
+      noteEl.textContent = tr("voice.denied");
+      noteEl.hidden = false;
+      box.hidden = true;
+      row.hidden = true;
+      // Emptied, not just hidden: a hidden button is still a button anything
+      // walking the DOM can find and act on.
+      row.replaceChildren();
+      sendBtn = null;
+      stopTicker();
       return;
     }
+    noteEl.hidden = true;
+    box.hidden = false;
+    row.hidden = false;
 
     const recording = mode === "recording";
     const busy = mode === "working";
 
-    const box = el("textarea", "voice-text");
-    box.value = draft;
-    box.dataset.role = "draft";
     box.setAttribute("aria-label", tr("voice.draftLabel"));
     box.setAttribute("placeholder", tr("voice.hint"));
-    // Typed edits are the source of truth for the draft; re-rendering on every
-    // keystroke would throw the caret to the start of the box.
-    box.addEventListener("input", () => {
-      draft = box.value;
-      refreshSend();
-    });
+    if (box.value !== draft) {
+      box.value = draft;
+      applyCaret();
+    }
 
     // One button that changes state, so the finger lands in the same place
     // whether it is starting or stopping.
@@ -95,14 +171,21 @@ export function createVoicePanel(deps) {
     btn.setAttribute("aria-label", tr(recording ? "voice.stop" : "voice.start"));
     btn.addEventListener("click", toggle);
 
-    const status = el("span", "voice-hint", recording ? clock(0) : busy ? tr("voice.working") : note);
+    const status = el(
+      "span",
+      "voice-hint",
+      recording
+        ? clock(0)
+        : busy
+          ? tr("voice.working")
+          : note || (draft ? tr("voice.caretHint") : ""),
+    );
     status.dataset.role = "status";
 
     // Cancel sits beside the record button rather than under it. On its own row
     // it cost more height than the button it qualifies, which is backwards for
     // the one control here that is an afterthought.
-    const row = el("div", "voice-row");
-    row.append(btn);
+    row.replaceChildren(btn);
     if (recording) {
       const cancel = el("button", "btn", tr("voice.cancel"));
       cancel.dataset.role = "cancel";
@@ -116,25 +199,21 @@ export function createVoicePanel(deps) {
     }
     row.append(status);
 
-    const send = el("button", "btn primary", tr("voice.send"));
-    send.dataset.role = "send";
+    sendBtn = el("button", "btn primary", tr("voice.send"));
+    sendBtn.dataset.role = "send";
     // Sending is what presses Enter, so an empty draft must not be tappable —
     // a bare newline would go to whatever is running.
-    send.disabled = !draft.trim();
-    send.addEventListener("click", () => {
+    sendBtn.disabled = !draft.trim();
+    sendBtn.addEventListener("click", () => {
       if (!draft.trim()) return;
       onSend(draft);
       draft = "";
+      caret = caretEnd = 0;
       note = "";
+      box.value = "";
       render();
     });
-    row.append(send);
-
-    function refreshSend() {
-      send.disabled = !draft.trim();
-    }
-
-    root.replaceChildren(box, row);
+    row.append(sendBtn);
 
     stopTicker();
     if (recording) {
@@ -142,6 +221,11 @@ export function createVoicePanel(deps) {
         status.textContent = clock(rec.elapsedMs());
       }, 1000);
     }
+  }
+
+  function stopTicker() {
+    if (ticker) clearInterval(ticker);
+    ticker = 0;
   }
 
   async function toggle() {
@@ -173,7 +257,7 @@ export function createVoicePanel(deps) {
         render();
         return;
       }
-      draft = joinTakes(draft, take);
+      absorb(take);
       note = "";
       mode = "idle";
       render();
