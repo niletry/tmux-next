@@ -1084,3 +1084,78 @@ window.addEventListener("orientationchange", () =>
 syncAppHeight();
 fit();
 connect();
+
+// --- voice input ------------------------------------------------------------
+
+/**
+ * Speech to text, in the space the soft keyboard would occupy.
+ *
+ * The panel and the keyboard are mutually exclusive by construction: opening
+ * one closes the other. There is only room for one at the bottom of a phone,
+ * and letting them fight over it is worse than either.
+ *
+ * The system keyboard's own dictation key cannot be used here — iOS rewrites
+ * the whole text repeatedly and xterm treats every rewrite as fresh keystrokes,
+ * so "语音输入" arrives as "语语音语音输入语音". Recording it ourselves is the
+ * only path that stays under our control.
+ */
+const micBtn = document.getElementById("mic");
+let voicePanel = null;
+
+async function transcribeBlob(blob) {
+  const res = await fetch("api/asr", {
+    method: "POST",
+    headers: { "content-type": blob.type || "application/octet-stream" },
+    body: blob,
+  });
+  if (!res.ok) throw new Error(String(res.status));
+  const { text } = await res.json();
+  return text || "";
+}
+
+function forgetVoicePanel() {
+  voicePanel = null;
+  micBtn.classList.remove("sticky-on");
+  // The panel took height from the terminal; give it back and tell tmux.
+  resizeAndNotify();
+}
+
+async function openVoice() {
+  if (voicePanel) return;
+  closeKeyboard();
+  const { createVoicePanel } = await import("./voice-panel.js");
+  const panel = createVoicePanel({
+    getStream: () => navigator.mediaDevices.getUserMedia({ audio: true }),
+    makeRecorder: (stream) => new MediaRecorder(stream),
+    transcribe: transcribeBlob,
+    // No Enter — the same contract as an uploaded image path. The user adds
+    // their own words and sends.
+    onInsert: (text) => {
+      if (text) send(text);
+    },
+    onClose: forgetVoicePanel,
+    tr,
+  });
+  voicePanel = panel;
+  termEl.after(panel.element);
+  micBtn.classList.add("sticky-on");
+  resizeAndNotify();
+  panel.open();
+}
+
+micBtn.addEventListener("pointerdown", (e) => {
+  // pointerdown, not click: the handler on .keys cancels the default action to
+  // protect terminal focus, which would also swallow a later click.
+  e.preventDefault();
+  if (voicePanel) voicePanel.close();
+  else openVoice();
+});
+
+// The button appears only when a key is configured. A microphone that could
+// only ever fail is worse than no microphone at all.
+fetch("api/asr")
+  .then((r) => r.json())
+  .then(({ enabled }) => {
+    if (enabled && typeof MediaRecorder !== "undefined") micBtn.hidden = false;
+  })
+  .catch(() => {});
