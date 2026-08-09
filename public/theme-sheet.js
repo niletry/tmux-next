@@ -34,7 +34,7 @@ function preview(theme) {
   box.append(
     line(theme.ansi[8], "  ⏵⏵ don't ask on\n"),
     line(theme.ansi[7], "❯ "),
-    line(theme.foreground, "修复 hook\n"),
+    line(theme.foreground, "fix the hook\n"),
     line(magenta, "✻"),
     line(theme.foreground, " Cogitated 1m21s\n"),
     line(theme.ansi[8], "  ⎿ "),

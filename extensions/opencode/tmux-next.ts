@@ -74,7 +74,11 @@ export const server = async (input: any) => ({
    */
   "permission.ask": async (_input: any, _output: any) => {
     const session = await tmuxSession();
-    if (session) post({ event: "attention", session, message: "opencode 需要你确认" });
+    // No message: the server fills in the canned text in the interface
+    // language. An extension cannot reach the dictionary — it runs inside
+    // opencode — so hard-coding one language here would pin the lock screen
+    // to it regardless of the setting.
+    if (session) post({ event: "attention", session });
   },
 
   /**

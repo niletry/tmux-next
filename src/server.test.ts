@@ -571,6 +571,14 @@ test("notify rejects a bad event and accepts a valid one over loopback", async (
 });
 
 test("a sent notification is logged and readable from /api/notifications", async () => {
+  // Pinned explicitly: the body follows the interface language, so asserting a
+  // fixed string would only be testing which language happens to be stored.
+  await fetch(`http://127.0.0.1:${server.port}/api/language`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lang: "zh" }),
+  });
+
   await fetch(`http://127.0.0.1:${server.port}/api/notify`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -584,6 +592,23 @@ test("a sent notification is logged and readable from /api/notifications", async
   const found = notifications.find((n) => n.session === "hist-test-sess");
   expect(found).toBeDefined();
   expect(found!.body).toBe("会话已结束");
+});
+
+test("a notification logged under English reads in English", async () => {
+  await fetch(`http://127.0.0.1:${server.port}/api/language`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lang: "en" }),
+  });
+  await fetch(`http://127.0.0.1:${server.port}/api/notify`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ event: "ended", session: "hist-en-sess" }),
+  });
+  const { notifications } = (await (
+    await fetch(`http://127.0.0.1:${server.port}/api/notifications`)
+  ).json()) as { notifications: { session: string; body: string }[] };
+  expect(notifications.find((n) => n.session === "hist-en-sess")?.body).toBe("Session ended");
 });
 
 // --- creating a directory ---------------------------------------------------
@@ -665,6 +690,13 @@ test("GET /api/agents lists what can be started", async () => {
 // --- interface language -----------------------------------------------------
 
 test("GET /api/language guesses from the browser once, then stays put", async () => {
+  // Its own file: the guess only happens when nothing is stored, and other
+  // tests in this suite set a language. Depending on execution order for that
+  // would make this pass or fail by accident.
+  process.env.TMUX_NEXT_LANG_PATH = joinPath(
+    tmpdir(),
+    `lang-guess-${Math.random().toString(36).slice(2, 10)}.json`,
+  );
   const url = `http://127.0.0.1:${server.port}/api/language`;
   const get = (accept: string) =>
     fetch(url, { headers: { "accept-language": accept } }).then((r) => r.json());

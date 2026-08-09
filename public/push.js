@@ -5,6 +5,8 @@
 // permission, subscribes with the server's VAPID key, and hands the
 // subscription to the server; disabling it tears that down.
 
+import { tr } from "./i18n-apply.js";
+
 const supported = () =>
   "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 
@@ -26,7 +28,7 @@ async function enable() {
   const permission = await Notification.requestPermission();
   if (permission !== "granted") {
     // On iPhone this only works once the page is added to the Home Screen.
-    throw new Error("通知权限未授予。iPhone 需先把本页“添加到主屏幕”，在那个 app 里再开启。");
+    throw new Error(tr("push.denied"));
   }
   const reg = await navigator.serviceWorker.register("sw.js");
   await navigator.serviceWorker.ready;
@@ -40,7 +42,7 @@ async function enable() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(sub),
   });
-  if (!res.ok) throw new Error("订阅失败");
+  if (!res.ok) throw new Error(tr("push.subscribeFailed"));
 }
 
 async function disable() {
@@ -61,7 +63,7 @@ export async function initNotifyToggle(btn) {
   const reflect = (on) => {
     btn.classList.toggle("on", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
-    btn.setAttribute("aria-label", on ? "关闭通知" : "开启通知");
+    btn.setAttribute("aria-label", tr(on ? "push.turnOff" : "push.turnOn"));
   };
   reflect(!!(await existingSubscription()));
 
@@ -76,7 +78,7 @@ export async function initNotifyToggle(btn) {
         reflect(true);
       }
     } catch (e) {
-      alert(e && e.message ? e.message : "操作失败");
+      alert(e && e.message ? e.message : tr("push.actionFailed"));
     } finally {
       btn.disabled = false;
     }

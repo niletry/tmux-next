@@ -3,6 +3,8 @@
 // HTML/SVG rendered in place, anything else offered to download. The viewer
 // pages through items directly, without going back to the grid each time.
 
+import { initLang, tr } from "./i18n-apply.js";
+
 const listEl = /** @type {HTMLElement} */ (document.getElementById("gallery"));
 const countEl = /** @type {HTMLElement} */ (document.getElementById("count"));
 const viewer = /** @type {HTMLElement} */ (document.getElementById("viewer"));
@@ -10,7 +12,7 @@ const viewer = /** @type {HTMLElement} */ (document.getElementById("viewer"));
 /** @typedef {{ name: string, kind: "image" | "html" | "other" }} Item */
 
 const fileUrl = (/** @type {string} */ name) => "api/gallery/file?name=" + encodeURIComponent(name);
-const ext = (/** @type {string} */ name) => (name.match(/\.([^.]+)$/)?.[1] ?? "文件").toUpperCase();
+const ext = (/** @type {string} */ name) => (name.match(/\.([^.]+)$/)?.[1] ?? tr("gallery.file")).toUpperCase();
 
 /** @type {Item[]} */
 let items = [];
@@ -20,15 +22,15 @@ async function load() {
   try {
     items = await (await fetch("api/gallery")).json();
   } catch {
-    listEl.innerHTML = '<p class="empty">加载失败</p>';
+    listEl.innerHTML = `<p class="empty">${tr("gallery.loadFailed")}</p>`;
     return;
   }
 
-  countEl.textContent = items.length ? `${items.length} 项` : "";
+  countEl.textContent = items.length ? tr("gallery.count", { n: items.length }) : "";
   if (!items.length) {
     listEl.innerHTML =
-      '<p class="empty">还没有制品<br>' +
-      '<span class="ghint">把图片 / HTML / SVG 放进 <code>~/.tmux-next/gallery/</code></span></p>';
+      `<p class="empty">${tr("gallery.empty")}<br>` +
+      `<span class="ghint">${tr("gallery.emptyHint")} <code>~/.tmux-next/gallery/</code></span></p>`;
     return;
   }
 
@@ -79,7 +81,7 @@ function navButton(/** @type {string} */ glyph, /** @type {() => void} */ onClic
   const b = document.createElement("button");
   b.className = "viewer-nav " + (glyph === "‹" ? "prev" : "next");
   b.textContent = glyph;
-  b.setAttribute("aria-label", glyph === "‹" ? "上一个" : "下一个");
+  b.setAttribute("aria-label", tr(glyph === "‹" ? "gallery.prev" : "gallery.next"));
   b.addEventListener("click", onClick);
   return b;
 }
@@ -110,7 +112,7 @@ function renderViewer() {
   bar.className = "viewer-bar";
   const close = document.createElement("button");
   close.className = "viewer-close";
-  close.textContent = "‹ 关闭";
+  close.textContent = tr("gallery.close");
   close.addEventListener("click", closeViewer);
   const name = document.createElement("span");
   name.className = "viewer-name";
@@ -122,7 +124,7 @@ function renderViewer() {
   dl.className = "viewer-dl";
   dl.href = fileUrl(item.name);
   dl.setAttribute("download", item.name);
-  dl.textContent = "下载";
+  dl.textContent = tr("gallery.download");
   bar.append(close, name, count, dl);
 
   const body = document.createElement("div");
@@ -146,7 +148,7 @@ function renderViewer() {
   } else {
     const note = document.createElement("p");
     note.className = "viewer-note";
-    note.textContent = "这个类型不支持预览，点右上「下载」查看。";
+    note.textContent = tr("gallery.noPreview");
     body.append(note);
   }
 
@@ -169,4 +171,5 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "ArrowRight") step(1);
 });
 
-load();
+// Language first: the empty and error states are rendered from it.
+initLang().then(load);

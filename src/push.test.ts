@@ -25,10 +25,29 @@ test("allowNotify throttles chatty events but never the terminal one", () => {
 });
 
 test("eventText names the session and describes the event", () => {
-  expect(eventText("waiting", "PROJ-1042")).toEqual({ title: "PROJ-1042", body: "聊完了，在等你" });
-  expect(eventText("ended", "ES-7685").body).toBe("会话已结束");
-  expect(eventText("attention", "billing-ci", "确认删除?").body).toBe("确认删除?");
-  expect(eventText("attention", "billing-ci").body).toBe("需要你确认"); // falls back
+  // English is the default, matching the interface a new install serves.
+  expect(eventText("waiting", "PROJ-1042")).toEqual({
+    title: "PROJ-1042",
+    body: "Finished — waiting on you",
+  });
+  expect(eventText("ended", "ES-7685").body).toBe("Session ended");
+  expect(eventText("attention", "billing-ci").body).toBe("Needs your confirmation");
+});
+
+test("eventText follows the interface language", () => {
+  // A push is the one piece of text that appears away from the interface, so a
+  // Chinese interface with an English lock screen would be the odd one out.
+  expect(eventText("waiting", "PROJ-1042", undefined, "zh").body).toBe("聊完了，在等你");
+  expect(eventText("ended", "ES-7685", undefined, "zh").body).toBe("会话已结束");
+  expect(eventText("attention", "billing-ci", undefined, "zh").body).toBe("需要你确认");
+});
+
+test("an agent's own message outranks the canned text in any language", () => {
+  // Whatever the agent sent is more specific, and is already in the language it
+  // chose to speak — translating around it would be worse, not better.
+  for (const lang of ["en", "zh"]) {
+    expect(eventText("attention", "billing-ci", "确认删除?", lang).body).toBe("确认删除?");
+  }
 });
 
 test("validSubscription requires an https endpoint and both keys", () => {

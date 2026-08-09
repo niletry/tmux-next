@@ -27,8 +27,13 @@ export function lang() {
   return current;
 }
 
-/** A translated string in the active language. */
-export function tr(/** @type {string} */ key, /** @type {Record<string, string|number>} [vars] */ vars) {
+/**
+ * A translated string in the active language.
+ * @param {string} key
+ * @param {Record<string, string | number>} [vars]
+ * @returns {string}
+ */
+export function tr(key, vars) {
   return t(key, current, vars);
 }
 
