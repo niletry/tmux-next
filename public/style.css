@@ -320,8 +320,7 @@ header .count {
 /* ---- create session ---- */
 
 header .new {
-  /* .ghead before it already carries the margin-left:auto that pushes the
-     right-hand cluster over, so this one just sits next to it. */
+  /* .hactions carries the margin-left:auto now, so this is just a button. */
   width: 34px;
   height: 34px;
   border: 0;
@@ -911,3 +910,23 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   color: var(--dim);
   white-space: nowrap;
 }
+
+/* Pushed to the right edge, away from the page switcher: navigation on one
+   side, actions on the other, so the two groups are not read as one row. */
+.hactions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+
+/* ---- task pages (new session) ---- */
+
+/* A page you go to, do one thing, and leave. It gets a back arrow and a title
+   instead of the switcher — it is not one of the three siblings. */
+header .htitle { font-size: 17px; font-weight: 600; }
+
+.page-body {
+  padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* Full height instead of the sheet's 34vh: browsing directories is the whole
+   point of this page, so the list gets the room the viewport can spare. */
+.page-body .dir-list { max-height: none; flex: 1; }

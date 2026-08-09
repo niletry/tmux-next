@@ -18,7 +18,6 @@
 const zh = {
   "list.title": "tmux 会话",
   "list.loading": "加载中…",
-  "list.notifyToggle": "开启/关闭通知",
   "list.settings": "设置",
   "list.newSession": "新建会话",
   "list.noSessions": "没有 tmux 会话",
@@ -78,6 +77,7 @@ const zh = {
   "term.fontSizeWrap": "字号 {px}px · {cols} 列，可能换行",
 
   "new.title": "新建会话",
+  "new.back": "‹ 返回",
   "new.filterDirs": "筛选目录",
   "new.namePlaceholder": "会话名（选填，如 PROJ-1088）",
   "new.agentMissing": "{label} 不在 PATH 上，无法启动",
@@ -161,7 +161,6 @@ const zh = {
 const en = {
   "list.title": "tmux sessions",
   "list.loading": "Loading…",
-  "list.notifyToggle": "Turn notifications on/off",
   "list.settings": "Settings",
   "list.newSession": "New session",
   "list.noSessions": "No tmux sessions",
@@ -221,6 +220,7 @@ const en = {
   "term.fontSizeWrap": "Font {px}px · {cols} columns, may wrap",
 
   "new.title": "New session",
+  "new.back": "‹ Back",
   "new.filterDirs": "Filter directories",
   "new.namePlaceholder": "Session name (optional, e.g. PROJ-1088)",
   "new.agentMissing": "{label} is not on PATH and cannot start",

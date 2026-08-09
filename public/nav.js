@@ -22,6 +22,17 @@ const ICONS = {
   notifications:
     '<path d="M22 12h-6l-2 3h-4l-2-3H2"/>' +
     '<path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  bell:
+    '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>' +
+    '<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  gear:
+    '<circle cx="12" cy="12" r="3.2"/>' +
+    '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 ' +
+    '1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 ' +
+    '0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 ' +
+    '0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 ' +
+    '0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 ' +
+    '2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   sessions:
     '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>' +
     '<line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.2"/>' +
@@ -98,4 +109,64 @@ export function renderNav(header, current) {
   }
   header.prepend(nav);
   return nav;
+}
+
+/**
+ * The whole header: page switcher on the left, actions on the right.
+ *
+ * One component rather than markup repeated per page. The actions are global
+ * — notification subscription, language and theme, starting a session — so
+ * they belong wherever you are, not only on the list.
+ *
+ * Behaviour is wired here too. Leaving each page to bind its own buttons is
+ * how the three headers drifted apart in the first place.
+ *
+ * @param {Page} current
+ */
+export async function renderHeader(current) {
+  const header = /** @type {HTMLElement} */ (document.getElementById("header"));
+  if (!header) return;
+
+  renderNav(header, current);
+
+  const actions = document.createElement("div");
+  actions.className = "hactions";
+
+  const bell = document.createElement("button");
+  bell.className = "hbell";
+  bell.id = "notify-toggle";
+  bell.innerHTML = svg(ICONS.bell);
+  actions.append(bell);
+
+  const gear = document.createElement("button");
+  gear.className = "hbell";
+  gear.innerHTML = svg(ICONS.gear);
+  gear.title = tr("list.settings");
+  gear.setAttribute("aria-label", tr("list.settings"));
+  actions.append(gear);
+
+  const plus = document.createElement("button");
+  plus.className = "new";
+  plus.textContent = "＋";
+  plus.title = tr("list.newSession");
+  plus.setAttribute("aria-label", tr("list.newSession"));
+  actions.append(plus);
+
+  header.append(actions);
+
+  // Imported here rather than at the top so a page that only needs the switcher
+  // does not pull the sheets in, and so nav.js stays free of import cycles.
+  // New session is its own page now, so this is a link's job, not a sheet's:
+  // browsing directories needs real height, the soft keyboard needs somewhere
+  // to push, and back should walk up the path rather than discard it.
+  plus.addEventListener("click", () => {
+    location.href = "new.html";
+  });
+
+  const [{ initNotifyToggle }, { openThemeSheet }] = await Promise.all([
+    import("./push.js"),
+    import("./theme-sheet.js"),
+  ]);
+  gear.addEventListener("click", openThemeSheet);
+  initNotifyToggle(bell);
 }
