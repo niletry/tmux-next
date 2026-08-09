@@ -143,6 +143,59 @@ test("further takes append to the draft", async () => {
   expect(draftOf(panel.element)).toBe("这是第一句。这是第二句。这是第三句。");
 });
 
+// Re-creating the textarea on every render threw the caret away, which is what
+// made "insert before what I already said" impossible.
+test("the draft box is the same element across takes", async () => {
+  const { panel } = await panelWith();
+  const before = panel.element.querySelector("textarea");
+  await dictate(panel.element);
+  await dictate(panel.element);
+  expect(panel.element.querySelector("textarea")).toBe(before);
+});
+
+test("a take lands at the caret, not always at the end", async () => {
+  const { panel } = await panelWith();
+  await dictate(panel.element);
+  await dictate(panel.element);
+  expect(draftOf(panel.element)).toBe("这是第一句。这是第二句。");
+
+  // Put the caret at the very start, the way tapping there would.
+  const box = panel.element.querySelector("textarea") as HTMLTextAreaElement;
+  box.selectionStart = 0;
+  box.selectionEnd = 0;
+  box.dispatchEvent(new window.Event("select", { bubbles: true }));
+
+  await dictate(panel.element);
+  expect(draftOf(panel.element)).toBe("这是第三句。这是第一句。这是第二句。");
+});
+
+test("the caret follows the inserted take, so the next one continues from it", async () => {
+  const { panel } = await panelWith();
+  await dictate(panel.element);
+  await dictate(panel.element);
+  const box = panel.element.querySelector("textarea") as HTMLTextAreaElement;
+  box.selectionStart = 0;
+  box.selectionEnd = 0;
+  box.dispatchEvent(new window.Event("select", { bubbles: true }));
+
+  await dictate(panel.element); // 第三句 goes to the front
+  await dictate(panel.element); // and the fourth follows it, not the whole draft
+  expect(draftOf(panel.element)).toBe("这是第三句。又一句。这是第一句。这是第二句。");
+});
+
+// Speaking over a selected passage should replace it, the same as typing would.
+test("a take replaces the selected passage", async () => {
+  const { panel } = await panelWith();
+  await dictate(panel.element);
+  const box = panel.element.querySelector("textarea") as HTMLTextAreaElement;
+  box.selectionStart = 0;
+  box.selectionEnd = "这是第一句。".length;
+  box.dispatchEvent(new window.Event("select", { bubbles: true }));
+
+  await dictate(panel.element);
+  expect(draftOf(panel.element)).toBe("这是第二句。");
+});
+
 test("edits to the draft survive the next take", async () => {
   const { panel } = await panelWith();
   await dictate(panel.element);
