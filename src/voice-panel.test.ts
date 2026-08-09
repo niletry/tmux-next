@@ -132,6 +132,42 @@ test("inserting sends the edited text, not the recognised text", async () => {
   expect(calls.inserted).toEqual(["把 hook 修好，再跑一遍测试"]);
 });
 
+// Dictation comes in bursts: say a sentence, look at what landed, say the next.
+// Closing after one insert would mean reopening and re-granting attention for
+// every sentence.
+test("inserting leaves the panel open and ready for the next sentence", async () => {
+  const { panel, calls, tracks } = await panelWith();
+  role(panel.element, "record")!.click();
+  role(panel.element, "record")!.click();
+  await flush();
+  role(panel.element, "insert")!.click();
+
+  expect(panel.element.dataset.mode).toBe("idle");
+  expect(role(panel.element, "record")).not.toBeNull();
+  expect(panel.element.isConnected).toBe(true);
+  expect(calls.closed).toBe(0);
+  // Still holding the microphone, so the next take starts without a new prompt.
+  expect(tracks[0]!.stopped).toBe(false);
+
+  // And a second round really works, rather than merely looking ready.
+  role(panel.element, "record")!.click();
+  role(panel.element, "record")!.click();
+  await flush();
+  role(panel.element, "insert")!.click();
+  expect(calls.inserted).toHaveLength(2);
+});
+
+// The old take must not linger in the box on the next round.
+test("a second recording starts from an empty review box", async () => {
+  const { panel } = await panelWith();
+  role(panel.element, "record")!.click();
+  role(panel.element, "record")!.click();
+  await flush();
+  (panel.element.querySelector("textarea") as HTMLTextAreaElement).value = "改过的内容";
+  role(panel.element, "insert")!.click();
+  expect(panel.element.querySelector("textarea")).toBeNull();
+});
+
 test("cancelling a recording transcribes nothing and returns to idle", async () => {
   const { panel, calls } = await panelWith();
   role(panel.element, "record")!.click();
