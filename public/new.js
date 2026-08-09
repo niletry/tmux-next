@@ -159,13 +159,20 @@ export function renderNewSession(root) {
    * not pile up entries.
    */
   function syncUrl(push) {
+    // Guarded: history is unavailable in some embedded webviews, and browsers
+    // rate-limit these calls. Neither is worth breaking the page over.
+    if (typeof history?.replaceState !== "function") return;
     const params = new URLSearchParams();
     if (current) params.set("dir", current);
     if (step === 2) params.set("resume", "1");
     const url = `new.html?${params}`;
     if (url === location.pathname.slice(1) + location.search) return;
-    if (push) history.pushState({}, "", url);
-    else history.replaceState({}, "", url);
+    try {
+      if (push) history.pushState({}, "", url);
+      else history.replaceState({}, "", url);
+    } catch {
+      // Rate-limited by the browser; the page is still correct.
+    }
   }
 
   let step = 1;
@@ -278,9 +285,6 @@ export function renderNewSession(root) {
     }
     const body = await res.json();
     current = body.path;
-    // The directory is the page's state, so it belongs in the URL: back walks
-    // up the path you came down, and the address of a directory can be kept.
-    syncUrl();
     entries = body.entries;
     // A fresh level starts unfiltered; the old query rarely matches here.
     filter.value = "";
@@ -290,6 +294,12 @@ export function renderNewSession(root) {
     // Not awaited: the directory shows at once, the resume entry appears if the
     // directory turns out to have history.
     refreshHistory(current);
+
+    // Last, and never fatal. The address bar is a convenience — being able to
+    // go back a level and to keep a directory's link. Rendering the directory
+    // is the job. Putting this mid-function once meant a throw here left the
+    // list, the breadcrumb and the favourites all unrendered.
+    syncUrl();
   }
 
   // Fetches the directory's past conversations so screen 2 can show them, and
