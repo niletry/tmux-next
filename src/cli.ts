@@ -26,6 +26,7 @@ export const MIN_TMUX: TmuxVersion = { major: 3, minor: 2 };
 export type CliResult =
   | { kind: "run"; port: number; host: string }
   | { kind: "hook" }
+  | { kind: "asr"; key: string }
   | { kind: "help" }
   | { kind: "version" }
   | { kind: "error"; message: string };
@@ -34,6 +35,19 @@ export function parseArgs(argv: string[]): CliResult {
   // The one subcommand: install the Claude SessionStart hook. It takes no
   // options, so it's handled before the flag loop.
   if (argv[0] === "hook") return { kind: "hook" };
+
+  // Stores the speech-recognition key, for the same reason `hook` is handled
+  // here: it is a subcommand, not an option. Extra words are refused rather
+  // than ignored — a key that got shell-split would otherwise be stored
+  // truncated, and only fail much later as an unexplained credential error.
+  if (argv[0] === "asr") {
+    const key = argv[1];
+    if (key === undefined || key.startsWith("-")) {
+      return { kind: "error", message: "asr needs a key" };
+    }
+    if (argv.length > 2) return { kind: "error", message: "asr takes one key" };
+    return { kind: "asr", key };
+  }
 
   let port = DEFAULT_PORT;
   let host = DEFAULT_HOST;
@@ -87,6 +101,7 @@ export const HELP = `tmux-next — a phone-friendly web client for your tmux ses
 Usage:
   tmux-next [options]
   tmux-next hook        install the Claude SessionStart hook (for session restore)
+  tmux-next asr <key>   store the speech-recognition key (enables voice input)
 
 Options:
   -p, --port <n>     port to listen on (default ${DEFAULT_PORT})
