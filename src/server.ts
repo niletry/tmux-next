@@ -14,6 +14,7 @@ import { listHistory } from "./claude-history";
 import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
 import { readNotifications } from "./notifications";
 import { readTheme, writeTheme } from "./theme";
+import { readAsrConfig, transcribe } from "./asr";
 import { resolveLanguage, writeLanguage } from "./language";
 import { AGENT_IDS, AGENTS, isKnownAgent } from "./agents";
 import { agentAvailability } from "./agents/availability";
@@ -171,6 +172,13 @@ async function uploadResponse(req: Request): Promise<Response> {
   await Bun.write(path, body);
   return Response.json({ path });
 }
+
+/**
+ * Not a duration limit — voice input deliberately has none. This only stops a
+ * broken client from making the server read something unbounded into memory; at
+ * opus bitrates it is well over an hour of speech.
+ */
+const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
 
 const PUBLIC_DIR = new URL("../public/", import.meta.url).pathname;
 const MODULES_DIR = new URL("../", import.meta.url).pathname;
@@ -370,6 +378,27 @@ export function startServer(
           return Response.json({ error: "unknown" }, { status: 400 });
         }
         return new Response(null, { status: 204 });
+      }
+
+      // Voice input. Off unless a key is configured, and the browser asks first
+      // so a microphone button that could only ever fail is never drawn.
+      if (url.pathname === "/api/asr" && req.method === "GET") {
+        return Response.json({ enabled: (await readAsrConfig()) !== null });
+      }
+      if (url.pathname === "/api/asr" && req.method === "POST") {
+        const config = await readAsrConfig();
+        if (!config) return Response.json({ error: "unconfigured" }, { status: 404 });
+
+        const audio = await req.arrayBuffer();
+        if (audio.byteLength > MAX_AUDIO_BYTES) {
+          return Response.json({ error: "toobig" }, { status: 413 });
+        }
+        // The recording goes straight upstream and is dropped. It is more
+        // sensitive than anything else this server handles, and keeping a copy
+        // would buy nothing.
+        const result = await transcribe(audio, config, crypto.randomUUID());
+        if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+        return Response.json({ text: result.text });
       }
 
       // The VAPID public key the browser needs to subscribe for push.
