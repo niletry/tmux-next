@@ -206,7 +206,17 @@ export function createVoicePanel(deps) {
     sendBtn.disabled = !draft.trim();
     sendBtn.addEventListener("click", () => {
       if (!draft.trim()) return;
-      onSend(draft);
+      // The draft is only cleared once the send has actually happened. If the
+      // host cannot take it — a stale cached module leaving onSend undefined is
+      // the realistic case — losing the sentences would be the worst outcome,
+      // and saying nothing about it is what makes such a failure hard to place.
+      try {
+        onSend(draft);
+      } catch {
+        note = tr("voice.sendFailed");
+        render();
+        return;
+      }
       draft = "";
       caret = caretEnd = 0;
       note = "";

@@ -315,3 +315,17 @@ test("takes join without a space in CJK and with one between words", async () =>
   expect(joinTakes("", "first")).toBe("first");
   expect(joinTakes("first", "")).toBe("first");
 });
+
+// Silence here is what made a real failure hard to place: the sentences would
+// vanish from the box with nothing said and nothing sent.
+test("a send the host cannot take keeps the draft and says so", async () => {
+  const { panel } = await panelWith({
+    onSend: () => {
+      throw new TypeError("onSend is not a function");
+    },
+  });
+  await dictate(panel.element);
+  role(panel.element, "send")!.click();
+  expect(draftOf(panel.element)).toBe("这是第一句。");
+  expect(panel.element.textContent).toContain("voice.sendFailed");
+});
