@@ -33,6 +33,7 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 | | |
 |---|---|
 | **Session list** | What each session was last asked to do, a preview of the last lines, a "waiting on you" dot, unsent input, last-active time |
+| **Interface language** | English or Chinese, switched from Settings; guessed from the browser on first visit |
 | **New session** | Pick an agent (Claude Code / opencode / pi), tap to pick a directory (drill down, or create one on the spot), optional name, optional skip-permissions, or resume a past conversation |
 | **Terminal** | Width that adapts to the window, a soft-keyboard toolbar (Esc / Tab / ⇧Tab / Ctrl / arrows / ^C / ⏎), drag to scroll full-screen programs |
 | **Reconnect** | No buffering, no replay — a reconnect re-captures the whole screen from tmux |
@@ -97,6 +98,12 @@ The proxy needs to handle two things:
 
 The repo ships no service file — paths and users differ per machine. Use a launchd plist on macOS, a systemd unit on Linux; the command is `bun run /path/to/tmux-next/src/index.ts`. Note that launchd gives a very bare environment where `tmux` may not be on `PATH`, so point at it explicitly.
 
+### Getting around
+
+The list, artifacts and notifications are siblings, so every page carries the same header: a segmented control to switch between them on the left, and the actions — notification subscription, settings, new session — on the right. The count for the page you are on sits inside its own segment.
+
+Starting a session is a page of its own rather than a sheet. Browsing directories needs the height, the three input fields need somewhere for the soft keyboard to push, and the directory you are in lives in the URL — so the back button walks up the path you came down instead of discarding it, and `new.html?dir=/some/project` can be kept as a link.
+
 ### Three agents
 
 Claude Code, [opencode](https://opencode.ai) and [pi](https://github.com/earendil-works/pi) are supported to the same depth: starting, resuming, the task line, and lock-screen notifications. The picker in the new-session sheet only appears when more than one is installed, so a machine with just Claude Code looks exactly as it did.
@@ -154,6 +161,12 @@ The list shows the last thing each conversation was asked to do, above its scree
 The text comes from the `last-prompt` record Claude Code keeps in its transcript, read from the tail of the file: transcripts reach tens of megabytes, and a 32 KB tail was measured to find the record in 94.8% of the 192 on the development machine. Sessions with no binding record — or from before Claude Code wrote that record — simply show no task line.
 
 This needs the hook (`bunx tmux-next hook`), which is what ties a tmux session to its conversation id.
+
+### Interface language
+
+English and Chinese. On a machine that has never chosen one, the first request guesses from the browser's `Accept-Language` and stores that — so arriving from npm gives you a first screen you can read, without touching a setting. Change it under the gear icon; the choice is stored per machine (`~/.tmux-next/language.json`) so phone and desktop agree.
+
+Lock-screen notifications follow it too. A push is the one piece of text that shows up away from the interface, so an English interface with a Chinese lock screen would be the odd one out. A message the agent itself sent is passed through untranslated — it is more specific than anything canned, and already in the language the agent chose.
 
 ### Colour themes
 

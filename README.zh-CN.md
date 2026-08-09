@@ -33,6 +33,7 @@
 | | |
 |---|---|
 | **会话列表** | 每个会话最近被要求做什么、最后几行输出预览、「在等你」状态点、还没发出去的输入、最后活跃时间 |
+| **界面语言** | 中英文，设置里切换；首次访问按浏览器语言猜 |
 | **新建会话** | 选 agent（Claude Code / opencode / pi）、点选目录（可一路往下钻，也可当场新建）、可选会话名、可选跳过权限确认、可从历史对话恢复 |
 | **终端** | 宽度自适应窗口、软键盘工具条（Esc / Tab / ⇧Tab / Ctrl / 方向键 / ^C / ⏎）、拖动滚动全屏程序 |
 | **断线重连** | 不缓冲、不重放——重连时从 tmux 重新抓一次完整画面 |
@@ -97,6 +98,12 @@ tmux-next [options]
 
 仓库里不带 service 文件——路径和用户都因机器而异。macOS 用 launchd plist，Linux 用 systemd unit，命令都是 `bun run /path/to/tmux-next/src/index.ts`。注意 launchd 给的环境极其精简，`tmux` 未必在 `PATH` 里，需要显式指定。
 
+### 在页面之间走动
+
+会话列表、制品、通知是平级的三页，所以每页顶栏都一样：左边是切换用的分段控件，右边是操作——通知订阅、设置、新建会话。当前页的计数就显示在它自己那一段里。
+
+新建会话是独立页面而不是弹层。浏览目录需要高度，三个输入框需要给软键盘让位，而且所在目录写在 URL 里——后退键沿着你钻下去的路径一层层退回，而不是把它整个丢掉；`new.html?dir=/some/project` 也能当链接存下来。
+
 ### 三种 agent
 
 Claude Code、[opencode](https://opencode.ai) 和 [pi](https://github.com/earendil-works/pi) 支持到同样的深度：新建、恢复、任务行、锁屏通知。新建弹层里的选择器只在装了不止一种时才出现，所以只有 Claude Code 的机器看到的界面和以前一样。
@@ -152,6 +159,12 @@ bunx tmux-next hook       # 或从克隆的仓库：bun run src/index.ts hook
 文字取自 Claude Code 记在 transcript 里的 `last-prompt`，从文件尾部读：transcript 能到几十 MB，而实测本机 192 个 transcript，尾部 32 KB 就能命中 94.8%。没有绑定记录的、或早于该记录存在的老会话，就不显示这一行。
 
 这个功能依赖 hook（`bunx tmux-next hook`）——是它把 tmux 会话和对话 id 绑在一起的。
+
+### 界面语言
+
+中文和英文。从没选过的机器上，第一次请求会按浏览器的 `Accept-Language` 猜一次并存下来——从 npm 装完打开就是能读的语言，不用先去翻设置。之后在齿轮里改，选择按机器存（`~/.tmux-next/language.json`），手机和桌面一致。
+
+锁屏通知也跟着走。推送是唯一会脱离界面出现的文本，界面英文而锁屏中文最突兀。agent 自己发来的消息原样透传、不翻译——它比任何预设文案都具体，而且已经是 agent 选择的语言。
 
 ### 配色主题
 
