@@ -1128,10 +1128,10 @@ async function openVoice() {
     getStream: () => navigator.mediaDevices.getUserMedia({ audio: true }),
     makeRecorder: (stream) => new MediaRecorder(stream),
     transcribe: transcribeBlob,
-    // No Enter — the same contract as an uploaded image path. The user adds
-    // their own words and sends.
-    onInsert: (text) => {
-      if (text) send(text);
+    // The draft has already been read and edited in the panel, so this is the
+    // deliberate send — text and the Enter that submits it, in one act.
+    onSend: (text) => {
+      if (text.trim()) send(text + "\r");
     },
     onClose: forgetVoicePanel,
     tr,

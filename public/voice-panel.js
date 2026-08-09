@@ -7,6 +7,11 @@ import { createVoiceRecorder } from "./voice-recorder.js";
  * there is only ever room for one of them, and the two are the same kind of
  * thing — whatever fills the bottom of the screen.
  *
+ * Takes accumulate into a draft instead of going to the terminal one at a time.
+ * Speech arrives in bursts and recognisers get names and jargon wrong, so the
+ * draft is where you say the next sentence, fix the last one, and only then
+ * send — once, with Enter.
+ *
  * The microphone, the recorder and the network all arrive as dependencies.
  * That is what lets src/voice-panel.test.ts mount this in happy-dom and drive
  * every state without a browser, a device, or a paid API call.
@@ -24,15 +29,31 @@ function clock(ms) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
+/**
+ * Appends one take to the draft.
+ *
+ * Chinese needs no separator — the recogniser already supplies punctuation, and
+ * a space between clauses would be wrong. English run together would produce
+ * one unreadable word. So the join is decided by the characters that actually
+ * meet: a space only where an ASCII word follows something ASCII.
+ */
+export function joinTakes(draft, take) {
+  if (!draft) return take;
+  if (!take) return draft;
+  const needsSpace = /[\x21-\x7e]$/.test(draft) && /^[A-Za-z0-9]/.test(take);
+  return draft + (needsSpace ? " " : "") + take;
+}
+
 export function createVoicePanel(deps) {
-  const { getStream, makeRecorder, transcribe, onInsert, onClose, tr } = deps;
+  const { getStream, makeRecorder, transcribe, onSend, onClose, tr } = deps;
 
   const root = el("div", "voice-panel");
   const rec = createVoiceRecorder({ makeRecorder });
 
   let stream = null;
   let mode = "working";
-  let text = "";
+  let draft = "";
+  /** Transient: a failed or silent take. Never replaces the draft. */
   let note = "";
   let ticker = 0;
 
@@ -41,70 +62,47 @@ export function createVoicePanel(deps) {
     ticker = 0;
   }
 
-  function again() {
-    const btn = el("button", "btn", tr("voice.again"));
-    btn.dataset.role = "again";
-    btn.addEventListener("click", () => {
-      mode = "idle";
-      render();
-    });
-    return btn;
-  }
-
   function render() {
     root.dataset.mode = mode;
 
-    if (mode === "error") {
-      const kids = [el("p", "voice-note", note)];
-      // Only offer another take when there is still a microphone to use.
-      if (stream) kids.push(again());
-      root.replaceChildren(...kids);
+    // No microphone at all: there is nothing to draft, so say why and stop.
+    if (mode === "denied") {
+      root.replaceChildren(el("p", "voice-note", tr("voice.denied")));
       return;
     }
 
-    if (mode === "working") {
-      root.replaceChildren(el("p", "voice-note", tr("voice.working")));
-      return;
-    }
-
-    if (mode === "review") {
-      const box = el("textarea", "voice-text");
-      box.value = text;
-      box.setAttribute("aria-label", tr("voice.reviewLabel"));
-
-      const insert = el("button", "btn primary", tr("voice.insert"));
-      insert.dataset.role = "insert";
-      insert.addEventListener("click", () => {
-        // No Enter: the text lands at the prompt and the user sends it, the
-        // same contract as an uploaded image path.
-        onInsert(box.value);
-        // Back to ready rather than closed. Dictation comes in bursts — say a
-        // sentence, look at what landed, say the next — and closing here would
-        // charge a reopen and a fresh glance for every one of them.
-        text = "";
-        mode = "idle";
-        render();
-      });
-
-      const actions = el("div", "voice-actions");
-      actions.append(again(), insert);
-      root.replaceChildren(box, actions);
-      return;
-    }
-
-    // idle and recording share one button that changes state, so the finger
-    // lands in the same place both times.
     const recording = mode === "recording";
+    const busy = mode === "working";
+
+    const box = el("textarea", "voice-text");
+    box.value = draft;
+    box.dataset.role = "draft";
+    box.setAttribute("aria-label", tr("voice.draftLabel"));
+    box.setAttribute("placeholder", tr("voice.hint"));
+    // Typed edits are the source of truth for the draft; re-rendering on every
+    // keystroke would throw the caret to the start of the box.
+    box.addEventListener("input", () => {
+      draft = box.value;
+      refreshSend();
+    });
+
+    // One button that changes state, so the finger lands in the same place
+    // whether it is starting or stopping.
     const btn = el("button", "voice-rec", recording ? "■" : "●");
     btn.dataset.role = "record";
     btn.dataset.state = mode;
+    btn.disabled = busy;
     btn.setAttribute("aria-label", tr(recording ? "voice.stop" : "voice.start"));
     btn.addEventListener("click", toggle);
 
-    const hint = el("span", "voice-hint", recording ? clock(0) : tr("voice.hint"));
-    hint.dataset.role = "hint";
+    const status = el("span", "voice-hint", recording ? clock(0) : busy ? tr("voice.working") : note);
+    status.dataset.role = "status";
 
-    const kids = [btn, hint];
+    // Cancel sits beside the record button rather than under it. On its own row
+    // it cost more height than the button it qualifies, which is backwards for
+    // the one control here that is an afterthought.
+    const row = el("div", "voice-row");
+    row.append(btn);
     if (recording) {
       const cancel = el("button", "btn", tr("voice.cancel"));
       cancel.dataset.role = "cancel";
@@ -114,14 +112,34 @@ export function createVoicePanel(deps) {
         mode = "idle";
         render();
       });
-      kids.push(cancel);
+      row.append(cancel);
     }
-    root.replaceChildren(...kids);
+    row.append(status);
+
+    const send = el("button", "btn primary", tr("voice.send"));
+    send.dataset.role = "send";
+    // Sending is what presses Enter, so an empty draft must not be tappable —
+    // a bare newline would go to whatever is running.
+    send.disabled = !draft.trim();
+    send.addEventListener("click", () => {
+      if (!draft.trim()) return;
+      onSend(draft);
+      draft = "";
+      note = "";
+      render();
+    });
+    row.append(send);
+
+    function refreshSend() {
+      send.disabled = !draft.trim();
+    }
+
+    root.replaceChildren(box, row);
 
     stopTicker();
     if (recording) {
       ticker = setInterval(() => {
-        hint.textContent = clock(rec.elapsedMs());
+        status.textContent = clock(rec.elapsedMs());
       }, 1000);
     }
   }
@@ -137,26 +155,33 @@ export function createVoicePanel(deps) {
       }
       mode = "working";
       render();
+
+      let take = "";
       try {
-        text = await transcribe(blob);
+        take = await transcribe(blob);
       } catch {
         note = tr("voice.failed");
-        mode = "error";
+        mode = "idle";
         render();
         return;
       }
-      if (!text) {
+      // A failed or silent take must not take the sentences already collected
+      // with it, so the draft is only ever added to.
+      if (!take) {
         note = tr("voice.empty");
-        mode = "error";
+        mode = "idle";
         render();
         return;
       }
-      mode = "review";
+      draft = joinTakes(draft, take);
+      note = "";
+      mode = "idle";
       render();
       return;
     }
 
     if (!stream) return;
+    note = "";
     rec.start(stream);
     mode = "recording";
     render();
@@ -176,8 +201,7 @@ export function createVoicePanel(deps) {
       mode = "idle";
     } catch {
       stream = null;
-      note = tr("voice.denied");
-      mode = "error";
+      mode = "denied";
     }
     render();
   }
