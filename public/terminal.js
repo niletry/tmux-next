@@ -1102,14 +1102,6 @@ connect();
 const micBtn = document.getElementById("mic");
 let voicePanel = null;
 
-/**
- * How long to wait before the Enter that submits a dictated draft.
- *
- * Long enough that the agent's input has finished absorbing the text and is
- * back to reading single keys; short enough not to feel like a stall.
- */
-const ENTER_DELAY_MS = 150;
-
 async function transcribeBlob(blob) {
   const res = await fetch("api/asr", {
     method: "POST",
@@ -1137,17 +1129,15 @@ async function openVoice() {
     makeRecorder: (stream) => new MediaRecorder(stream),
     transcribe: transcribeBlob,
     // The draft has already been read and edited in the panel, so this is the
-    // deliberate send: the text, and then the Enter that submits it.
+    // deliberate send — the text and the Enter that submits it, in one act.
     //
-    // The two go separately on purpose. Sent as one burst, `text\r` arrives at
-    // the agent's input as a single chunk, and a TUI that detects pastes treats
-    // the trailing carriage return as a newline *inside* the pasted text — the
-    // line lands in the prompt and just sits there. A gap makes it a keystroke
-    // in its own right, which is what actually submits.
+    // Verified end to end against a real Claude Code TUI, driven through this
+    // very websocket: a 30-character line with the carriage return in the same
+    // message submits. An earlier version split the two, on a guess that paste
+    // detection was swallowing the return; the experiment showed both forms
+    // work, so the guess bought nothing and the split came back out.
     onSend: (text) => {
-      if (!text.trim()) return;
-      send(text);
-      setTimeout(() => sendBytes(new Uint8Array([0x0d])), ENTER_DELAY_MS);
+      if (text.trim()) send(text + "\r");
     },
     onClose: forgetVoicePanel,
     tr,
