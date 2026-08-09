@@ -43,7 +43,17 @@ const TABS = /** @type {{ page: Page, href: string, key: string }[]} */ ([
 ]);
 
 /**
- * Renders the navigation icons into an existing header.
+ * Renders the page switcher into an existing header.
+ *
+ * A segmented control rather than a row of icons: three sibling pages need a
+ * label each, and an icon alone makes you guess. The trade-off is that it
+ * claims the width a page title used to occupy — so the title goes away and
+ * the count moves inside the active segment, where it stays visible without
+ * costing a second line.
+ *
+ * Only the active segment carries a count. Showing all three would mean
+ * fetching two other pages' totals on every load to fill in numbers nobody
+ * asked for.
  *
  * The current page becomes a `span` rather than a link: a link to where you
  * already are does nothing when tapped, and giving it `aria-current` while
@@ -54,28 +64,36 @@ const TABS = /** @type {{ page: Page, href: string, key: string }[]} */ ([
  */
 export function renderNav(header, current) {
   const nav = document.createElement("nav");
-  nav.className = "hnav";
+  nav.className = "hseg";
   nav.setAttribute("aria-label", tr("nav.label"));
 
   for (const tab of TABS) {
     const label = tr(tab.key);
-    if (tab.page === current) {
-      const here = document.createElement("span");
-      here.className = "hnav-item on";
-      here.setAttribute("aria-current", "page");
-      here.title = label;
-      here.innerHTML = svg(ICONS[tab.page]);
-      nav.append(here);
+    const active = tab.page === current;
+    const node = document.createElement(active ? "span" : "a");
+    node.className = active ? "hseg-item on" : "hseg-item";
+    if (active) {
+      node.setAttribute("aria-current", "page");
     } else {
-      const link = document.createElement("a");
-      link.className = "hnav-item";
-      link.href = tab.href;
-      link.title = label;
-      link.setAttribute("aria-label", label);
-      link.innerHTML = svg(ICONS[tab.page]);
-      nav.append(link);
+      /** @type {HTMLAnchorElement} */ (node).href = tab.href;
     }
+
+    node.innerHTML = svg(ICONS[tab.page]);
+    const text = document.createElement("span");
+    text.className = "hseg-label";
+    text.textContent = label;
+    node.append(text);
+
+    // The count element keeps its id so each page's script can keep writing to
+    // it without knowing it moved in here.
+    if (active) {
+      const count = document.createElement("span");
+      count.className = "count";
+      count.id = "count";
+      node.append(count);
+    }
+    nav.append(node);
   }
-  header.append(nav);
+  header.prepend(nav);
   return nav;
 }

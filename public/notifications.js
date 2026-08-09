@@ -5,7 +5,17 @@ import { initLang, tr } from "./i18n-apply.js";
 import { renderNav } from "./nav.js";
 
 const listEl = document.getElementById("list");
-const countEl = document.getElementById("count");
+/**
+ * Looked up on use, not at module load.
+ *
+ * The element lives inside the active nav segment now, and renderNav creates it
+ * — so a reference taken at the top of the module would be null on any page
+ * whose nav is rendered later.
+ */
+const setCount = (/** @type {string} */ text) => {
+  const el = document.getElementById("count");
+  if (el) el.textContent = text;
+};
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -31,7 +41,7 @@ async function load() {
     return;
   }
 
-  countEl.textContent = notifications.length ? tr("notif.count", { n: notifications.length }) : "";
+  setCount(notifications.length ? tr("notif.count", { n: notifications.length }) : "");
   if (!notifications.length) {
     listEl.replaceChildren(el("p", "empty", tr("notif.empty")));
     return;

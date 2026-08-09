@@ -15,7 +15,17 @@ initLang().then(() => {
 });
 
 const listEl = document.getElementById("list");
-const countEl = document.getElementById("count");
+/**
+ * Looked up on use, not at module load.
+ *
+ * The element lives inside the active nav segment now, and renderNav creates it
+ * — so a reference taken at the top of the module would be null on any page
+ * whose nav is rendered later.
+ */
+const setCount = (/** @type {string} */ text) => {
+  const el = document.getElementById("count");
+  if (el) el.textContent = text;
+};
 
 function relativeTime(epochSeconds) {
   const secs = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds));
@@ -244,7 +254,7 @@ async function render() {
       fetch("api/sessions").then((r) => r.json()),
       fetchRestorable(),
     ]);
-    countEl.textContent = sessions.length ? tr("list.count", { n: sessions.length }) : "";
+    setCount(sessions.length ? tr("list.count", { n: sessions.length }) : "");
     setTabWaiting(sessions.filter((s) => s.idle).length);
 
     const children = [];
@@ -254,7 +264,7 @@ async function render() {
     );
     listEl.replaceChildren(...children);
   } catch {
-    countEl.textContent = "";
+    setCount("");
     listEl.replaceChildren(el("p", "empty", tr("list.offline")));
   }
 }
