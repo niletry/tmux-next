@@ -45,11 +45,13 @@ const TABS = /** @type {{ page: Page, href: string, key: string }[]} */ ([
 /**
  * Renders the page switcher into an existing header.
  *
- * A segmented control rather than a row of icons: three sibling pages need a
- * label each, and an icon alone makes you guess. The trade-off is that it
- * claims the width a page title used to occupy — so the title goes away and
- * the count moves inside the active segment, where it stays visible without
- * costing a second line.
+ * A segmented control of icons: the grouping is what says these three are
+ * alternatives to each other, which a scattered row of icons does not. Labels
+ * are carried by title/aria-label rather than shown, so the control stays
+ * narrow enough to leave the header to the page's own actions.
+ *
+ * The count moves inside the active segment: there is no page title any more
+ * for it to sit beside, and a second line for one number is not worth it.
  *
  * Only the active segment carries a count. Showing all three would mean
  * fetching two other pages' totals on every load to fill in numbers nobody
@@ -79,10 +81,10 @@ export function renderNav(header, current) {
     }
 
     node.innerHTML = svg(ICONS[tab.page]);
-    const text = document.createElement("span");
-    text.className = "hseg-label";
-    text.textContent = label;
-    node.append(text);
+    // Icons only, so the accessible name is the only thing naming this tab —
+    // it is not decoration here, it is the label.
+    node.title = label;
+    node.setAttribute("aria-label", label);
 
     // The count element keeps its id so each page's script can keep writing to
     // it without knowing it moved in here.
