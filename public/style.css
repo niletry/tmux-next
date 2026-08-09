@@ -930,3 +930,57 @@ header .htitle { font-size: 17px; font-weight: 600; }
 /* Full height instead of the sheet's 34vh: browsing directories is the whole
    point of this page, so the list gets the room the viewport can spare. */
 .page-body .dir-list { max-height: none; flex: 1; }
+
+/* ---- voice panel ---- */
+
+/* Roughly a soft keyboard's height, in the place it would have taken. */
+.voice-panel {
+  flex: 0 0 auto;
+  height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--card);
+}
+
+.voice-rec {
+  width: 72px;
+  height: 72px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 26px;
+  line-height: 1;
+}
+.voice-rec[data-state="recording"] { background: var(--term-red, var(--accent)); }
+.voice-rec:active { opacity: 0.7; }
+
+.voice-hint { color: var(--dim); font-size: 14px; font-variant-numeric: tabular-nums; }
+
+.voice-note {
+  color: var(--dim);
+  font-size: 14px;
+  text-align: center;
+  margin: 0;
+  max-width: 30em;
+}
+
+.voice-text {
+  width: 100%;
+  flex: 1 1 auto;
+  resize: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 16px; /* under 16px iOS zooms the page on focus */
+}
+
+.voice-actions { display: flex; gap: 10px; align-self: stretch; }
+.voice-actions .btn { flex: 1 1 0; }
