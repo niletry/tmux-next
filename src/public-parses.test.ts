@@ -8,7 +8,7 @@ import { readdirSync } from "node:fs";
  * plain syntax error ships silently. That is not hypothetical: redeclaring a
  * name that was already a function parameter in `drawCrumb` took the whole
  * create sheet down with an uncaught SyntaxError, and the suite stayed green
- * because `create-sheet.js` is imported by nothing.
+ * because the file was imported by nothing.
  *
  * Bundling is the cheapest check that covers the whole directory. It catches
  * syntax and static-resolution errors, not runtime behaviour.

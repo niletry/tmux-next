@@ -5,7 +5,7 @@ import { DICTS, LANGS, DEFAULT_LANG, t, pickLang } from "../public/i18n.js";
 /**
  * The safety net this whole change rests on.
  *
- * terminal.js, list.js and create-sheet.js are not type-checked (checkJs is
+ * terminal.js, list.js and new.js are not type-checked (checkJs is
  * false), so `t("newSesion")` with a missing letter raises nothing at all — the
  * interface simply shows a blank. Across ~200 mechanical replacements that is
  * not a risk, it is a certainty.

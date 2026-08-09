@@ -1,5 +1,5 @@
 import { filterEntries, splitPath } from "./dir-filter.js";
-import { tr } from "./i18n-apply.js";
+import { initLang, tr } from "./i18n-apply.js";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -49,9 +49,12 @@ const ERRORS = {
  * by typing its full path is miserable, so the list drills down a level per tap
  * and the field only filters what is already on screen.
  */
-export function openCreateSheet() {
-  const backdrop = el("div", "sheet-backdrop");
-  const sheet = el("div", "sheet");
+export function renderNewSession(root) {
+  // The page body stands in for the sheet. Everything below builds the same
+  // two screens; what changes is that they are the page rather than a layer
+  // over it, so the directory list gets real height and the soft keyboard has
+  // somewhere to push.
+  const sheet = root;
 
   // --- screen 1: new session -------------------------------------------------
   const step1 = el("div", "sheet-step");
@@ -135,8 +138,7 @@ export function openCreateSheet() {
   actions.append(cancel, submit);
 
   sheet.append(step1, step2, error, actions);
-  backdrop.append(sheet);
-  document.body.append(backdrop);
+
 
   let home = "";
   let current = null;
@@ -144,13 +146,32 @@ export function openCreateSheet() {
   let history = []; // past conversations for `current`
   let busy = false;
 
-  const close = () => backdrop.remove();
+  // Leaving is the browser's back, not a close button — the directory you are
+  // in is in the URL, so back walks up the path you came down.
+  const close = () => history.back();
   cancel.addEventListener("click", close);
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) close();
-  });
+
+  /**
+   * Writes the current directory and screen into the address bar.
+   *
+   * replaceState while browsing down, pushState when switching screens: every
+   * directory should be a back step, but re-rendering the same screen should
+   * not pile up entries.
+   */
+  function syncUrl(push) {
+    const params = new URLSearchParams();
+    if (current) params.set("dir", current);
+    if (step === 2) params.set("resume", "1");
+    const url = `new.html?${params}`;
+    if (url === location.pathname.slice(1) + location.search) return;
+    if (push) history.pushState({}, "", url);
+    else history.replaceState({}, "", url);
+  }
+
+  let step = 1;
 
   function showStep(n) {
+    step = n;
     error.textContent = "";
     step1.style.display = n === 1 ? "" : "none";
     step2.style.display = n === 2 ? "" : "none";
@@ -257,6 +278,9 @@ export function openCreateSheet() {
     }
     const body = await res.json();
     current = body.path;
+    // The directory is the page's state, so it belongs in the URL: back walks
+    // up the path you came down, and the address of a directory can be kept.
+    syncUrl();
     entries = body.entries;
     // A fresh level starts unfiltered; the old query rarely matches here.
     filter.value = "";
@@ -353,8 +377,9 @@ export function openCreateSheet() {
   resumeEntry.addEventListener("click", () => {
     renderHistory();
     showStep(2);
+    syncUrl(true);
   });
-  back.addEventListener("click", () => showStep(1));
+  back.addEventListener("click", () => history.back());
 
   // Populate: favourites drive the default directory, so they load first.
   (async () => {
@@ -384,6 +409,9 @@ export function openCreateSheet() {
       return;
     }
 
+    const fromUrl = new URLSearchParams(location.search).get("dir");
+    if (fromUrl) dirs = [fromUrl, ...dirs.filter((d) => d !== fromUrl)];
+
     favourites.replaceChildren(
       ...dirs.slice(0, 6).map((path) => {
         const chip = el("button", "chip", path.slice(path.lastIndexOf("/") + 1) || path);
@@ -396,5 +424,22 @@ export function openCreateSheet() {
 
     // With no sessions yet there is nothing to rank, so start from home.
     if (dirs[0] ?? home) await browse(dirs[0] ?? home);
-  })();
+  
+  // The address bar is the source of truth on load: opening
+  // new.html?dir=/some/path lands there directly, and back/forward move
+  // between the directories visited rather than leaving the page.
+  window.addEventListener("popstate", () => {
+    const params = new URLSearchParams(location.search);
+    const want = params.get("dir");
+    showStep(params.get("resume") === "1" ? 2 : 1);
+    if (want && want !== current) browse(want);
+  });
+})();
 }
+
+
+// --- page entry --------------------------------------------------------------
+
+initLang().then(() => {
+  renderNewSession(/** @type {HTMLElement} */ (document.getElementById("new")));
+});

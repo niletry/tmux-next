@@ -1,16 +1,13 @@
-import { openCreateSheet } from "./create-sheet.js";
-import { initNotifyToggle } from "./push.js";
-import { openThemeSheet } from "./theme-sheet.js";
 import { initTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
-import { renderNav } from "./nav.js";
+import { renderHeader } from "./nav.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
 initTheme();
 initLang().then(() => {
   // After the language is known: the nav labels come from the dictionary.
-  renderNav(document.getElementById("header"), "sessions");
+  renderHeader("sessions");
   render();
 });
 
@@ -269,9 +266,6 @@ async function render() {
   }
 }
 
-document.getElementById("new-session").addEventListener("click", openCreateSheet);
-document.getElementById("appearance").addEventListener("click", openThemeSheet);
-initNotifyToggle(document.getElementById("notify-toggle"));
 
 // A build marker in the corner: if you can see it and it matches the deploy,
 // the page is the current one — no guessing about a stale cache.

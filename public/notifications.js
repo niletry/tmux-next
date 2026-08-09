@@ -2,7 +2,7 @@
 // on the phone can still be found. Each row links to its session's terminal.
 
 import { initLang, tr } from "./i18n-apply.js";
-import { renderNav } from "./nav.js";
+import { renderHeader } from "./nav.js";
 
 const listEl = document.getElementById("list");
 /**
@@ -65,7 +65,7 @@ async function load() {
 
 // Language first: the empty and error states are rendered from it.
 initLang().then(() => {
-  renderNav(/** @type {HTMLElement} */ (document.getElementById("header")), "notifications");
+  renderHeader("notifications");
   load();
 });
 
