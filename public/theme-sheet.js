@@ -298,6 +298,13 @@ export function openKeyEditor() {
     let moved = false;
 
     tile.classList.add("dragging");
+    // The whole board stops selecting text while the drag is in flight (a
+    // long press would otherwise become an iOS text selection), and the
+    // browser's native drag must not hijack the gesture.
+    document.body.classList.add("no-select");
+    tile.setAttribute("draggable", "false");
+    const onDragStart = (ev) => ev.preventDefault();
+    tile.addEventListener("dragstart", onDragStart);
     tiles[originRow].forEach((t) => {
       if (t !== tile) t.style.transition = "transform .12s ease";
     });
@@ -383,7 +390,9 @@ export function openKeyEditor() {
       tile.removeEventListener("pointermove", onMove);
       tile.removeEventListener("pointerup", onUp);
       tile.removeEventListener("pointercancel", onCancel);
+      tile.removeEventListener("dragstart", onDragStart);
       tile.classList.remove("dragging");
+      document.body.classList.remove("no-select");
       tile.style.transform = "";
       for (const r of ROWS) {
         tiles[r].forEach((t) => {
