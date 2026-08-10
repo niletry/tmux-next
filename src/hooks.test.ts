@@ -160,3 +160,44 @@ test("Stop notifies for the user's session even while a web client watches it", 
     server.stop(true);
   }
 });
+
+/**
+ * A subagent finishing is not a turn finishing.
+ *
+ * Claude converts a `Stop` registration into `SubagentStop` when the hook fires
+ * inside a Task-tool subagent, so the script is handed events it never asked
+ * for. It dispatches on `hook_event_name` and falls through to a silent exit,
+ * which is the only reason a run with ten subagents does not buzz the phone ten
+ * times. Nothing else in the suite would notice that changing.
+ */
+test("a subagent finishing does not notify", async () => {
+  const { name, pane } = await makeSession("hooksub");
+  const home = mkdtempSync(join(tmpdir(), "hookhome-"));
+
+  const seen: { event?: string; session?: string }[] = [];
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(req) {
+      if (new URL(req.url).pathname === "/api/notify") seen.push(await req.json());
+      return new Response(null, { status: 202 });
+    },
+  });
+
+  try {
+    const port = { TMUX_NEXT_PORT: String(server.port) };
+    runHook(SCRIPT_NOTIFY, home, pane, { hook_event_name: "SubagentStop" }, port);
+    runHook(SCRIPT_NOTIFY, home, pane, { hook_event_name: "SubagentStart" }, port);
+    await Bun.sleep(700);
+    expect(seen).toEqual([]);
+
+    // The real Stop that follows still gets through, so this is a filter and
+    // not simply a broken script.
+    runHook(SCRIPT_NOTIFY, home, pane, { hook_event_name: "Stop" }, port);
+    await Bun.sleep(700);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ event: "waiting", session: name });
+  } finally {
+    server.stop(true);
+  }
+});
