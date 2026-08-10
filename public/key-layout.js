@@ -66,11 +66,15 @@ export function defaultLayout() {
 /**
  * Turns whatever came out of localStorage into a usable layout.
  *
- * Nothing is taken on faith: unknown keys are dropped, duplicates collapse,
- * and a key that is missing from the stored rows is appended to its home row
- * in default order — so a version that adds a new key (the mic appeared this
- * way) still shows it, while a hand-edited or stale value cannot produce a
- * broken toolbar. Anything that is not an object at all is the default.
+ * A key may live in any row now — the whole board is one drop zone, so a
+ * user can drag a key off its default row. Nothing is taken on faith: unknown
+ * keys are dropped and duplicates collapse, but the stored arrangement is
+ * otherwise kept as-is, including empty rows. Anything that is not an object
+ * at all is the default.
+ *
+ * A key absent from every row (say, added by a newer version after the layout
+ * was saved) is not added here: the terminal applies layouts by matching
+ * data-key, and a key the stored order never heard of keeps its place.
  *
  * @param {unknown} raw
  * @returns {{ primary: string[], nav: string[], tools: string[] }}
@@ -91,13 +95,6 @@ export function normaliseLayout(raw) {
           kept.push(k);
           seen.add(k);
         }
-      }
-    }
-    // Whatever the stored row was missing, restore in default order.
-    for (const k of ROWS[row]) {
-      if (!seen.has(k)) {
-        kept.push(k);
-        seen.add(k);
       }
     }
     out[row] = kept;

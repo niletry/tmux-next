@@ -960,32 +960,33 @@ term.attachCustomKeyEventHandler(interceptCtrl);
 // --- toolbar layout ---------------------------------------------------------
 
 /**
- * Reorders each toolbar row to the device's saved arrangement.
+ * Reorders the toolbar to the device's saved arrangement.
  *
- * Keys are matched by their stable data-key; the ▴ toggle has none and stays
- * pinned to the front of the primary row. A row stores only order, so keys the
- * stored layout never heard of (added by a newer version) keep their place at
- * the end rather than vanishing.
+ * The layout is board-wide: a key may live on any row (the editor's whole
+ * board is one drop zone), so each key is moved to the row its stored layout
+ * puts it in, rather than being reordered within its markup row. Keys the
+ * stored layout never heard of (added by a newer version) stay where they
+ * are; the ▴ toggle has no data-key and stays pinned to the front of the
+ * primary row.
  */
 function applyKeyLayout() {
   const layout = readLayout();
+  /** @type {Map<string, HTMLElement>} */
+  const all = new Map();
+  for (const btn of document.querySelectorAll(".keys button[data-key]")) {
+    all.set(btn.dataset.key, btn);
+  }
   for (const rowName of ["primary", "nav", "tools"]) {
     const row = document.querySelector(`.keys-row[data-row="${rowName}"]`);
     if (!row) continue;
-    const byKey = new Map();
-    for (const btn of row.querySelectorAll("button[data-key]")) {
-      byKey.set(btn.dataset.key, btn);
-    }
     const pinned = [...row.querySelectorAll("button:not([data-key])")];
     const frag = document.createDocumentFragment();
     for (const key of layout[rowName]) {
-      const btn = byKey.get(key);
-      if (btn) frag.append(btn);
-    }
-    // Keys the stored order does not mention (a newer version added them)
-    // keep their place; pins (the ▴) stay at the front of the row.
-    for (const btn of row.querySelectorAll("button[data-key]")) {
-      if (!frag.contains(btn)) frag.append(btn);
+      const btn = all.get(key);
+      if (btn) {
+        frag.append(btn);
+        all.delete(key);
+      }
     }
     row.prepend(...pinned);
     row.append(frag);
