@@ -7,6 +7,7 @@ import { createCopyGate, decodeOsc52 } from "./copy-on-select.js";
 import { xtermTheme } from "./themes.js";
 import { initTheme, cachedTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
+import { readLayout } from "./key-layout.js";
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
@@ -955,6 +956,43 @@ function interceptCtrl(e) {
 }
 
 term.attachCustomKeyEventHandler(interceptCtrl);
+
+// --- toolbar layout ---------------------------------------------------------
+
+/**
+ * Reorders each toolbar row to the device's saved arrangement.
+ *
+ * Keys are matched by their stable data-key; the ▴ toggle has none and stays
+ * pinned to the front of the primary row. A row stores only order, so keys the
+ * stored layout never heard of (added by a newer version) keep their place at
+ * the end rather than vanishing.
+ */
+function applyKeyLayout() {
+  const layout = readLayout();
+  for (const rowName of ["primary", "nav", "tools"]) {
+    const row = document.querySelector(`.keys-row[data-row="${rowName}"]`);
+    if (!row) continue;
+    const byKey = new Map();
+    for (const btn of row.querySelectorAll("button[data-key]")) {
+      byKey.set(btn.dataset.key, btn);
+    }
+    const pinned = [...row.querySelectorAll("button:not([data-key])")];
+    const frag = document.createDocumentFragment();
+    for (const key of layout[rowName]) {
+      const btn = byKey.get(key);
+      if (btn) frag.append(btn);
+    }
+    // Keys the stored order does not mention (a newer version added them)
+    // keep their place; pins (the ▴) stay at the front of the row.
+    for (const btn of row.querySelectorAll("button[data-key]")) {
+      if (!frag.contains(btn)) frag.append(btn);
+    }
+    row.prepend(...pinned);
+    row.append(frag);
+  }
+}
+
+applyKeyLayout();
 
 for (const btn of document.querySelectorAll(".keys button[data-hex]")) {
   // pointerdown, not click: clicking would blur the terminal and drop the

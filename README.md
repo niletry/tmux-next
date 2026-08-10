@@ -184,6 +184,12 @@ The choice is stored per machine (`~/.tmux-next/theme.json`), so phone and deskt
 
 Every palette is checked against WCAG AA by the test suite. Note that the four presets do **not** use their upstream `brightBlack`: all of them ship one between 1.7:1 and 2.5:1 against their own background, and that is the colour Claude Code draws its secondary text in — unreadable on a phone outdoors. Each is replaced by a lighter step from the same upstream palette.
 
+### Virtual keys
+
+The terminal toolbar's keys sit in three rows — the always-visible one (Esc, Tab, arrows, Enter), an editing row (Ctrl, ^C, ← →) and a tools row (image, paste, copy, font size) — and the order inside each row is yours: the gear on the list page opens Settings → **Reorder**, where each key has move-up and move-down buttons. The tap count each key has earned on this machine sits beside it, so the order can be chosen from evidence instead of guesswork. **Reset** puts the bar back to the default.
+
+The arrangement is saved per device (localStorage), like font size: how the keys sit on the screen you are holding is a property of that screen. The ▴ toggle always stays at the front of the always-visible row.
+
 ### Voice input (optional)
 
 Dictating a prompt beats typing one on a phone. The system keyboard's own

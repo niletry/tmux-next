@@ -2,6 +2,13 @@ import { THEMES, THEME_ORDER, ANSI_NAMES } from "./themes.js";
 import { setTheme, cachedTheme } from "./theme-apply.js";
 import { LANGS, LANG_LABELS } from "./i18n.js";
 import { setLang, lang as currentLang, tr } from "./i18n-apply.js";
+import {
+  ROWS,
+  USAGE_OF,
+  readLayout,
+  writeLayout,
+  clearLayout,
+} from "./key-layout.js";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -126,12 +133,166 @@ export function openThemeSheet() {
   }
 
   const note = el("p", "sheet-note", tr("settings.note"));
+
+  // Virtual keys: which toolbar keys sit where. Per device, like font size.
+  const keysHead = el("h3", "sheet-sub", tr("settings.keys"));
+  const keysActions = el("div", "agent-row");
+  const keysEdit = el("button", "btn", tr("settings.keysEdit"));
+  const keysReset = el("button", "btn", tr("settings.keysReset"));
+  keysEdit.addEventListener("click", () => {
+    close();
+    openKeyEditor();
+  });
+  keysReset.addEventListener("click", () => {
+    clearLayout();
+    const done = tr("settings.keysResetDone");
+    keysReset.textContent = done;
+    keysReset.disabled = true;
+    setTimeout(() => {
+      keysReset.textContent = tr("settings.keysReset");
+      keysReset.disabled = false;
+    }, 1500);
+  });
+  keysActions.append(keysEdit, keysReset);
+  sheet.append(
+    keysHead,
+    keysActions,
+    el("p", "sheet-note", tr("settings.keysNote")),
+  );
+
   const cancel = el("button", "btn", tr("common.close"));
   cancel.addEventListener("click", close);
   const actions = el("div", "sheet-actions");
   actions.append(cancel);
 
   sheet.append(list, note, actions);
+  backdrop.append(sheet);
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
+  document.body.append(backdrop);
+}
+
+// --- virtual-key editor ----------------------------------------------------
+
+/**
+ * A readable name for each key, mirroring what the toolbar itself shows.
+ * Symbols (Esc, arrows, the font size pair) need no translation; the four
+ * tool buttons that are SVG-only borrow the interface strings that describe
+ * them elsewhere.
+ */
+function keyLabel(key) {
+  const SYMBOLS = {
+    esc: "Esc",
+    tab: "Tab",
+    "shift-tab": "⇧Tab",
+    up: "↑",
+    down: "↓",
+    enter: "⏎",
+    ctrl: "Ctrl",
+    "ctrl-c": "^C",
+    left: "←",
+    right: "→",
+    kbd: "⌨",
+    "font-dec": "A−",
+    "font-inc": "A+",
+  };
+  const NAMED = {
+    mic: tr("term.voice"),
+    img: tr("term.sendImage"),
+    paste: tr("term.paste"),
+    copy: tr("term.copyLinks"),
+  };
+  return SYMBOLS[key] ?? NAMED[key] ?? key;
+}
+
+/**
+ * The reorder sheet. One row group per toolbar row; each key gets a move-up
+ * and a move-down button, and the tap counts the key has earned on this
+ * machine (if any) sit beside it, so the order can be chosen from evidence.
+ */
+export function openKeyEditor() {
+  const backdrop = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet");
+  const head = el("div", "agent-row");
+  const back = el("button", "btn", tr("settings.keysBack"));
+  back.addEventListener("click", () => {
+    backdrop.remove();
+    openThemeSheet();
+  });
+  head.append(back);
+  sheet.append(el("h2", null, tr("settings.keys")), head);
+
+  let layout = readLayout();
+
+  const list = el("div", "theme-list");
+  const ROW_TITLE = {
+    primary: tr("key.rowPrimary"),
+    nav: tr("key.rowNav"),
+    tools: tr("key.rowTools"),
+  };
+
+  const move = (row, index, delta) => {
+    const keys = layout[row];
+    const swap = index + delta;
+    if (swap < 0 || swap >= keys.length) return;
+    [keys[index], keys[swap]] = [keys[swap], keys[index]];
+    if (writeLayout(layout)) render();
+  };
+
+  /** Renders a single row group; the list keeps groups in a fixed order. */
+  const renderGroup = (row) => {
+    const group = el("div", "key-row-group");
+    group.append(el("h3", "sheet-sub", ROW_TITLE[row]));
+    layout[row].forEach((key, index) => {
+      const item = el("div", "key-edit-item");
+      const up = el("button", "key-move", "↑");
+      const down = el("button", "key-move", "↓");
+      up.type = "button";
+      down.type = "button";
+      up.setAttribute("aria-label", tr("key.moveUp"));
+      down.setAttribute("aria-label", tr("key.moveDown"));
+      up.disabled = index === 0;
+      down.disabled = index === layout[row].length - 1;
+      up.addEventListener("click", () => move(row, index, -1));
+      down.addEventListener("click", () => move(row, index, 1));
+      const label = el("span", "key-edit-name", keyLabel(key));
+      item.append(up, label, down);
+      if (usage.has(USAGE_OF[key])) {
+        item.append(el("span", "key-usage", tr("key.usageCount", { n: usage.get(USAGE_OF[key]) })));
+      }
+      group.append(item);
+    });
+    return group;
+  };
+
+  /** The usage totals, for the tap counts next to each key. Best effort. */
+  const usage = new Map();
+  const render = () => {
+    list.replaceChildren();
+    for (const row of ["primary", "nav", "tools"]) list.append(renderGroup(row));
+  };
+
+  // Fetch the counts first (they change nothing about the ordering), then draw.
+  fetch("api/key-usage")
+    .then((r) => r.json())
+    .then((rows) => {
+      for (const row of Array.isArray(rows) ? rows : []) {
+        if (typeof row?.key === "string" && typeof row.count === "number") {
+          usage.set(row.key, row.count);
+        }
+      }
+      render();
+    })
+    .catch(() => render());
+
+  const close = () => backdrop.remove();
+  const done = el("button", "btn", tr("common.close"));
+  done.addEventListener("click", close);
+  const actions = el("div", "sheet-actions");
+  actions.append(done);
+
+  sheet.append(list, actions);
   backdrop.append(sheet);
   backdrop.addEventListener("click", (e) => {
     if (e.target === backdrop) close();
