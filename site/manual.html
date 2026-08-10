@@ -1,0 +1,443 @@
+<title>tmux-next — user manual</title>
+<meta name="description" content="The whole thing in one place: how to run tmux-next, read the session list, drive the terminal from a phone, and turn on the optional pieces — session restore, push notifications, voice input.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<style>
+  :root {
+    --paper: #edeff3;
+    --paper-2: #e3e6ec;
+    --ink: #12151b;
+    --muted: #666e7d;
+    --line: #d2d7e0;
+    --accent: #2f5fe0;
+    --accent-soft: #dfe6fb;
+    --term-bg: #14161a;
+    --term-fg: #e6e8ec;
+    --term-dim: #8b919c;
+    --danger: #c0392b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+      --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+    --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+  }
+  :root[data-theme="light"] {
+    --paper: #edeff3; --paper-2: #e3e6ec; --ink: #12151b; --muted: #666e7d;
+    --line: #d2d7e0; --accent: #2f5fe0; --accent-soft: #dfe6fb; --danger: #c0392b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.7 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 1.5rem 5rem; }
+
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 3rem;
+  }
+
+  .top a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+  .top a:hover { color: var(--accent); }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(1.7rem, 5vw, 2.6rem);
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+    margin: 0 0 0.8rem;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    letter-spacing: -0.02em;
+    margin: 3rem 0 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  h2 .n {
+    color: var(--accent);
+    margin-right: 0.5rem;
+  }
+
+  .lede { font-size: 1.12rem; color: var(--muted); margin: 0 0 1rem; }
+
+  p { margin: 0 0 1rem; }
+
+  strong { font-weight: 600; }
+
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--accent-soft);
+    padding: 0.1em 0.36em;
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    font: 13px/1.65 var(--mono);
+    color: var(--term-fg);
+    background: var(--term-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 0 0 1.2rem;
+  }
+
+  pre .c { color: var(--term-dim); }
+  pre .k { color: #7aa2f7; }
+  pre .s { color: #9ece6a; }
+
+  .box {
+    border-left: 3px solid var(--accent);
+    background: var(--paper-2);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 0 0 1.2rem;
+    font-size: 0.96rem;
+  }
+
+  .box.warn { border-left-color: var(--danger); }
+  .box strong { color: var(--ink); }
+  .box p:last-child { margin: 0; }
+
+  ul { margin: 0 0 1rem; padding-left: 1.3rem; }
+  li { margin-bottom: 0.4rem; }
+
+  .keys { font-family: var(--mono); font-size: 0.85em; }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.87rem;
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <a href="/">← tmux-next</a>
+    <span><a href="/manual" style="color:var(--ink);font-weight:600">EN</a> · <a href="/manual-zh">中文</a> · <a href="https://github.com/niletry/tmux-next">GitHub</a></span>
+  </div>
+
+  <h1>Using tmux-next</h1>
+
+  <p class="lede">
+    Everything in one place: how to run it, how to read the session list, how to drive
+    the terminal from a phone, and how to turn on the optional pieces — session restore,
+    lock-screen notifications, voice input.
+  </p>
+
+  <h2><span class="n">1</span>What it is</h2>
+
+  <p>
+    tmux-next is a small web client for tmux. It lists the sessions running on your
+    machine and lets you open any of them in a browser. It was written to check on a
+    coding agent (Claude Code, opencode or pi) from a phone without walking back to the
+    laptop — but nothing about it is specific to agents: any tmux session works.
+  </p>
+
+  <p>
+    Underneath it is tmux <em>control mode</em>, not a screen recording. The browser
+    renders one pane with xterm.js; each connection mounts a disposable grouped session
+    and destroys it on disconnect. A reconnect re-captures the whole screen from tmux —
+    no replay, no buffering, and the size is always right.
+  </p>
+
+  <h2><span class="n">2</span>Getting it running</h2>
+
+  <p>You need <strong>tmux 3.2 or newer</strong>, <strong>Bun 1.0 or newer</strong>, and macOS or Linux.</p>
+
+  <pre><span class="k">bunx tmux-next</span></pre>
+
+  <p>
+    It serves on <code>http://127.0.0.1:7682/</code> and lists every tmux session on the
+    machine. The command-line options:
+  </p>
+
+  <pre><span class="c"># port and address</span>
+bunx tmux-next --port 9000 --host 127.0.0.1
+
+<span class="c"># help / version</span>
+bunx tmux-next --help
+bunx tmux-next --version</pre>
+
+  <p>
+    To reach it from your phone you add a layer in front — it has no login of its own
+    and is meant to stay on loopback. The
+    <a href="/tailscale">Tailscale guide</a> is the simplest private option; the
+    <a href="/deploy">Caddy guide</a> puts it behind a public domain with a real login.
+  </p>
+
+  <div class="box warn">
+    <p><strong>Anyone who can reach this service can run commands on your machine — it hands out a shell.</strong>
+    Don't bind it to a public interface and call it done. See <a href="#security">Keeping it safe</a> at the end.</p>
+  </div>
+
+  <h2><span class="n">3</span>The session list</h2>
+
+  <p>
+    The list, the artifacts and the notification history are three sibling pages. The
+    segmented control on the left of the header switches between them; the icons on the
+    right are the bell (notification subscription), the gear (language and theme) and
+    <code>＋</code> (new session).
+  </p>
+
+  <p>Each session card shows:</p>
+
+  <ul>
+    <li><strong>The last lines it printed</strong> — so you can see what it's doing without opening it.</li>
+    <li><strong>A task line</strong> — what the conversation was last asked to do, read from the
+      agent's own transcript. Needs the hook from <a href="#restore">section 8</a>.</li>
+    <li><strong>A green dot</strong> when the agent has finished a turn and is waiting on you.
+      Those sessions sort to the top, so you don't have to open each one to check. The browser
+      tab shows a count too.</li>
+    <li><strong>A pinned badge</strong> for sessions you pinned, and a
+      <strong>pending-input marker</strong> when a line was typed but never sent.</li>
+    <li><strong>How long ago</strong> it last changed.</li>
+  </ul>
+
+  <p>
+    Tap a card to open the session. The <code>⋯</code> button on a card opens its actions:
+    <strong>pin</strong> (keep it on top, across reloads) and <strong>end session</strong> — which
+    kills the process running inside, so it asks for confirmation first.
+  </p>
+
+  <h2><span class="n">4</span>The terminal</h2>
+
+  <p>
+    The top bar holds the session name (tap it to <strong>rename</strong>), the connection
+    status, and an <strong>end</strong> button.
+  </p>
+
+  <p>
+    The bottom toolbar carries the keys a phone keyboard doesn't have. The bottom row is
+    always there — <span class="keys">Esc Tab ⇧Tab ↑ ↓ ⏎</span> — and the
+    <span class="keys">▴</span> toggle opens the rest upward: <span class="keys">Ctrl</span>,
+    <span class="keys">^C</span> and the horizontal arrows, plus the tools:
+  </p>
+
+  <ul>
+    <li><strong>Image</strong> — pick a photo or paste one; it's saved and its path drops into the
+      prompt. That's how the tools running inside a session read an image.</li>
+    <li><strong>Paste</strong> — paste the clipboard into the terminal.</li>
+    <li><strong>Copy</strong> — select text with your finger and it copies; tap a link in the
+      terminal to copy just that link.</li>
+    <li><strong>A− / A+</strong> — font size. The choice is stored per device, and you can also
+      pinch to zoom.</li>
+    <li><strong>Microphone</strong> — voice input, if you've configured it (<a href="#voice">section 9</a>).</li>
+  </ul>
+
+  <p>
+    <strong>Scrolling:</strong> drag on the screen to scroll the program's own history, the same
+    way the mouse wheel would. Programs that ignore the mouse fall back to
+    <span class="keys">PgUp/PgDn</span> automatically.
+  </p>
+
+  <p>
+    <strong>Disconnects:</strong> the connection re-establishes and the screen is rebuilt from
+    tmux. Whatever was running inside was never interrupted — it lives in tmux, not in the page.
+  </p>
+
+  <h2><span class="n">5</span>Starting a session</h2>
+
+  <p>
+    Tap <code>＋</code> in the header. The new-session page has a few moving parts:
+  </p>
+
+  <ul>
+    <li><strong>Agent</strong> — Claude Code, opencode and pi are supported to the same depth.
+      The picker only appears when more than one is installed; an agent that isn't on your
+      login shell's <code>PATH</code> is shown struck through rather than offered.</li>
+    <li><strong>Directory</strong> — drill down from <code>~</code>, filter the list, or create a
+      folder on the spot. The directory lives in the URL, so the back button walks up the path you
+      came down, and <code>new.html?dir=/some/project</code> can be saved as a link.</li>
+    <li><strong>Name</strong> — optional; something like <code>PROJ-1088</code>.</li>
+    <li><strong>Skip permissions</strong> — optional; lets the agent run without confirming
+      each step.</li>
+    <li><strong>Resume from history</strong> — past conversations are listed and can be rebuilt
+      in place (Claude Code and pi keep JSONL transcripts on disk; opencode uses its own store).</li>
+  </ul>
+
+  <h2><span class="n">6</span>Artifacts</h2>
+
+  <p>
+    When an agent makes something to look at — a chart, a diagram, an HTML report — drop it in
+    <code>~/.tmux-next/gallery/</code> and it appears under the <strong>Artifacts</strong> tab:
+    images render in a grid, HTML and SVG render in place (sandboxed), and each file can be
+    downloaded. No moving files to another machine.
+  </p>
+
+  <h2><span class="n">7</span>Lock-screen notifications</h2>
+
+  <p>
+    You hand a task to an agent, go do something else, and only later find it stopped ages ago.
+    Web Push closes that gap: your phone gets a system notification — even locked, even with the
+    page closed — and tapping it jumps straight to that session.
+  </p>
+
+  <p>Two things are needed:</p>
+
+  <ul>
+    <li><strong>The hooks installed</strong> — see <a href="#restore">section 8</a>; the same
+      command installs everything.</li>
+    <li><strong>One subscription</strong> — tap the bell in the header and allow notifications.
+      The bell lights up when you're subscribed.</li>
+  </ul>
+
+  <p>Three moments produce a push: a session ends, a turn finishes and the agent is waiting,
+  and the agent needs confirmation on something. A message the agent itself sent is passed
+  through untranslated.</p>
+
+  <div class="box">
+    <p><strong>Requirements and limits.</strong> Browsers only grant notification permission over
+    <strong>HTTPS</strong> (or <code>localhost</code>) — reaching the app through the reverse proxy
+    satisfies this. On an <strong>iPhone</strong>, you must first “Add to Home Screen” and subscribe
+    from that icon: iOS only pushes to installed PWAs (iOS 16.4+). At most one push per session per
+    30 seconds (session-end is exempt). Everything is stored locally —
+    <code>~/.tmux-next/vapid.json</code> holds the keypair, subscriptions live in
+    <code>~/.tmux-next/push-subscriptions/</code> — and the trigger endpoint only accepts
+    connections from the machine itself.</p>
+  </div>
+
+  <p>
+    Every push is also logged on the <strong>Notification history</strong> page, so one swiped
+    away on the phone can still be found.
+  </p>
+
+  <h2 id="restore"><span class="n">8</span>Bringing sessions back after a restart</h2>
+
+  <p>
+    When the tmux server dies — a reboot, a crash — the sessions inside it are gone. The agents'
+    transcripts are on disk, though, so a conversation can be rebuilt. Install the companion
+    hooks and tmux-next will offer to do it:
+  </p>
+
+  <pre><span class="k">bunx tmux-next hook</span></pre>
+
+  <p>
+    The command drops hook scripts into <code>~/.claude/hooks/</code> and registers them in
+    <code>~/.claude/settings.json</code> — backing the file up first, and never clobbering your
+    config. It needs <code>jq</code> (and <code>curl</code> for notifications). From then on every
+    agent <em>newly</em> started in tmux records <code>{name, id, cwd}</code> under
+    <code>~/.tmux-next/sessions/</code>, which is on disk and survives the tmux server dying.
+  </p>
+
+  <p>
+    After tmux restarts, the list shows “<em>N sessions can be restored</em>” at the top. Tap it
+    and each session is rebuilt — <code>tmux new-session</code> in the recorded directory, resumed
+    with the agent's own flag (<code>claude --resume &lt;uuid&gt;</code>, <code>pi --session
+    &lt;uuid&gt;</code>, <code>opencode --session &lt;ses_…&gt;</code>) — and the conversation is
+    back. Only sessions started <em>after</em> the hook was installed count, and sessions you end
+    deliberately through the app are not offered for restore.
+  </p>
+
+  <div class="box warn">
+    <p><strong>After upgrading the package, re-run <code>bunx tmux-next hook</code>.</strong>
+    The scripts are <em>copied</em> into <code>~/.claude/hooks/</code>, so npm can't update them in
+    place — and a stale hook fails silently, taking restore and notifications with it. The server
+    checks at startup and prints a line if the installed copies differ from the ones it ships.</p>
+  </div>
+
+  <p>
+    Every hook invocation is logged to <code>~/.tmux-next/hook-events.jsonl</code> — which kind of
+    event arrived, whether it came from a subagent, which session it was attributed to, and whether
+    a push followed. Never the message text. <code>TMUX_NEXT_HOOK_LOG=off</code> records nothing.
+  </p>
+
+  <h2 id="voice"><span class="n">9</span>Voice input</h2>
+
+  <p>
+    Dictating a prompt beats typing one on a phone. It's optional and off until you give it a key
+    (recognition runs on Volcano Engine and is billed to your account):
+  </p>
+
+  <pre><span class="k">bunx tmux-next asr &lt;key&gt;</span></pre>
+
+  <p>
+    That writes <code>~/.tmux-next/asr.json</code> with mode 0600. A microphone then appears in
+    the terminal toolbar. Tap it and the panel takes the keyboard's place — there's only room for
+    one of them; the record button starts and stops, and there is no time limit.
+  </p>
+
+  <p>
+    What you say piles up in an <strong>editable draft</strong> rather than going to the terminal
+    line by line, because speech arrives in bursts: say a sentence, check what landed, fix the name
+    the recogniser got wrong, say the next. One <strong>Send</strong> delivers the whole draft and
+    presses Enter; the panel stays open for the next one. Tap into the draft to choose where the
+    next take lands; select a passage and speaking replaces it.
+  </p>
+
+  <p>
+    The audio goes to the server and straight upstream — never written to disk — and the key never
+    leaves the machine. Recording needs a secure context, so reach the page through the HTTPS
+    reverse proxy rather than plain <code>http://</code> over the network.
+  </p>
+
+  <h2><span class="n">10</span>Settings, themes and font size</h2>
+
+  <p>
+    The gear opens a small sheet: <strong>language</strong> (English or Chinese — guessed from
+    your browser on first visit) and <strong>theme</strong> (four presets: Tokyo Night, Catppuccin
+    Mocha, One Dark, Nord, each shown with its palette before you pick). Both apply without a
+    reload.
+  </p>
+
+  <p>
+    Language and theme are stored <em>per machine</em> (<code>~/.tmux-next/language.json</code>,
+    <code>~/.tmux-next/theme.json</code>) so your phone and desktop agree. Font size is the one
+    setting that stays <em>per device</em> — how big a screen is and what a machine looks like are
+    different questions.
+  </p>
+
+  <h2 id="security"><span class="n">11</span>Keeping it safe</h2>
+
+  <p>
+    tmux-next deliberately has <strong>no authentication of its own</strong>. Anyone who reaches it
+    can attach to every session and type — it hands out a shell, so treat access like SSH access:
+  </p>
+
+  <ul>
+    <li>Keep it bound to <code>127.0.0.1</code>. If you do pass <code>--host 0.0.0.0</code> it
+      prints a warning; it won't stop you.</li>
+    <li>Put a reverse proxy in front for HTTPS and a login — <a href="/tailscale">Tailscale</a> for
+      private, device-only access, or <a href="/deploy">Caddy</a> for a public URL.</li>
+    <li>If you proxy it, handle the WebSocket separately: a browser sends no Basic Auth header on a
+      WebSocket handshake. The Caddy guide shows a working cookie scheme.</li>
+  </ul>
+
+  <footer>
+    <p>tmux-next · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a> ·
+    <a href="https://www.npmjs.com/package/tmux-next" style="color:var(--muted)">npm</a> ·
+    <a href="/whats-new" style="color:var(--muted)">What's new</a> · <a href="/" style="color:var(--muted)">Home</a></p>
+  </footer>
+
+</div>
