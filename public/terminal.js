@@ -1102,6 +1102,16 @@ connect();
 const micBtn = document.getElementById("mic");
 let voicePanel = null;
 
+/**
+ * How long to wait before the Enter that submits a dictated draft.
+ *
+ * Long enough to fall outside the agent's paste window, so the return counts as
+ * a keystroke rather than a newline in pasted text; short enough not to read as
+ * a stall. Verified at this value for drafts of 80 and 121 characters (the
+ * latter 363 bytes), both of which fail without it.
+ */
+const ENTER_DELAY_MS = 150;
+
 async function transcribeBlob(blob) {
   const res = await fetch("api/asr", {
     method: "POST",
@@ -1129,15 +1139,21 @@ async function openVoice() {
     makeRecorder: (stream) => new MediaRecorder(stream),
     transcribe: transcribeBlob,
     // The draft has already been read and edited in the panel, so this is the
-    // deliberate send — the text and the Enter that submits it, in one act.
+    // deliberate send: the text, and then the Enter that submits it.
     //
-    // Verified end to end against a real Claude Code TUI, driven through this
-    // very websocket: a 30-character line with the carriage return in the same
-    // message submits. An earlier version split the two, on a guess that paste
-    // detection was swallowing the return; the experiment showed both forms
-    // work, so the guess bought nothing and the split came back out.
+    // The two go separately, and the gap is the whole point. Claude Code's
+    // input treats a large enough chunk as a paste, and a carriage return
+    // inside a paste is a newline, not a submission — the line lands in the
+    // prompt and sits there. Measured against a real TUI through this very
+    // websocket: a 30-character line submits either way, while 80- and
+    // 121-character ones only submit when the return arrives on its own.
+    // Dictated sentences sit past that threshold, which is why this showed up
+    // for voice input and never for the ⏎ key on the toolbar — that one sends
+    // a bare return with no text in front of it.
     onSend: (text) => {
-      if (text.trim()) send(text + "\r");
+      if (!text.trim()) return;
+      send(text);
+      setTimeout(() => sendBytes(new Uint8Array([0x0d])), ENTER_DELAY_MS);
     },
     onClose: forgetVoicePanel,
     tr,
