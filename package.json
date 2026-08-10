@@ -1,6 +1,6 @@
 {
   "name": "tmux-next",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "A phone-friendly web client for tmux sessions, built on tmux control mode",
   "license": "MIT",
   "type": "module",
