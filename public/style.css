@@ -770,8 +770,13 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   font-family: var(--mono, ui-monospace, Menlo, Consolas, monospace);
   font-size: 14px;
   cursor: grab;
-  /* The page must not scroll while a tile is being dragged. */
+  /* The page must not scroll while a tile is being dragged, and a long
+     press must not become text selection (iOS would otherwise select the
+     key's label mid-drag). */
   touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   transition: transform .12s ease;
 }
 
@@ -782,6 +787,14 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   z-index: 5;
   opacity: .95;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+
+/* While a drag is in flight the whole board must not select text — the finger
+   travels outside the tiles (row gaps, labels) and iOS would happily start a
+   selection there. Added on pointerdown, removed on release. */
+body.no-select {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* The tap count, as an app-icon badge on the tile. */
