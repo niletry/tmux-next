@@ -246,6 +246,11 @@ export function openKeyEditor() {
     group.append(el("h3", "sheet-sub", ROW_TITLE[row]));
     layout[row].forEach((key, index) => {
       const item = el("div", "key-edit-item");
+      item.dataset.key = key;
+      // Drag handle on the left: grab it and move the key where you want it.
+      const grip = el("button", "key-grip", "≡");
+      grip.type = "button";
+      grip.setAttribute("aria-label", tr("key.drag"));
       const up = el("button", "key-move", "↑");
       const down = el("button", "key-move", "↓");
       up.type = "button";
@@ -257,14 +262,113 @@ export function openKeyEditor() {
       up.addEventListener("click", () => move(row, index, -1));
       down.addEventListener("click", () => move(row, index, 1));
       const label = el("span", "key-edit-name", keyLabel(key));
-      item.append(up, label, down);
+      item.append(grip, label, up, down);
       if (usage.has(USAGE_OF[key])) {
         item.append(el("span", "key-usage", tr("key.usageCount", { n: usage.get(USAGE_OF[key]) })));
       }
+      grip.addEventListener("pointerdown", (e) => startDrag(e, row, item, group));
       group.append(item);
     });
     return group;
   };
+
+  // --- drag to reorder -----------------------------------------------------
+
+  /**
+   * Pointer-driven drag: the grabbed key follows the finger while the others
+   * shift out of its way with a transform, then the order is committed on
+   * release. Pointer capture keeps the drag alive even when the finger leaves
+   * the sheet, and `touch-action: none` on the grip stops the page from
+   * scrolling instead.
+   */
+  const GAP = 4; // must match the .key-row-group gap in style.css
+
+  function startDrag(e, row, item, group) {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    e.preventDefault();
+    const items = [...group.querySelectorAll(".key-edit-item")];
+    const index = items.indexOf(item);
+    const height = item.offsetHeight + GAP;
+    const origTop = item.offsetTop;
+    const startY = e.clientY;
+    let target = index;
+    let moved = false;
+
+    // Give the group a stable height while the dragged key is pulled out of
+    // flow, so nothing jumps under the finger.
+    group.style.minHeight = `${group.offsetHeight}px`;
+
+    item.classList.add("dragging");
+    item.style.top = `${origTop}px`;
+    items.forEach((it) => {
+      if (it !== item) it.style.transition = "transform .12s ease";
+    });
+
+    const shiftOthers = (to) => {
+      // Items between the old and new position slide one slot, out of the
+      // dragged key's way; everything else stays put.
+      items.forEach((it, i) => {
+        if (it === item) return;
+        if (to < index) it.style.transform = i >= to && i < index ? `translateY(${height}px)` : "";
+        else if (to > index) it.style.transform = i > index && i <= to ? `translateY(${-height}px)` : "";
+        else it.style.transform = "";
+      });
+    };
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
+      const dy = ev.clientY - startY;
+      if (!moved && Math.abs(dy) < 6) return; // wait for intent, not a tap
+      moved = true;
+      item.style.top = `${origTop + dy}px`;
+      // The slot whose middle the finger has crossed.
+      let acc = 0;
+      let t = items.length - 1;
+      for (let i = 0; i < items.length; i++) {
+        if (i === index) continue;
+        if (origTop + dy < acc + height / 2) {
+          t = i;
+          break;
+        }
+        acc += height;
+      }
+      if (t !== target) {
+        target = t;
+        shiftOthers(target);
+      }
+    };
+
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      finish();
+    };
+
+    const onCancel = () => finish(true);
+
+    const finish = (revert = false) => {
+      item.removeEventListener("pointermove", onMove);
+      item.removeEventListener("pointerup", onUp);
+      item.removeEventListener("pointercancel", onCancel);
+      item.classList.remove("dragging");
+      item.style.top = "";
+      group.style.minHeight = "";
+      items.forEach((it) => {
+        it.style.transition = "";
+        it.style.transform = "";
+      });
+      if (revert || target === index) return;
+      const keys = layout[row];
+      const [key] = keys.splice(index, 1);
+      keys.splice(target, 0, key);
+      if (writeLayout(layout)) render();
+    };
+
+    item.addEventListener("pointermove", onMove);
+    item.addEventListener("pointerup", onUp);
+    item.addEventListener("pointercancel", onCancel);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
 
   /** The usage totals, for the tap counts next to each key. Best effort. */
   const usage = new Map();

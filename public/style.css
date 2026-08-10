@@ -742,20 +742,49 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 
 .theme-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 
-/* virtual-key editor: one row group per toolbar row, move buttons per key */
+/* virtual-key editor: one row group per toolbar row, drag to reorder */
 .key-row-group {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
 .key-edit-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
   background: #2a2f3a;
   border-radius: 8px;
+  transition: transform .12s ease;
+}
+
+/* The grabbed key leaves flow and follows the finger; the others slide out
+   of its way via transform, so the row never jumps while dragging. */
+.key-edit-item.dragging {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  transition: none;
+  opacity: .95;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .4);
+}
+
+.key-grip {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: grab;
+  /* The page must not scroll while the finger is dragging a key. */
+  touch-action: none;
 }
 
 .key-edit-name {
@@ -766,7 +795,7 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 
 .key-move {
   flex: 0 0 auto;
-  width: 34px;
+  width: 30px;
   height: 30px;
   border: 1px solid #3a4050;
   border-radius: 7px;
@@ -774,6 +803,7 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   color: var(--fg);
   font-size: 14px;
   line-height: 1;
+  padding: 0;
 }
 
 .key-move:disabled { opacity: 0.3; }
