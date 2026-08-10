@@ -1,5 +1,5 @@
-<title>What's new in tmux-next 0.11</title>
-<meta name="description" content="tmux-next 0.9 to 0.11: three coding agents, colour themes, an English interface, and a header that stays put — with the reasoning behind each.">
+<title>What's new in tmux-next 0.12</title>
+<meta name="description" content="tmux-next 0.12: dictate to your agent from a phone — and the measurements behind it, including one conclusion I got wrong and had to take back.">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 
@@ -146,12 +146,120 @@
     <span><a href="/whats-new" style="color:var(--ink);font-weight:600">EN</a> · <a href="/whats-new-zh">中文</a></span>
   </div>
 
-  <h1>What's new in 0.11</h1>
+  <h1>What's new in 0.12</h1>
 
   <p class="lede">
-    Four releases since 0.8, and the shape of the thing changed: it is no longer a
-    Claude&nbsp;Code viewer that happens to run tmux. Below is what landed, and — where the
-    decision was not obvious — why it went that way.
+    You can talk to your agent now. Below is how it works, the measurement that decided its
+    architecture, and one conclusion I reached, shipped, and then had to take back.
+  </p>
+
+  <h2>Dictation, without the keyboard's dictation key</h2>
+
+  <p>
+    Typing a prompt on a phone is the slowest part of using this thing. The obvious answer is the
+    microphone key on the system keyboard, and it does not work here — not "works badly", does not
+    work. iOS dictation rewrites the whole text repeatedly as it revises its guess, and xterm.js
+    treats every rewrite as fresh keystrokes. Say <em>voice input</em> and the terminal receives
+    <em>voivoice invoice input</em>.
+  </p>
+
+  <p>
+    I tried three ways around it and all three failed for different reasons: a capture-phase
+    listener loses to the one xterm registers in <code>open()</code>; dictation's
+    <code>beforeinput</code> is not cancelable; and filtering inside the send path destroys
+    everything else that travels it — paste, image paths, mouse sequences. So tmux-next records the
+    audio itself and sends it to a recogniser.
+  </p>
+
+  <pre><span class="k">bunx tmux-next asr &lt;key&gt;</span>   <span class="c"># Volcano Engine; off until you set one</span></pre>
+
+  <p>
+    A microphone appears in the terminal toolbar next to the keyboard button — the two are the same
+    kind of thing, whatever fills the bottom of the screen, and opening one closes the other.
+  </p>
+
+  <h2>Takes pile up in a draft</h2>
+
+  <p>
+    The first version sent each take straight to the prompt. That was wrong about how people
+    actually speak: you say a sentence, look at what landed, say the next one, and fix the name the
+    recogniser got wrong. So takes accumulate in an editable draft, and one <strong>Send</strong>
+    delivers the whole thing with Enter.
+  </p>
+
+  <p>
+    Tap into the draft first and the next take lands <em>there</em> rather than at the end; select a
+    passage and speaking replaces it, the same as typing would. That only works because the draft
+    box is one element for the panel's lifetime — the first version rebuilt it on every render,
+    which threw the caret away and made "insert before what I already said" impossible.
+  </p>
+
+  <p class="s">
+    A failed or silent take never takes the collected sentences with it. That is the one thing in
+    this design that cannot be allowed to go wrong: losing three spoken sentences to a fourth that
+    misheard would be worse than not having the feature.
+  </p>
+
+  <h2>The measurement that decided the architecture</h2>
+
+  <p>
+    The plan was to keep the key on the server and let the page call the recogniser directly —
+    fewer hops, and the audio never touches the machine. A CORS preflight said that would work:
+    <code>access-control-allow-origin: *</code>, with the vendor's auth headers explicitly on the
+    allow-list.
+  </p>
+
+  <p>
+    Then the actual credential turned out to authenticate only through <code>X-Api-Key</code>, and
+    that header is <em>not</em> on that list. Query-string forms are rejected outright. So the audio
+    goes through the server after all — which is the better shape anyway: the key never reaches a
+    browser, so devtools, screenshots and extensions stop being exposure surfaces, and there is one
+    credential to configure instead of two. The recording is forwarded and dropped; it is never
+    written to disk.
+  </p>
+
+  <div class="box warn">
+    <p class="c" style="margin-top:0"><b>The conclusion I got wrong</b></p>
+    <p class="c">
+      A dictated line was landing in the prompt without submitting. I guessed the agent's input
+      treats a large chunk as a paste, where a carriage return is a newline rather than a
+      submission, and shipped a fix that sends the Enter on its own a moment later.
+    </p>
+    <p class="c">
+      Then I tested it — a real Claude&nbsp;Code TUI, driven through the same websocket the phone
+      uses — and both forms submitted. So I reverted the fix and wrote a comment explaining that the
+      guess had been wrong.
+    </p>
+    <p class="c" style="margin-bottom:0">
+      The test sentence was 30 characters. At 80 it fails, and at 121 it fails: paste detection has
+      a length threshold, and my sample sat under it. Dictated sentences sit above it, which is why
+      this only ever appeared for voice and never for the ⏎ key on the toolbar — that one sends a
+      bare return with no text in front of it. The split is back, the comment now carries the
+      measurements, and it records the wrong turn so the next person testing with a short sentence
+      does not reach the same wrong conclusion.
+    </p>
+  </div>
+
+  <h2>A log for the paths that say nothing</h2>
+
+  <p>
+    The Claude hooks are built to never disturb the agent, so every way they decline to act is
+    silent — which is what made two earlier bugs so hard to place. Each invocation is now recorded
+    to <code>~/.tmux-next/hook-events.jsonl</code>: which kind of event arrived, whether it came
+    from a subagent, which session it was attributed to, and whether a push followed.
+  </p>
+
+  <p>
+    That shape only — never the message text. Diagnosing an event name is not worth writing what you
+    and the agent said to each other onto disk by default. <code>TMUX_NEXT_HOOK_LOG=off</code>
+    records nothing.
+  </p>
+
+  <h2>Earlier, in 0.9 to 0.11</h2>
+
+  <p class="lede">
+    Four releases in which the shape of the thing changed: it stopped being a Claude&nbsp;Code
+    viewer that happens to run tmux.
   </p>
 
   <h2>It runs three agents now</h2>
