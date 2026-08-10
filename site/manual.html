@@ -383,9 +383,19 @@ bunx tmux-next --version</pre>
   <pre><span class="k">bunx tmux-next asr &lt;key&gt;</span></pre>
 
   <p>
-    That writes <code>~/.tmux-next/asr.json</code> with mode 0600. A microphone then appears in
-    the terminal toolbar. Tap it and the panel takes the keyboard's place — there's only room for
-    one of them; the record button starts and stops, and there is no time limit.
+    The key is stored in <code>~/.tmux-next/asr.json</code> (mode 0600) as a single JSON object —
+    <code>{ "key": "…", "resourceId": "volc.bigasr.auc_turbo" }</code>. The
+    <code>resourceId</code> picks the recognition model; the default is right unless you know you
+    want another, and the file can be edited by hand — pointing the same key at a newer model is
+    changing one field, not re-running the command.
+  </p>
+
+  <p>
+    No restart is needed: the server reads the file on every request, so once it's there, reload
+    the terminal page and the microphone appears in the toolbar. To switch keys, run the command
+    again or rewrite the file; to turn voice input off, delete it. Tap the microphone and the
+    panel takes the keyboard's place — there's only room for one of them; the record button
+    starts and stops, and there is no time limit.
   </p>
 
   <p>
