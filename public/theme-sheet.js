@@ -235,16 +235,19 @@ export function openKeyEditor() {
   /**
    * One row of the toolbar, laid out the way the toolbar really is: the keys
    * sit side by side as tiles. That is the point of the editor — you see the
-   * actual arrangement, not a list of rows.
+   * actual arrangement, not a list of rows. The whole board is one drop zone,
+   * so a key can be moved across rows, not just within one.
    */
   const renderGroup = (row) => {
     const group = el("div", "key-grid-row");
     group.append(el("h3", "sheet-sub", ROW_TITLE[row]));
     const strip = el("div", "key-strip");
+    strip.dataset.row = row;
     layout[row].forEach((key) => {
       const tile = el("button", "key-tile", keyLabel(key));
       tile.type = "button";
       tile.dataset.key = key;
+      tile.dataset.row = row;
       tile.setAttribute("aria-label", tr("key.drag"));
       // The tap count as a small badge, like an app icon's badge.
       if (usage.has(USAGE_OF[key])) {
@@ -254,77 +257,118 @@ export function openKeyEditor() {
       }
       strip.append(tile);
     });
-    // The whole tile is the handle: press it and slide it sideways.
-    strip.addEventListener("pointerdown", (e) => {
-      const tile = e.target.closest(".key-tile");
-      if (!tile) return;
-      startDrag(e, row, tile, strip);
-    });
     group.append(strip);
     return group;
   };
 
-  // --- drag, icon-style ----------------------------------------------------
+  // --- drag, icon-style, across the whole board ----------------------------
 
-  /**
-   * Press a key and slide it sideways; the tiles it passes slide out of the
-   * way, and the order is committed on release. The grabbed tile is pulled
-   * out of flow and follows the finger; the others move via transform, so the
-   * strip never jumps. Pointer capture + `touch-action: none` keep the page
-   * from scrolling instead.
-   */
+  const ROWS = ["primary", "nav", "tools"];
   const GAP = 8; // must match the .key-strip gap in style.css
 
-  function startDrag(e, row, tile, strip) {
+  /**
+   * Press a tile and slide it anywhere — within its row or onto another row.
+   * The grabbed tile rides a transform so it stays in flow (its row keeps its
+   * width), while the tiles it passes slide out of the way per row: the row it
+   * left closes up behind it, the row it is entering opens a slot. The order
+   * is committed on release. Pointer capture + `touch-action: none` keep the
+   * page from scrolling instead.
+   */
+  function startDrag(e, tile) {
     if (e.button !== 0 && e.pointerType === "mouse") return;
     e.preventDefault();
-    const tiles = [...strip.querySelectorAll(".key-tile")];
-    const index = tiles.indexOf(tile);
+    const originRow = tile.dataset.row;
+    const strips = Object.fromEntries(
+      ROWS.map((r) => [r, list.querySelector(`.key-strip[data-row="${r}"]`)]),
+    );
+    const tiles = Object.fromEntries(
+      ROWS.map((r) => [r, [...strips[r].querySelectorAll(".key-tile")]]),
+    );
+    const originIndex = tiles[originRow].indexOf(tile);
     const width = tile.offsetWidth + GAP;
-    const origLeft = tile.offsetLeft;
+    const height = tile.offsetHeight + GAP;
     const startX = e.clientX;
-    let target = index;
+    const startY = e.clientY;
+    // Where the tile sits in the board, for centre-based drop targeting.
+    const boardRect = list.getBoundingClientRect();
+    const startLeft = tile.getBoundingClientRect().left - boardRect.left;
+    const startTop = tile.getBoundingClientRect().top - boardRect.top;
+    let targetRow = originRow;
+    let targetIndex = originIndex;
     let moved = false;
 
-    // Keep the strip's width while the grabbed tile leaves flow.
-    strip.style.minWidth = `${strip.offsetWidth}px`;
     tile.classList.add("dragging");
-    tile.style.left = `${origLeft}px`;
-    tiles.forEach((t) => {
+    tiles[originRow].forEach((t) => {
       if (t !== tile) t.style.transition = "transform .12s ease";
     });
 
-    const shiftOthers = (to) => {
-      // Tiles between the old and new position slide one slot sideways.
-      tiles.forEach((t, i) => {
-        if (t === tile) return;
-        if (to < index) t.style.transform = i >= to && i < index ? `translateX(${width}px)` : "";
-        else if (to > index) t.style.transform = i > index && i <= to ? `translateX(${-width}px)` : "";
-        else t.style.transform = "";
-      });
+    /** Row whose vertical band the given board-centre is closest to. */
+    const rowAt = (cy) => {
+      let best = originRow;
+      let bestDist = Infinity;
+      for (const r of ROWS) {
+        const rect = strips[r].getBoundingClientRect();
+        const d = cy < rect.top ? rect.top - cy : cy > rect.bottom ? cy - rect.bottom : 0;
+        if (d < bestDist) {
+          bestDist = d;
+          best = r;
+        }
+      }
+      return best;
+    };
+
+    /** Slot in a row whose centre the given board-x is closest to. */
+    const indexAt = (r, cx) => {
+      const stripLeft = strips[r].getBoundingClientRect().left;
+      const items = tiles[r];
+      for (let i = 0; i < items.length; i++) {
+        if (i === originIndex && r === originRow) continue; // the grabbed tile
+        const center = stripLeft + items[i].offsetLeft + items[i].offsetWidth / 2;
+        if (cx < center) return i;
+      }
+      return items.length;
     };
 
     const onMove = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
       ev.preventDefault();
       const dx = ev.clientX - startX;
-      if (!moved && Math.abs(dx) < 6) return; // wait for intent, not a tap
+      const dy = ev.clientY - startY;
+      if (!moved && Math.abs(dx) < 6 && Math.abs(dy) < 6) return; // not a tap
       moved = true;
-      tile.style.left = `${origLeft + dx}px`;
-      // The slot whose middle the finger has crossed.
-      let acc = 0;
-      let t = tiles.length - 1;
-      for (let i = 0; i < tiles.length; i++) {
-        if (i === index) continue;
-        if (origLeft + dx < acc + width / 2) {
-          t = i;
-          break;
-        }
-        acc += width;
+      tile.style.transform = `translate(${dx}px, ${dy}px)`;
+      const cx = startLeft + width / 2 + dx;
+      const cy = startTop + height / 2 + dy;
+      const r = rowAt(boardRect.top + cy);
+      const i = indexAt(r, boardRect.left + cx);
+      if (r === targetRow && i === targetIndex) return;
+      targetRow = r;
+      targetIndex = i;
+      // Clear the previous layout, then shift the two affected rows.
+      for (const rr of ROWS) {
+        tiles[rr].forEach((t) => {
+          if (t !== tile) t.style.transform = "";
+        });
       }
-      if (t !== target) {
-        target = t;
-        shiftOthers(target);
+      if (targetRow === originRow) {
+        // Within one row: the tiles between the slots slide one place.
+        const lo = Math.min(originIndex, targetIndex);
+        const hi = Math.max(originIndex, targetIndex);
+        const dir = targetIndex > originIndex ? -1 : 1;
+        tiles[originRow].forEach((t, i) => {
+          if (t === tile) return;
+          t.style.transform = i > lo && i <= hi ? `translateX(${dir * width}px)` : "";
+        });
+      } else {
+        // Across rows: the old row closes up, the new row opens a slot.
+        tiles[originRow].forEach((t, i) => {
+          if (t === tile || i <= originIndex) t.style.transform = "";
+          else t.style.transform = `translateX(${-width}px)`;
+        });
+        tiles[targetRow].forEach((t, i) => {
+          if (t === tile) t.style.transform = "";
+          else if (i >= targetIndex) t.style.transform = `translateX(${width}px)`;
+        });
       }
     };
 
@@ -340,16 +384,16 @@ export function openKeyEditor() {
       tile.removeEventListener("pointerup", onUp);
       tile.removeEventListener("pointercancel", onCancel);
       tile.classList.remove("dragging");
-      tile.style.left = "";
-      strip.style.minWidth = "";
-      tiles.forEach((t) => {
-        t.style.transition = "";
-        t.style.transform = "";
-      });
-      if (revert || target === index) return;
-      const keys = layout[row];
-      const [key] = keys.splice(index, 1);
-      keys.splice(target, 0, key);
+      tile.style.transform = "";
+      for (const r of ROWS) {
+        tiles[r].forEach((t) => {
+          if (t !== tile) t.style.transform = "";
+        });
+      }
+      if (revert || (targetRow === originRow && targetIndex === originIndex)) return;
+      const keys = layout[originRow];
+      const [key] = keys.splice(originIndex, 1);
+      layout[targetRow].splice(targetIndex, 0, key);
       if (writeLayout(layout)) render();
     };
 
@@ -363,8 +407,12 @@ export function openKeyEditor() {
   const usage = new Map();
   const render = () => {
     list.replaceChildren();
-    for (const row of ["primary", "nav", "tools"]) list.append(renderGroup(row));
+    for (const row of ROWS) list.append(renderGroup(row));
   };
+  list.addEventListener("pointerdown", (e) => {
+    const tile = e.target.closest(".key-tile");
+    if (tile) startDrag(e, tile);
+  });
 
   // Fetch the counts first (they change nothing about the ordering), then draw.
   fetch("api/key-usage")

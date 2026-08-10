@@ -775,14 +775,13 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   transition: transform .12s ease;
 }
 
-/* The grabbed tile leaves flow and follows the finger; the others slide out
-   of its way via transform, so the strip never jumps while dragging. */
+/* The grabbed tile floats above the rest and follows the finger via a
+   transform (it stays in flow, so its row keeps its width); the tiles it
+   passes slide out of the way per row. */
 .key-tile.dragging {
-  position: absolute;
-  z-index: 3;
-  transition: none;
+  z-index: 5;
   opacity: .95;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
 }
 
 /* The tap count, as an app-icon badge on the tile. */

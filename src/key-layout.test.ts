@@ -19,7 +19,7 @@ test("a valid stored layout is preserved in its stored order", () => {
   });
   expect(layout.primary).toEqual(["enter", "esc", "up", "down", "tab", "shift-tab"]);
   expect(layout.nav).toEqual(["right", "left", "ctrl", "ctrl-c"]);
-  expect(layout.tools).toEqual(["paste", "copy", "img", "kbd", "font-inc", "font-dec", "mic"]);
+  expect(layout.tools).toEqual(["paste", "copy", "img", "kbd", "font-inc", "font-dec"]);
 });
 
 test("unknown keys are dropped, not kept", () => {
@@ -28,7 +28,7 @@ test("unknown keys are dropped, not kept", () => {
     nav: [],
     tools: [],
   });
-  expect(layout.primary).toEqual(["esc", "up", "tab", "shift-tab", "down", "enter"]);
+  expect(layout.primary).toEqual(["esc", "up"]);
 });
 
 test("a key mentioned twice collapses to one copy", () => {
@@ -40,40 +40,35 @@ test("a key mentioned twice collapses to one copy", () => {
   expect(layout.primary.filter((k) => k === "esc")).toHaveLength(1);
 });
 
-test("a missing row restores every key, in default order", () => {
-  const layout = normaliseLayout({ primary: ["enter"] });
-  expect(layout.primary).toEqual(["enter", "esc", "tab", "shift-tab", "up", "down"]);
-  expect(layout.nav).toEqual([...ROWS.nav]);
-  expect(layout.tools).toEqual([...ROWS.tools]);
-});
-
-test("a key in the wrong row is not duplicated when its home row is filled", () => {
-  // enter appears in tools (wrong row); the primary row must still end up
-  // complete, and tools must not hold two copies of enter.
+test("a key may live on a row other than its default — the whole board is one drop zone", () => {
   const layout = normaliseLayout({
-    primary: ["esc", "tab", "shift-tab", "up", "down"],
+    primary: ["tab", "shift-tab", "up", "down", "enter"], // esc dragged away
     nav: [],
-    tools: ["enter", "paste"],
+    tools: ["esc", "kbd", "mic", "img", "paste", "copy", "font-dec", "font-inc"],
   });
-  expect(layout.primary).toEqual(["esc", "tab", "shift-tab", "up", "down", "enter"]);
-  expect(layout.tools).toEqual(["paste", "kbd", "mic", "img", "copy", "font-dec", "font-inc"]);
+  expect(layout.primary).toEqual(["tab", "shift-tab", "up", "down", "enter"]);
+  expect(layout.tools).toEqual(["esc", "kbd", "mic", "img", "paste", "copy", "font-dec", "font-inc"]);
 });
 
-test("every key ends up in exactly one row", () => {
-  const layouts = [
-    null,
-    "junk",
-    {},
-    { primary: ["up"], nav: ["ctrl"], tools: [] },
-    { primary: [], nav: [], tools: [] },
-    { primary: ["esc", "tab", "shift-tab", "up", "down", "enter"], nav: [], tools: ["img"] },
-  ];
-  for (const raw of layouts) {
-    const layout = normaliseLayout(raw);
-    const all = [...layout.primary, ...layout.nav, ...layout.tools];
-    expect(new Set(all).size).toBe(all.length); // no duplicates
-    expect(all.sort()).toEqual(
-      [...ROWS.primary, ...ROWS.nav, ...ROWS.tools].sort(), // no missing, no extras
-    );
-  }
+test("a row the user emptied stays empty — nothing is forced back", () => {
+  const layout = normaliseLayout({
+    primary: [],
+    nav: ["ctrl", "ctrl-c", "left", "right"],
+    tools: [],
+  });
+  expect(layout.primary).toEqual([]);
+  expect(layout.nav).toEqual(["ctrl", "ctrl-c", "left", "right"]);
+  expect(layout.tools).toEqual([]);
+});
+
+test("keys end up exactly as stored: no duplicates, no unknown keys", () => {
+  const raw = {
+    primary: ["esc", "esc", "bogus", "tab", ""],
+    nav: ["right", "ctrl", "ctrl", "left", "ctrl-c"],
+    tools: [],
+  };
+  const layout = normaliseLayout(raw);
+  expect(layout.primary).toEqual(["esc", "tab"]);
+  expect(layout.nav).toEqual(["right", "ctrl", "left", "ctrl-c"]);
+  expect(layout.tools).toEqual([]);
 });

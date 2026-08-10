@@ -186,7 +186,7 @@ Every palette is checked against WCAG AA by the test suite. Note that the four p
 
 ### Virtual keys
 
-The terminal toolbar's keys sit in three rows — the always-visible one (Esc, Tab, arrows, Enter), an editing row (Ctrl, ^C, ← →) and a tools row (image, paste, copy, font size) — and the order inside each row is yours: the gear on the list page opens Settings → **Reorder**, where the keys are shown as they really sit, three rows of tiles like the bar itself. Press a key and slide it sideways — the others slide out of the way, the same gesture as arranging home-screen icons. The tap count each key has earned on this machine sits beside it as a badge, so the order can be chosen from evidence instead of guesswork. **Reset** puts the bar back to the default.
+The terminal toolbar's keys sit in three rows — the always-visible one (Esc, Tab, arrows, Enter), an editing row (Ctrl, ^C, ← →) and a tools row (image, paste, copy, font size) — and where each key sits is yours: the gear on the list page opens Settings → **Reorder**, where the keys are shown as they really sit, three rows of tiles like the bar itself. Press a key and drag it anywhere on the board — across rows too — the others sliding out of the way, the same gesture as arranging home-screen icons. The tap count each key has earned on this machine sits beside it as a badge, so the order can be chosen from evidence instead of guesswork. **Reset** puts the bar back to the default.
 
 The arrangement is saved per device (localStorage), like font size: how the keys sit on the screen you are holding is a property of that screen. The ▴ toggle always stays at the front of the always-visible row.
 
