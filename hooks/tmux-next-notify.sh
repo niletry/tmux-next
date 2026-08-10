@@ -16,14 +16,21 @@ command -v curl >/dev/null 2>&1 || exit 0
 
 input=$(cat)
 
-# Map the Claude hook to the event tmux-next understands.
+# Map the Claude hook to the event tmux-next understands. An event we do not
+# map is not an error — Claude sends more kinds than this hook cares about, and
+# `Stop` registrations also receive subagent completions.
 hook=$(printf '%s' "$input" | jq -r '.hook_event_name // empty' 2>/dev/null)
 case "$hook" in
   Stop) event=waiting ;;
   SessionEnd) event=ended ;;
   Notification) event=attention ;;
-  *) exit 0 ;;
+  *) event="" ;;
 esac
+
+# Present only inside a subagent, which is the one reliable way to tell a
+# subagent finishing from a turn finishing.
+agent_type=$(printf '%s' "$input" | jq -r '.agent_type // empty' 2>/dev/null)
+agent_id=$(printf '%s' "$input" | jq -r '.agent_id // empty' 2>/dev/null)
 
 # The user session the current pane belongs to. $TMUX_PANE is set inside tmux.
 #
@@ -40,6 +47,43 @@ esac
 # attribute, so exit as before.
 name=$(tmux list-panes -a -F '#{pane_id}|#{session_name}' 2>/dev/null \
   | grep "^${TMUX_PANE}|" | cut -d'|' -f2- | grep -v '^web-' | head -1)
+
+# A record of what arrived, including the events this hook then drops.
+#
+# Every way this script declines to act is silent by design, which is exactly
+# what made two bugs hard to find: pushes that stopped for sessions a browser
+# had open, and pushes that arrived when a subagent — not the turn — finished.
+# The dropped events are the interesting ones and they never reach the server,
+# so the only place they can be seen is here.
+#
+# The *shape* of the event only: which kind arrived, whether it came from a
+# subagent, which session it was attributed to, and what this hook did about it.
+# Never `message` or `last_assistant_message` — those are what you and the agent
+# said to each other, and no amount of diagnostic value is worth writing them to
+# disk by default. Set TMUX_NEXT_HOOK_LOG=off to record nothing at all.
+hooklog="${TMUX_NEXT_HOOK_LOG:-$HOME/.tmux-next/hook-events.jsonl}"
+if [ "$hooklog" != "off" ]; then
+  {
+    mkdir -p "$(dirname "$hooklog")" 2>/dev/null &&
+      jq -cn \
+        --arg ts "$(date +%s)" \
+        --arg hook "$hook" \
+        --arg action "${event:-ignored}" \
+        --arg session "$name" \
+        --arg agent "$agent_type" \
+        --arg sub "$agent_id" \
+        '{ts: ($ts|tonumber), hook: $hook, action: $action, session: $session}
+         + (if $agent == "" then {} else {agent: $agent} end)
+         + (if $sub   == "" then {} else {subagent: true} end)' >>"$hooklog"
+
+    # Bounded, so an always-on diagnostic cannot quietly fill a disk.
+    if [ "$(wc -l <"$hooklog")" -gt 1200 ]; then
+      tail -n 600 "$hooklog" >"$hooklog.tmp" && mv "$hooklog.tmp" "$hooklog"
+    fi
+  } >/dev/null 2>&1
+fi
+
+[ -z "$event" ] && exit 0
 [ -z "$name" ] && exit 0
 
 # Notification events carry the prompt text; the others don't.

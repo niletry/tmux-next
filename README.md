@@ -153,6 +153,13 @@ Then **subscribe once** in the web UI: tap the bell at the top-right of the list
 
 At most one push per session per 30 seconds (session-end is exempt). The `/api/notify` endpoint that triggers a push accepts loopback callers only, so no one can spoof one.
 
+Every hook invocation is logged to `~/.tmux-next/hook-events.jsonl`: which kind
+of event arrived, whether it came from a subagent, which session it was
+attributed to, and whether a push followed. That shape only — never the message
+text. It exists because each way the hook declines to act is silent by design,
+which is what made two bugs hard to find. `TMUX_NEXT_HOOK_LOG=off` records
+nothing; a path puts it elsewhere.
+
 **After upgrading the package, re-run `bunx tmux-next hook`.** The scripts are *copied* into `~/.claude/hooks/`, so npm cannot update them in place. A stale hook fails silently — that is what hooks are built to do — taking session restore and push notifications with it, so the server checks at startup and prints a line if the installed copies differ from the ones it ships.
 
 ### Seeing what each session is working on
