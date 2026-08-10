@@ -192,7 +192,19 @@ bunx tmux-next hook       # 或从克隆的仓库：bun run src/index.ts hook
 bunx tmux-next asr <key>
 ```
 
-它写入 `~/.tmux-next/asr.json`，权限 0600。没有它，麦克风按钮不会出现。
+key 放在 `~/.tmux-next/asr.json`（权限 0600），内容是单个 JSON 对象：
+
+```json
+{ "key": "你的key", "resourceId": "volc.bigasr.auc_turbo" }
+```
+
+`resourceId` 指定识别模型；默认的 `volc.bigasr.auc_turbo` 就对了，除非你知道要换。
+直接手改这个文件和跑命令效果一样——想把这个 key 指向更新的模型，只改 `resourceId`
+就行，不用动 key。
+
+不用重启：服务端每次请求都现读这个文件，所以写好后刷新终端页就能看到麦克风。换 key
+就重跑命令（或重写文件）；想关掉语音输入，删掉这个文件。没有这个文件，麦克风按钮
+永远不会出现。
 
 点终端工具条上的麦克风，面板会占据系统键盘的位置——那块地方只容得下一个。一个按钮
 管起停，不限时长。

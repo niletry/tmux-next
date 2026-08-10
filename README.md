@@ -198,8 +198,21 @@ It is off until you give it a key:
 bunx tmux-next asr <key>
 ```
 
-That writes `~/.tmux-next/asr.json` with mode 0600. Without it the microphone
-button never appears.
+The key lives in `~/.tmux-next/asr.json` (mode 0600) as a single JSON object:
+
+```json
+{ "key": "your-key", "resourceId": "volc.bigasr.auc_turbo" }
+```
+
+`resourceId` picks the recognition model; the default (`volc.bigasr.auc_turbo`)
+is right unless you know you want another. Editing the file by hand works just
+as well as the command — point the same key at a newer model by changing only
+`resourceId`.
+
+No restart is needed: the server reads the file on every request, so once it's
+there, reloading the terminal page shows the microphone. To switch keys, run the
+command again (or rewrite the file); to turn voice input off, delete it. Without
+the file, the microphone button never appears.
 
 Tap the microphone in the terminal toolbar and the panel takes the soft
 keyboard's place — there is only room for one of them. One button starts and

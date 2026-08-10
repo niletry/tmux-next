@@ -352,8 +352,16 @@ bunx tmux-next --version</pre>
   <pre><span class="k">bunx tmux-next asr &lt;key&gt;</span></pre>
 
   <p>
-    这条命令写 <code>~/.tmux-next/asr.json</code>，权限 0600。之后终端工具条里会出现麦克风。
-    点它，面板占据键盘的位置——只能有一个；录音按钮开/停，没有时长限制。
+    key 存在 <code>~/.tmux-next/asr.json</code>（权限 0600），内容是单个 JSON 对象——
+    <code>{ "key": "…", "resourceId": "volc.bigasr.auc_turbo" }</code>。
+    <code>resourceId</code> 指定识别模型；默认值就对了，除非你知道要换。这个文件也可以手改——
+    想把同一个 key 指向更新的模型，改一个字段就行，不用重跑命令。
+  </p>
+
+  <p>
+    不用重启：服务端每次请求都现读这个文件，写好后刷新终端页，工具条里就会出现麦克风。
+    换 key 就重跑命令（或重写文件）；想关掉语音输入，删掉这个文件。点麦克风，面板占据键盘的
+    位置——只能有一个；录音按钮开/停，没有时长限制。
   </p>
 
   <p>
