@@ -178,6 +178,7 @@ const zh = {
   "key.rowTools": "工具键",
   "key.moveUp": "上移",
   "key.moveDown": "下移",
+  "key.drag": "拖动排序",
   "key.usageCount": "{n} 次",
   "common.close": "关闭",
 };
@@ -346,6 +347,7 @@ const en = {
   "key.rowTools": "Tools",
   "key.moveUp": "Move up",
   "key.moveDown": "Move down",
+  "key.drag": "Drag to reorder",
   "key.usageCount": "{n} taps",
   "common.close": "Close",
 };
