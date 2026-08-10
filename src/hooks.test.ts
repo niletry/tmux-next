@@ -201,3 +201,65 @@ test("a subagent finishing does not notify", async () => {
     server.stop(true);
   }
 });
+
+/**
+ * Every way this hook declines to act is silent, so the log is the only place
+ * a dropped event can be seen. It records the shape of what arrived — never
+ * what was said.
+ */
+test("the hook log records what arrived, including what it dropped", async () => {
+  const { name, pane } = await makeSession("hooklog");
+  const home = mkdtempSync(join(tmpdir(), "hookhome-"));
+  const logPath = join(home, "hook-events.jsonl");
+  const env = { TMUX_NEXT_HOOK_LOG: logPath, TMUX_NEXT_PORT: "1" };
+
+  const SECRET = "please delete the production database";
+  runHook(SCRIPT_NOTIFY, home, pane, { hook_event_name: "Stop" }, env);
+  runHook(
+    SCRIPT_NOTIFY,
+    home,
+    pane,
+    { hook_event_name: "SubagentStop", agent_type: "Explore", agent_id: "sub-1" },
+    env,
+  );
+  runHook(
+    SCRIPT_NOTIFY,
+    home,
+    pane,
+    { hook_event_name: "Notification", message: SECRET },
+    env,
+  );
+
+  const raw = readFileSync(logPath, "utf8");
+  const rows = raw.trim().split("\n").map((l) => JSON.parse(l));
+  expect(rows).toHaveLength(3);
+
+  expect(rows[0]).toMatchObject({ hook: "Stop", action: "waiting", session: name });
+  expect(rows[0].subagent).toBeUndefined();
+
+  // The dropped one is the whole reason this log exists.
+  expect(rows[1]).toMatchObject({
+    hook: "SubagentStop",
+    action: "ignored",
+    agent: "Explore",
+    subagent: true,
+  });
+
+  expect(rows[2]).toMatchObject({ hook: "Notification", action: "attention" });
+  // What was said never goes to disk, whatever diagnostic value it might have.
+  expect(raw).not.toContain(SECRET);
+  expect(raw).not.toContain("database");
+
+  expect(typeof rows[0].ts).toBe("number");
+});
+
+test("TMUX_NEXT_HOOK_LOG=off records nothing", async () => {
+  const { pane } = await makeSession("hooklogoff");
+  const home = mkdtempSync(join(tmpdir(), "hookhome-"));
+  runHook(SCRIPT_NOTIFY, home, pane, { hook_event_name: "Stop" }, {
+    TMUX_NEXT_HOOK_LOG: "off",
+    TMUX_NEXT_PORT: "1",
+    HOME: home,
+  });
+  expect(existsSync(join(home, ".tmux-next", "hook-events.jsonl"))).toBe(false);
+});
