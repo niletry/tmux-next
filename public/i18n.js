@@ -176,9 +176,7 @@ const zh = {
   "key.rowPrimary": "常显键",
   "key.rowNav": "编辑键",
   "key.rowTools": "工具键",
-  "key.moveUp": "上移",
-  "key.moveDown": "下移",
-  "key.drag": "拖动排序",
+  "key.drag": "按住拖动排序",
   "key.usageCount": "{n} 次",
   "common.close": "关闭",
 };
@@ -345,9 +343,7 @@ const en = {
   "key.rowPrimary": "Always visible",
   "key.rowNav": "Editing",
   "key.rowTools": "Tools",
-  "key.moveUp": "Move up",
-  "key.moveDown": "Move down",
-  "key.drag": "Drag to reorder",
+  "key.drag": "Press and drag to reorder",
   "key.usageCount": "{n} taps",
   "common.close": "Close",
 };

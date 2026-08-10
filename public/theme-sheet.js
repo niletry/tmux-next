@@ -232,106 +232,95 @@ export function openKeyEditor() {
     tools: tr("key.rowTools"),
   };
 
-  const move = (row, index, delta) => {
-    const keys = layout[row];
-    const swap = index + delta;
-    if (swap < 0 || swap >= keys.length) return;
-    [keys[index], keys[swap]] = [keys[swap], keys[index]];
-    if (writeLayout(layout)) render();
-  };
-
-  /** Renders a single row group; the list keeps groups in a fixed order. */
+  /**
+   * One row of the toolbar, laid out the way the toolbar really is: the keys
+   * sit side by side as tiles. That is the point of the editor — you see the
+   * actual arrangement, not a list of rows.
+   */
   const renderGroup = (row) => {
-    const group = el("div", "key-row-group");
+    const group = el("div", "key-grid-row");
     group.append(el("h3", "sheet-sub", ROW_TITLE[row]));
-    layout[row].forEach((key, index) => {
-      const item = el("div", "key-edit-item");
-      item.dataset.key = key;
-      // Drag handle on the left: grab it and move the key where you want it.
-      const grip = el("button", "key-grip", "≡");
-      grip.type = "button";
-      grip.setAttribute("aria-label", tr("key.drag"));
-      const up = el("button", "key-move", "↑");
-      const down = el("button", "key-move", "↓");
-      up.type = "button";
-      down.type = "button";
-      up.setAttribute("aria-label", tr("key.moveUp"));
-      down.setAttribute("aria-label", tr("key.moveDown"));
-      up.disabled = index === 0;
-      down.disabled = index === layout[row].length - 1;
-      up.addEventListener("click", () => move(row, index, -1));
-      down.addEventListener("click", () => move(row, index, 1));
-      const label = el("span", "key-edit-name", keyLabel(key));
-      item.append(grip, label, up, down);
+    const strip = el("div", "key-strip");
+    layout[row].forEach((key) => {
+      const tile = el("button", "key-tile", keyLabel(key));
+      tile.type = "button";
+      tile.dataset.key = key;
+      tile.setAttribute("aria-label", tr("key.drag"));
+      // The tap count as a small badge, like an app icon's badge.
       if (usage.has(USAGE_OF[key])) {
-        item.append(el("span", "key-usage", tr("key.usageCount", { n: usage.get(USAGE_OF[key]) })));
+        const badge = el("span", "key-tile-usage", String(usage.get(USAGE_OF[key])));
+        badge.title = tr("key.usageCount", { n: usage.get(USAGE_OF[key]) });
+        tile.append(badge);
       }
-      grip.addEventListener("pointerdown", (e) => startDrag(e, row, item, group));
-      group.append(item);
+      strip.append(tile);
     });
+    // The whole tile is the handle: press it and slide it sideways.
+    strip.addEventListener("pointerdown", (e) => {
+      const tile = e.target.closest(".key-tile");
+      if (!tile) return;
+      startDrag(e, row, tile, strip);
+    });
+    group.append(strip);
     return group;
   };
 
-  // --- drag to reorder -----------------------------------------------------
+  // --- drag, icon-style ----------------------------------------------------
 
   /**
-   * Pointer-driven drag: the grabbed key follows the finger while the others
-   * shift out of its way with a transform, then the order is committed on
-   * release. Pointer capture keeps the drag alive even when the finger leaves
-   * the sheet, and `touch-action: none` on the grip stops the page from
-   * scrolling instead.
+   * Press a key and slide it sideways; the tiles it passes slide out of the
+   * way, and the order is committed on release. The grabbed tile is pulled
+   * out of flow and follows the finger; the others move via transform, so the
+   * strip never jumps. Pointer capture + `touch-action: none` keep the page
+   * from scrolling instead.
    */
-  const GAP = 4; // must match the .key-row-group gap in style.css
+  const GAP = 8; // must match the .key-strip gap in style.css
 
-  function startDrag(e, row, item, group) {
+  function startDrag(e, row, tile, strip) {
     if (e.button !== 0 && e.pointerType === "mouse") return;
     e.preventDefault();
-    const items = [...group.querySelectorAll(".key-edit-item")];
-    const index = items.indexOf(item);
-    const height = item.offsetHeight + GAP;
-    const origTop = item.offsetTop;
-    const startY = e.clientY;
+    const tiles = [...strip.querySelectorAll(".key-tile")];
+    const index = tiles.indexOf(tile);
+    const width = tile.offsetWidth + GAP;
+    const origLeft = tile.offsetLeft;
+    const startX = e.clientX;
     let target = index;
     let moved = false;
 
-    // Give the group a stable height while the dragged key is pulled out of
-    // flow, so nothing jumps under the finger.
-    group.style.minHeight = `${group.offsetHeight}px`;
-
-    item.classList.add("dragging");
-    item.style.top = `${origTop}px`;
-    items.forEach((it) => {
-      if (it !== item) it.style.transition = "transform .12s ease";
+    // Keep the strip's width while the grabbed tile leaves flow.
+    strip.style.minWidth = `${strip.offsetWidth}px`;
+    tile.classList.add("dragging");
+    tile.style.left = `${origLeft}px`;
+    tiles.forEach((t) => {
+      if (t !== tile) t.style.transition = "transform .12s ease";
     });
 
     const shiftOthers = (to) => {
-      // Items between the old and new position slide one slot, out of the
-      // dragged key's way; everything else stays put.
-      items.forEach((it, i) => {
-        if (it === item) return;
-        if (to < index) it.style.transform = i >= to && i < index ? `translateY(${height}px)` : "";
-        else if (to > index) it.style.transform = i > index && i <= to ? `translateY(${-height}px)` : "";
-        else it.style.transform = "";
+      // Tiles between the old and new position slide one slot sideways.
+      tiles.forEach((t, i) => {
+        if (t === tile) return;
+        if (to < index) t.style.transform = i >= to && i < index ? `translateX(${width}px)` : "";
+        else if (to > index) t.style.transform = i > index && i <= to ? `translateX(${-width}px)` : "";
+        else t.style.transform = "";
       });
     };
 
     const onMove = (ev) => {
       if (ev.pointerId !== e.pointerId) return;
       ev.preventDefault();
-      const dy = ev.clientY - startY;
-      if (!moved && Math.abs(dy) < 6) return; // wait for intent, not a tap
+      const dx = ev.clientX - startX;
+      if (!moved && Math.abs(dx) < 6) return; // wait for intent, not a tap
       moved = true;
-      item.style.top = `${origTop + dy}px`;
+      tile.style.left = `${origLeft + dx}px`;
       // The slot whose middle the finger has crossed.
       let acc = 0;
-      let t = items.length - 1;
-      for (let i = 0; i < items.length; i++) {
+      let t = tiles.length - 1;
+      for (let i = 0; i < tiles.length; i++) {
         if (i === index) continue;
-        if (origTop + dy < acc + height / 2) {
+        if (origLeft + dx < acc + width / 2) {
           t = i;
           break;
         }
-        acc += height;
+        acc += width;
       }
       if (t !== target) {
         target = t;
@@ -347,15 +336,15 @@ export function openKeyEditor() {
     const onCancel = () => finish(true);
 
     const finish = (revert = false) => {
-      item.removeEventListener("pointermove", onMove);
-      item.removeEventListener("pointerup", onUp);
-      item.removeEventListener("pointercancel", onCancel);
-      item.classList.remove("dragging");
-      item.style.top = "";
-      group.style.minHeight = "";
-      items.forEach((it) => {
-        it.style.transition = "";
-        it.style.transform = "";
+      tile.removeEventListener("pointermove", onMove);
+      tile.removeEventListener("pointerup", onUp);
+      tile.removeEventListener("pointercancel", onCancel);
+      tile.classList.remove("dragging");
+      tile.style.left = "";
+      strip.style.minWidth = "";
+      tiles.forEach((t) => {
+        t.style.transition = "";
+        t.style.transform = "";
       });
       if (revert || target === index) return;
       const keys = layout[row];
@@ -364,13 +353,13 @@ export function openKeyEditor() {
       if (writeLayout(layout)) render();
     };
 
-    item.addEventListener("pointermove", onMove);
-    item.addEventListener("pointerup", onUp);
-    item.addEventListener("pointercancel", onCancel);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    tile.addEventListener("pointermove", onMove);
+    tile.addEventListener("pointerup", onUp);
+    tile.addEventListener("pointercancel", onCancel);
+    tile.setPointerCapture(e.pointerId);
   }
 
-  /** The usage totals, for the tap counts next to each key. Best effort. */
+  /** The usage totals, for the badge on each tile. Best effort. */
   const usage = new Map();
   const render = () => {
     list.replaceChildren();
