@@ -1,0 +1,407 @@
+<title>tmux-next — 使用手册</title>
+<meta name="description" content="一份手册讲完所有事：怎么跑起来、怎么看会话列表、怎么在手机上操作终端，以及怎么开启可选功能——会话恢复、锁屏通知、语音输入。">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<style>
+  :root {
+    --paper: #edeff3;
+    --paper-2: #e3e6ec;
+    --ink: #12151b;
+    --muted: #666e7d;
+    --line: #d2d7e0;
+    --accent: #2f5fe0;
+    --accent-soft: #dfe6fb;
+    --term-bg: #14161a;
+    --term-fg: #e6e8ec;
+    --term-dim: #8b919c;
+    --danger: #c0392b;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+      --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1116; --paper-2: #161920; --ink: #e8eaef; --muted: #939bab;
+    --line: #262b35; --accent: #7aa2f7; --accent-soft: #1b2331; --danger: #e2706b;
+  }
+  :root[data-theme="light"] {
+    --paper: #edeff3; --paper-2: #e3e6ec; --ink: #12151b; --muted: #666e7d;
+    --line: #d2d7e0; --accent: #2f5fe0; --accent-soft: #dfe6fb; --danger: #c0392b;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.7 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 0 1.5rem 5rem; }
+
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 3rem;
+  }
+
+  .top a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+  .top a:hover { color: var(--accent); }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(1.7rem, 5vw, 2.6rem);
+    line-height: 1.12;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+    margin: 0 0 0.8rem;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 1.3rem;
+    letter-spacing: -0.02em;
+    margin: 3rem 0 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  h2 .n {
+    color: var(--accent);
+    margin-right: 0.5rem;
+  }
+
+  .lede { font-size: 1.12rem; color: var(--muted); margin: 0 0 1rem; }
+
+  p { margin: 0 0 1rem; }
+
+  strong { font-weight: 600; }
+
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--accent-soft);
+    padding: 0.1em 0.36em;
+    border-radius: 3px;
+    overflow-wrap: anywhere;
+  }
+
+  pre {
+    font: 13px/1.65 var(--mono);
+    color: var(--term-fg);
+    background: var(--term-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 0 0 1.2rem;
+  }
+
+  pre .c { color: var(--term-dim); }
+  pre .k { color: #7aa2f7; }
+  pre .s { color: #9ece6a; }
+
+  .box {
+    border-left: 3px solid var(--accent);
+    background: var(--paper-2);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 8px 8px 0;
+    margin: 0 0 1.2rem;
+    font-size: 0.96rem;
+  }
+
+  .box.warn { border-left-color: var(--danger); }
+  .box strong { color: var(--ink); }
+  .box p:last-child { margin: 0; }
+
+  ul { margin: 0 0 1rem; padding-left: 1.3rem; }
+  li { margin-bottom: 0.4rem; }
+
+  .keys { font-family: var(--mono); font-size: 0.85em; }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.87rem;
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="top">
+    <a href="/">← tmux-next</a>
+    <span><a href="/manual">EN</a> · <a href="/manual-zh" style="color:var(--ink);font-weight:600">中文</a> · <a href="https://github.com/niletry/tmux-next">GitHub</a></span>
+  </div>
+
+  <h1>使用手册</h1>
+
+  <p class="lede">
+    一份讲完所有事：怎么跑起来、怎么看会话列表、怎么在手机上操作终端，以及怎么开启
+    可选功能——会话恢复、锁屏通知、语音输入。
+  </p>
+
+  <h2><span class="n">1</span>这是什么</h2>
+
+  <p>
+    tmux-next 是一个很小的 tmux 网页客户端。它把你机器上跑着的 tmux 会话列出来，让你在
+    浏览器里打开任意一个。写它是为了在手机上随时看一眼编码 agent（Claude Code、opencode
+    或 pi）——但没有任何东西是 agent 专属的：任何 tmux 会话都能用。
+  </p>
+
+  <p>
+    底层是 tmux 的 <em>control mode</em>，不是屏幕录制。浏览器用 xterm.js 渲染单个 pane；
+    每次连接挂一个一次性的 grouped session，断开时销毁。重连会从 tmux 重新抓取整个屏幕——
+    没有回放、没有缓冲，尺寸也总是对的。
+  </p>
+
+  <h2><span class="n">2</span>跑起来</h2>
+
+  <p>需要 <strong>tmux 3.2 以上</strong>、<strong>Bun 1.0 以上</strong>，以及 macOS 或 Linux。</p>
+
+  <pre><span class="k">bunx tmux-next</span></pre>
+
+  <p>
+    它监听 <code>http://127.0.0.1:7682/</code>，列出本机的所有 tmux 会话。命令行选项：
+  </p>
+
+  <pre><span class="c"># 端口和地址</span>
+bunx tmux-next --port 9000 --host 127.0.0.1
+
+<span class="c"># 帮助 / 版本</span>
+bunx tmux-next --help
+bunx tmux-next --version</pre>
+
+  <p>
+    从手机访问需要在前面加一层——它自己没有登录，设计上就该只绑 localhost。
+    <a href="/tailscale-zh">Tailscale 指引</a>是最简单的私有方案；
+    <a href="/deploy-zh">Caddy 指引</a>把它放到公网域名后面、加一层真正的登录。
+  </p>
+
+  <div class="box warn">
+    <p><strong>能访问到它的人，就能在你机器上执行命令——它给出去的是一个 shell。</strong>
+    别把它绑到公网接口就完事。看文末的<a href="#security">注意安全</a>。</p>
+  </div>
+
+  <h2><span class="n">3</span>会话列表</h2>
+
+  <p>
+    会话列表、制品和通知历史是三个并列的页面。页头左侧的分段控件在它们之间切换；右侧的
+    图标依次是铃铛（通知订阅）、齿轮（语言和配色）和 <code>＋</code>（新建会话）。
+  </p>
+
+  <p>每个会话卡片显示：</p>
+
+  <ul>
+    <li><strong>最后几行输出</strong>——不用点开就知道它在干什么。</li>
+    <li><strong>任务行</strong>——这个对话上次被要求做什么，从 agent 自己的记录里读出来。
+      需要<a href="#restore">第 8 节</a>的 hook。</li>
+    <li><strong>绿点</strong>——agent 打完一轮、正在等你回复。这类会话排到最前面，省得一个个
+      点开看。浏览器标签页也会显示计数。</li>
+    <li><strong>置顶标记</strong>——你钉住的会话；<strong>待发送标记</strong>——打了一行但没发出去。</li>
+    <li><strong>多久前</strong>更新过。</li>
+  </ul>
+
+  <p>
+    点卡片打开会话。卡片上的 <code>⋯</code> 按钮打开操作菜单：<strong>置顶</strong>（保持在
+    最上面，刷新也不丢）和 <strong>结束会话</strong>——这会把里面跑着的进程杀掉，所以先要
+    你确认。
+  </p>
+
+  <h2><span class="n">4</span>终端页</h2>
+
+  <p>
+    顶部栏有会话名（点它可以<strong>改名</strong>）、连接状态，以及<strong>结束</strong>按钮。
+  </p>
+
+  <p>
+    底部工具条放着手机键盘没有的键。最下面一行一直在——
+    <span class="keys">Esc Tab ⇧Tab ↑ ↓ ⏎</span>——点 <span class="keys">▴</span> 展开上面的
+    两行：<span class="keys">Ctrl</span>、<span class="keys">^C</span>、左右方向键，以及工具：
+  </p>
+
+  <ul>
+    <li><strong>图片</strong>——选一张照片或直接粘贴；它存好后会把文件路径填进输入框。这正是
+      会话里跑的工具读图片的方式。</li>
+    <li><strong>粘贴</strong>——把剪贴板内容贴进终端。</li>
+    <li><strong>复制</strong>——手指选中文字即复制；点终端里的链接则只复制那个链接。</li>
+    <li><strong>A− / A+</strong>——字号。按设备保存，也可以两指捏合缩放。</li>
+    <li><strong>麦克风</strong>——语音输入，配好 key 才出现（<a href="#voice">第 9 节</a>）。</li>
+  </ul>
+
+  <p>
+    <strong>滚动：</strong>在屏幕上拖动，滚的是程序自己的历史，就像鼠标滚轮一样。不理会鼠标
+    的程序会自动退回到 <span class="keys">PgUp/PgDn</span>。
+  </p>
+
+  <p>
+    <strong>断线：</strong>连接会自动重连，屏幕从 tmux 重建。里面跑的东西从头到尾没被打断——
+    它活在 tmux 里，不活在页面上。
+  </p>
+
+  <h2><span class="n">5</span>新建会话</h2>
+
+  <p>点页头 <code>＋</code>。新建页面有几个部分：</p>
+
+  <ul>
+    <li><strong>Agent</strong>——Claude Code、opencode 和 pi 支持得一样深。装了不止一个才出现
+      选择器；不在你登录 shell 的 <code>PATH</code> 上的 agent 会显示为划掉，而不是让你选。</li>
+    <li><strong>目录</strong>——从 <code>~</code> 逐层往下，可以筛选，也可以当场新建文件夹。
+      目录在 URL 里，所以返回键按原路一层层往回走，<code>new.html?dir=/some/project</code>
+      还能存成链接。</li>
+    <li><strong>名字</strong>——选填，比如 <code>PROJ-1088</code>。</li>
+    <li><strong>跳过权限确认</strong>——选填，让 agent 不用每步都问。</li>
+    <li><strong>从历史恢复对话</strong>——列出过去的对话，就地重建（Claude Code 和 pi 在磁盘上
+      留 JSONL 记录；opencode 用自己的存储）。</li>
+  </ul>
+
+  <h2><span class="n">6</span>制品</h2>
+
+  <p>
+    agent 生成了要看的东西——图表、示意图、HTML 报告——把它丢进
+    <code>~/.tmux-next/gallery/</code>，就会出现在<strong>制品</strong>页里：图片网格展示，
+    HTML 和 SVG 就地沙箱渲染，每个文件都能下载。不用把文件倒腾到别的机器。
+  </p>
+
+  <h2><span class="n">7</span>锁屏通知</h2>
+
+  <p>
+    把任务交给 agent，人去做别的事，回头才发现它早就停了。Web Push 补上这个空档：手机收到
+    系统通知——锁着屏、页面关着都行——点一下就跳到那个会话。
+  </p>
+
+  <p>需要两件事：</p>
+
+  <ul>
+    <li><strong>装好 hook</strong>——见<a href="#restore">第 8 节</a>；同一个命令全装好。</li>
+    <li><strong>订阅一次</strong>——点页头铃铛，允许通知。订阅成功后铃铛亮起来。</li>
+  </ul>
+
+  <p>三种时刻会推送：会话结束、agent 打完一轮在等你、agent 需要你确认。agent 自己发的话
+  原样透传，不翻译。</p>
+
+  <div class="box">
+    <p><strong>要求和限制。</strong>浏览器只在 <strong>HTTPS</strong>（或 <code>localhost</code>）
+    下才给通知权限——走反向代理访问就满足。在 <strong>iPhone</strong> 上要先「添加到主屏幕」，
+    再从那个图标订阅：iOS 只给装成 PWA 的应用推送（iOS 16.4+）。每个会话每 30 秒最多一条推送
+    （会话结束除外）。所有数据都存在本机——<code>~/.tmux-next/vapid.json</code> 放密钥对，
+    订阅在 <code>~/.tmux-next/push-subscriptions/</code>——触发推送的接口也只接受本机连接。</p>
+  </div>
+
+  <p>
+    每条推送都会记在<strong>通知历史</strong>页里，手机上一划没了的，在这里还能找到。
+  </p>
+
+  <h2 id="restore"><span class="n">8</span>tmux 重启后把会话救回来</h2>
+
+  <p>
+    tmux server 挂了——重启、崩溃——里面的会话就没了。但 agent 的记录在磁盘上，对话可以重建。
+    装上配套 hook，tmux-next 就会主动提出帮你恢复：
+  </p>
+
+  <pre><span class="k">bunx tmux-next hook</span></pre>
+
+  <p>
+    它把 hook 脚本放进 <code>~/.claude/hooks/</code>，在 <code>~/.claude/settings.json</code>
+    里注册——先备份、幂等、绝不覆盖你已有的配置。需要 <code>jq</code>（通知还需要
+    <code>curl</code>）。之后每个<em>新开</em>在 tmux 里的 agent 都会把 <code>{name, id, cwd}</code>
+    记到 <code>~/.tmux-next/sessions/</code>——在磁盘上，tmux server 死了也还在。
+  </p>
+
+  <p>
+    tmux 重启后，列表顶部出现「<em>N 个上次的会话可恢复</em>」。点恢复，每个会话就地重建——
+    <code>tmux new-session</code> 在记录的目录里，用 agent 自己的参数续上（<code>claude --resume
+    &lt;uuid&gt;</code>、<code>pi --session &lt;uuid&gt;</code>、<code>opencode --session
+    &lt;ses_…&gt;</code>）——对话就回来了。只有装 hook <em>之后</em>新开的会话算数；你通过
+    应用主动结束的会话不会拿来恢复。
+  </p>
+
+  <div class="box warn">
+    <p><strong>升级包之后，重跑一遍 <code>bunx tmux-next hook</code>。</strong>
+    脚本是<em>复制</em>进 <code>~/.claude/hooks/</code> 的，npm 没法原地更新——而旧 hook 会
+    静默失效，把恢复和通知一起带走。服务启动时会检查并打印一行，如果装上的副本和它带的
+    不一样。</p>
+  </div>
+
+  <p>
+    每次 hook 调用都会记到 <code>~/.tmux-next/hook-events.jsonl</code>——来了哪种事件、是不是
+    子 agent 发的、归到哪个会话、有没有推送。绝不含消息文本。
+    <code>TMUX_NEXT_HOOK_LOG=off</code> 就什么都不记。
+  </p>
+
+  <h2 id="voice"><span class="n">9</span>语音输入</h2>
+
+  <p>
+    在手机上念提示词比打快多了。它是可选的，配了 key 才开（识别走火山引擎，费用记你账上）：
+  </p>
+
+  <pre><span class="k">bunx tmux-next asr &lt;key&gt;</span></pre>
+
+  <p>
+    这条命令写 <code>~/.tmux-next/asr.json</code>，权限 0600。之后终端工具条里会出现麦克风。
+    点它，面板占据键盘的位置——只能有一个；录音按钮开/停，没有时长限制。
+  </p>
+
+  <p>
+    说出来的话攒成一份<strong>可编辑的草稿</strong>，而不是一句句直接进终端——说话是一阵一阵的：
+    说一句、看看落下来什么、改掉识别错的人名、再说下一句。一次<strong>发送</strong>把整份草稿
+    发出去并按回车；面板留着说下一句。点进草稿可以选择下一句插入的位置；选中一段再说话，
+    会像打字一样替换掉它。
+  </p>
+
+  <p>
+    音频到服务器就直接转发上游——绝不下盘——key 也从不离开这台机器。录音需要安全上下文，
+    所以要走 HTTPS 反向代理访问，别用网络上的裸 <code>http://</code>。
+  </p>
+
+  <h2><span class="n">10</span>设置、配色和字号</h2>
+
+  <p>
+    齿轮打开一个小面板：<strong>语言</strong>（中文或英文——首次访问按浏览器的语言猜）和
+    <strong>配色</strong>（四套预设：Tokyo Night、Catppuccin Mocha、One Dark、Nord，选之前
+    先给你看色板和样例）。两个都立即生效，不用刷新。
+  </p>
+
+  <p>
+    语言和配色按<em>机器</em>存（<code>~/.tmux-next/language.json</code>、
+    <code>~/.tmux-next/theme.json</code>），手机和桌面一致。字号是唯一按<em>设备</em>存的——
+    屏幕多大和机器长什么样是两回事。
+  </p>
+
+  <h2 id="security"><span class="n">11</span>注意安全</h2>
+
+  <p>
+    tmux-next 故意<strong>没有自己的登录</strong>。能访问到它的人就能 attach 每个会话、随便
+    敲命令——它给出去的是一个 shell，所以请像对待 SSH 一样对待访问：
+  </p>
+
+  <ul>
+    <li>保持只绑 <code>127.0.0.1</code>。真要传 <code>--host 0.0.0.0</code>，它会打一行警告，
+      但不会拦你。</li>
+    <li>前面放一层反向代理做 HTTPS 和登录——<a href="/tailscale-zh">Tailscale</a> 是只有自己
+      设备能访问的私有方案，<a href="/deploy-zh">Caddy</a> 是带登录的公网方案。</li>
+    <li>走代理的话，WebSocket 要单独处理：浏览器在 WebSocket 握手时不带 Basic Auth 头。
+      Caddy 指引里有能直接用的 cookie 方案。</li>
+  </ul>
+
+  <footer>
+    <p>tmux-next · <a href="https://github.com/niletry/tmux-next" style="color:var(--muted)">GitHub</a> ·
+    <a href="https://www.npmjs.com/package/tmux-next" style="color:var(--muted)">npm</a> ·
+    <a href="/whats-new-zh" style="color:var(--muted)">更新</a> · <a href="/" style="color:var(--muted)">首页</a></p>
+  </footer>
+
+</div>
