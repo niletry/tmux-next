@@ -9,6 +9,7 @@
  */
 
 import { t, DEFAULT_LANG, LANGS } from "./i18n.js";
+import { apiFetch } from "./api.js";
 
 /**
  * localStorage is a cache, not the authority.
@@ -76,7 +77,7 @@ export function applyLang(/** @type {string} */ next) {
 export async function initLang() {
   applyLang(cachedLang());
   try {
-    const res = await fetch("api/language");
+    const res = await apiFetch("api/language");
     if (!res.ok) return current;
     const { lang: served } = await res.json();
     if (typeof served === "string" && served !== current) {
@@ -106,7 +107,7 @@ export async function setLang(next) {
     /* ignore */
   }
   try {
-    const res = await fetch("api/language", {
+    const res = await apiFetch("api/language", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ lang: next }),

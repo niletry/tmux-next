@@ -1,4 +1,5 @@
 import { initTheme } from "./theme-apply.js";
+import { apiFetch } from "./api.js";
 import { initLang, tr } from "./i18n-apply.js";
 import { renderHeader } from "./nav.js";
 
@@ -75,7 +76,7 @@ async function confirmAndKill(session) {
     confirm.disabled = true;
     confirm.textContent = tr("list.ending");
     try {
-      const res = await fetch(`api/sessions/${encodeURIComponent(session.name)}`, {
+      const res = await apiFetch(`api/sessions/${encodeURIComponent(session.name)}`, {
         method: "DELETE",
       });
       if (!res.ok && res.status !== 404) {
@@ -130,7 +131,7 @@ function openActions(session) {
   pinBtn.addEventListener("click", async () => {
     pinBtn.disabled = true;
     try {
-      await fetch(`api/sessions/${encodeURIComponent(session.name)}/pin`, {
+      await apiFetch(`api/sessions/${encodeURIComponent(session.name)}/pin`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ pinned: !session.pinned }),
@@ -212,7 +213,7 @@ function setTabWaiting(count) {
 
 async function fetchRestorable() {
   try {
-    return await (await fetch("api/restorable")).json();
+    return await (await apiFetch("api/restorable")).json();
   } catch {
     return [];
   }
@@ -231,7 +232,7 @@ function restoreBanner(count) {
     btn.disabled = true;
     btn.textContent = tr("list.restoring");
     try {
-      await fetch("api/restore", {
+      await apiFetch("api/restore", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
@@ -248,7 +249,7 @@ function restoreBanner(count) {
 async function render() {
   try {
     const [sessions, restorable] = await Promise.all([
-      fetch("api/sessions").then((r) => r.json()),
+      apiFetch("api/sessions").then((r) => r.json()),
       fetchRestorable(),
     ]);
     setCount(sessions.length ? tr("list.count", { n: sessions.length }) : "");
@@ -269,7 +270,7 @@ async function render() {
 
 // A build marker in the corner: if you can see it and it matches the deploy,
 // the page is the current one — no guessing about a stale cache.
-fetch("api/version")
+apiFetch("api/version")
   .then((r) => r.json())
   .then(({ version, build }) => {
     const tag = document.createElement("div");

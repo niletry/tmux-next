@@ -6,6 +6,7 @@
 // subscription to the server; disabling it tears that down.
 
 import { tr } from "./i18n-apply.js";
+import { apiFetch } from "./api.js";
 
 const supported = () =>
   "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -32,12 +33,12 @@ async function enable() {
   }
   const reg = await navigator.serviceWorker.register("sw.js");
   await navigator.serviceWorker.ready;
-  const { key } = await (await fetch("api/push/key")).json();
+  const { key } = await (await apiFetch("api/push/key")).json();
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: b64urlToBytes(key),
   });
-  const res = await fetch("api/push/subscribe", {
+  const res = await apiFetch("api/push/subscribe", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(sub),

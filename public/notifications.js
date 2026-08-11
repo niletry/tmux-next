@@ -2,6 +2,7 @@
 // on the phone can still be found. Each row links to its session's terminal.
 
 import { initLang, tr } from "./i18n-apply.js";
+import { apiFetch } from "./api.js";
 import { renderHeader } from "./nav.js";
 
 const listEl = document.getElementById("list");
@@ -35,7 +36,7 @@ function relativeTime(epochSeconds) {
 async function load() {
   let notifications;
   try {
-    ({ notifications } = await (await fetch("api/notifications")).json());
+    ({ notifications } = await (await apiFetch("api/notifications")).json());
   } catch {
     listEl.replaceChildren(el("p", "empty", tr("notif.loadFailed")));
     return;

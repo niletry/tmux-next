@@ -1,0 +1,17 @@
+{
+  "name": "tmux-next-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native shell (iOS/Android) for tmux-next",
+  "type": "module",
+  "scripts": {
+    "build": "node copy-public.mjs",
+    "sync": "npm run build && cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0"
+  }
+}
