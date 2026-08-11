@@ -122,8 +122,10 @@
     if (saved) {
       input.value = saved;
       clear.hidden = false;
-      // Returning to the app goes straight back to the sessions.
-      location.replace("tmux/index.html");
+      // Returning to the app goes straight back to the sessions. Absolute
+      // path: if the WebView restored us at a sub-path, a relative jump would
+      // land on /tmux/tmux/….
+      location.replace("/tmux/index.html");
     }
 
     clear.addEventListener("click", () => {
@@ -159,7 +161,7 @@
 
       if (ok) {
         try { localStorage.setItem(STORAGE, url); } catch {}
-        location.href = "tmux/index.html";
+        location.href = "/tmux/index.html";
         return;
       }
       note.classList.add("error");
