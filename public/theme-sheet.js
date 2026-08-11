@@ -1,4 +1,5 @@
 import { THEMES, THEME_ORDER, ANSI_NAMES } from "./themes.js";
+import { apiFetch } from "./api.js";
 import { setTheme, cachedTheme } from "./theme-apply.js";
 import { LANGS, LANG_LABELS } from "./i18n.js";
 import { setLang, lang as currentLang, tr } from "./i18n-apply.js";
@@ -424,7 +425,7 @@ export function openKeyEditor() {
   });
 
   // Fetch the counts first (they change nothing about the ordering), then draw.
-  fetch("api/key-usage")
+  apiFetch("api/key-usage")
     .then((r) => r.json())
     .then((rows) => {
       for (const row of Array.isArray(rows) ? rows : []) {

@@ -1,4 +1,5 @@
 import { filterEntries, splitPath } from "./dir-filter.js";
+import { apiFetch } from "./api.js";
 import { initLang, tr } from "./i18n-apply.js";
 
 function el(tag, className, text) {
@@ -212,7 +213,7 @@ export function renderNewSession(root) {
     error.textContent = "";
     let res;
     try {
-      res = await fetch("api/dirs", {
+      res = await apiFetch("api/dirs", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ parent: current, name }),
@@ -274,7 +275,7 @@ export function renderNewSession(root) {
     error.textContent = "";
     let res;
     try {
-      res = await fetch(`api/dirs?path=${encodeURIComponent(path)}`);
+      res = await apiFetch(`api/dirs?path=${encodeURIComponent(path)}`);
     } catch {
       error.textContent = tr("new.offline");
       return;
@@ -309,7 +310,7 @@ export function renderNewSession(root) {
     resumeEntry.style.display = "none";
     let conversations;
     try {
-      const res = await fetch(`api/history?dir=${encodeURIComponent(dir)}`);
+      const res = await apiFetch(`api/history?dir=${encodeURIComponent(dir)}`);
       if (!res.ok) return; // history is optional; a failure just hides the entry
       ({ conversations } = await res.json());
     } catch {
@@ -359,7 +360,7 @@ export function renderNewSession(root) {
     if (resume) payload.resume = resume;
 
     try {
-      const res = await fetch("api/sessions", {
+      const res = await apiFetch("api/sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -395,7 +396,7 @@ export function renderNewSession(root) {
   (async () => {
     // Not awaited together with the directories: an older server without this
     // endpoint should still give a working sheet with Claude Code only.
-    fetch("api/agents")
+    apiFetch("api/agents")
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         if (body?.agents?.length) {
@@ -411,7 +412,7 @@ export function renderNewSession(root) {
 
     let dirs = [];
     try {
-      const body = await (await fetch("api/directories")).json();
+      const body = await (await apiFetch("api/directories")).json();
       home = body.home;
       dirs = body.recent;
     } catch {

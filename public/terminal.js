@@ -1,6 +1,7 @@
 "use strict";
 
 import { createGesture, createPager } from "./scroll-gesture.js";
+import { apiFetch, apiBeacon, apiWsUrl } from "./api.js";
 
 import { MIN_COLUMNS, computeGeometry } from "./terminal-fit.js";
 import { createCopyGate, decodeOsc52 } from "./copy-on-select.js";
@@ -149,6 +150,10 @@ let reconnectDelay = 500;
 let killing = false;
 
 function wsUrl() {
+  // The shell loads local assets, so the socket goes to the saved server; in
+  // a browser that base is empty and the same-origin rule below applies.
+  const saved = apiWsUrl("ws");
+  if (saved !== "ws") return saved;
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   const base = location.pathname.replace(/[^/]*$/, "");
   return `${scheme}://${location.host}${base}ws`;
@@ -203,7 +208,7 @@ function connect() {
  */
 async function reconnectOrPromptLogin() {
   try {
-    const res = await fetch("api/sessions", {
+    const res = await apiFetch("api/sessions", {
       headers: { accept: "application/json" },
       cache: "no-store",
     });
@@ -266,7 +271,7 @@ killBtn.addEventListener("click", async () => {
   killBtn.textContent = tr("term.ending");
   killing = true;
   try {
-    const res = await fetch(`api/sessions/${encodeURIComponent(target)}`, { method: "DELETE" });
+    const res = await apiFetch(`api/sessions/${encodeURIComponent(target)}`, { method: "DELETE" });
     if (res.ok || res.status === 404) {
       // 404 means it was already gone; either way there is nothing to return to
       // but the list.
@@ -315,7 +320,7 @@ async function commitRename() {
   renaming = true;
   statusEl.textContent = tr("term.renaming");
   try {
-    const res = await fetch(`api/sessions/${encodeURIComponent(target)}/rename`, {
+    const res = await apiFetch(`api/sessions/${encodeURIComponent(target)}/rename`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: next }),
@@ -507,7 +512,7 @@ async function uploadImage(file) {
   uploading = true;
   flashStatus(tr("term.uploading"));
   try {
-    const res = await fetch("api/upload", {
+    const res = await apiFetch("api/upload", {
       method: "POST",
       headers: { "content-type": file.type },
       body: file,
@@ -1026,16 +1031,7 @@ function flushKeyUsage() {
     delete pendingUsage[k];
   }
   const body = JSON.stringify({ counts });
-  if (navigator.sendBeacon) {
-    navigator.sendBeacon("api/key-usage", new Blob([body], { type: "application/json" }));
-  } else {
-    fetch("api/key-usage", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body,
-      keepalive: true,
-    });
-  }
+  apiBeacon("api/key-usage", new Blob([body], { type: "application/json" }));
 }
 
 document.querySelector(".keys").addEventListener("pointerdown", (e) => {
@@ -1152,7 +1148,7 @@ let voicePanel = null;
 const ENTER_DELAY_MS = 150;
 
 async function transcribeBlob(blob) {
-  const res = await fetch("api/asr", {
+  const res = await apiFetch("api/asr", {
     method: "POST",
     headers: { "content-type": blob.type || "application/octet-stream" },
     body: blob,
@@ -1214,7 +1210,7 @@ micBtn.addEventListener("pointerdown", (e) => {
 
 // The button appears only when a key is configured. A microphone that could
 // only ever fail is worse than no microphone at all.
-fetch("api/asr")
+apiFetch("api/asr")
   .then((r) => r.json())
   .then(({ enabled }) => {
     if (enabled && typeof MediaRecorder !== "undefined") micBtn.hidden = false;

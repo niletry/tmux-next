@@ -4,6 +4,7 @@
 // pages through items directly, without going back to the grid each time.
 
 import { initLang, tr } from "./i18n-apply.js";
+import { apiFetch } from "./api.js";
 import { renderHeader } from "./nav.js";
 
 const listEl = /** @type {HTMLElement} */ (document.getElementById("gallery"));
@@ -31,7 +32,7 @@ let viewerIndex = -1;
 
 async function load() {
   try {
-    items = await (await fetch("api/gallery")).json();
+    items = await (await apiFetch("api/gallery")).json();
   } catch {
     listEl.innerHTML = `<p class="empty">${tr("gallery.loadFailed")}</p>`;
     return;
