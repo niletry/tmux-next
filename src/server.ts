@@ -613,8 +613,16 @@ async function dispatch(req: Request, srv: Server<WsData>) {
         // These files are served straight from disk and change on deploy; a
         // phone (especially an installed PWA) otherwise clings to a stale copy
         // for days. `no-cache` means "revalidate before use", not "don't
-        // store", so a redeploy is picked up on the next load.
-        return new Response(asset, { headers: { "Cache-Control": "no-cache" } });
+        // store", so a redeploy is picked up on the next load. The ETag makes
+        // that revalidation cheap and honest: the browser sends it back and
+        // gets a 304 while the file is unchanged, a fresh 200 the moment it is.
+        const etag = `"${asset.size.toString(16)}-${(await asset.lastModified()).toString(16)}"`;
+        if (req.headers.get("if-none-match") === etag) {
+          return new Response(null, { status: 304, headers: { ETag: etag } });
+        }
+        return new Response(asset, {
+          headers: { "Cache-Control": "no-cache", ETag: etag },
+        });
       }
 
       return new Response("not found", { status: 404 });
