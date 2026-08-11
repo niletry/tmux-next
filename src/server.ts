@@ -616,7 +616,7 @@ async function dispatch(req: Request, srv: Server<WsData>) {
         // store", so a redeploy is picked up on the next load. The ETag makes
         // that revalidation cheap and honest: the browser sends it back and
         // gets a 304 while the file is unchanged, a fresh 200 the moment it is.
-        const etag = `"${asset.size.toString(16)}-${(await asset.lastModified()).toString(16)}"`;
+        const etag = `"${asset.size.toString(16)}-${asset.lastModified.toString(16)}"`;
         if (req.headers.get("if-none-match") === etag) {
           return new Response(null, { status: 304, headers: { ETag: etag } });
         }
