@@ -1,0 +1,5 @@
+# Xcode user state and build artifacts
+xcuserdata/
+DerivedData/
+*.xcuserstate
+App/App.xcworkspace/xcuserdata/

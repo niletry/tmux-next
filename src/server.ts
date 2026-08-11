@@ -1,3 +1,4 @@
+import type { Server } from "bun";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
@@ -212,6 +213,99 @@ export function startServer(
     idleTimeout: 120,
 
     async fetch(req, srv) {
+      // CORS for the native shell: the app's WebView loads local assets and
+      // calls the server at a saved address, which is cross-origin.
+      if (req.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsHeaders(req) });
+      }
+      const res = await dispatch(req, srv);
+      return res === undefined ? undefined : withCors(req, res);
+    },
+    websocket: {
+      async message(ws, raw) {
+        let msg: ClientMessage;
+        try {
+          msg = JSON.parse(String(raw));
+        } catch {
+          return;
+        }
+
+        if (msg.t === "open") {
+          await ws.data.session?.close();
+          ws.data.session = null;
+          try {
+            const { cols, rows } = sanitiseGeometry(msg.cols, msg.rows);
+            ws.data.session = await PaneSession.open({
+              target: msg.target,
+              rows,
+              cols,
+              onData: (chunk) => {
+                ws.send(chunk);
+              },
+            });
+
+
+          } catch (e) {
+            ws.send(JSON.stringify({ t: "error", message: String(e) }));
+          }
+          return;
+        }
+
+        if (!ws.data.session) return;
+
+        // Belt and braces. PaneSession already swallows the close race, but an
+        // unhandled rejection anywhere in here takes the whole server down for
+        // every other connection — too high a price for one bad message.
+        try {
+          if (msg.t === "keys") {
+            const bytes = Uint8Array.from(
+              msg.hex.split(" ").filter(Boolean).map((h) => parseInt(h, 16)),
+            );
+            await ws.data.session.sendKeys(bytes);
+          } else if (msg.t === "resize") {
+            const { cols, rows } = sanitiseGeometry(msg.cols, msg.rows);
+            await ws.data.session.resize(rows, cols);
+          }
+        } catch (e) {
+          console.error("websocket message failed", e);
+        }
+      },
+
+      async close(ws) {
+        await ws.data.session?.close();
+        ws.data.session = null;
+      },
+    },
+  });
+
+/**
+ * CORS for the native shell: the app's WebView loads local assets and calls
+ * the server at a saved address, which is cross-origin. The origin is
+ * reflected rather than set to `*` so a page on some other site cannot read
+ * responses it should not see; the shell's own origin is always allowed.
+ */
+function corsHeaders(req: Request): Headers {
+  const h = new Headers();
+  const origin = req.headers.get("origin");
+  if (origin) h.set("Access-Control-Allow-Origin", origin);
+  h.set("Access-Control-Allow-Headers", "content-type, x-api-key");
+  h.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  h.set("Access-Control-Max-Age", "86400");
+  h.set("Vary", "Origin");
+  return h;
+}
+
+function withCors(req: Request, res: Response): Response {
+  const h = new Headers(res.headers);
+  const origin = req.headers.get("origin");
+  if (origin) {
+    h.set("Access-Control-Allow-Origin", origin);
+    h.set("Vary", "Origin");
+  }
+  return new Response(res.body, { status: res.status, headers: h });
+}
+
+async function dispatch(req: Request, srv: Server<WsData>) {
       const url = new URL(req.url);
 
       if (url.pathname === "/ws") {
@@ -520,62 +614,8 @@ export function startServer(
       }
 
       return new Response("not found", { status: 404 });
-    },
 
-    websocket: {
-      async message(ws, raw) {
-        let msg: ClientMessage;
-        try {
-          msg = JSON.parse(String(raw));
-        } catch {
-          return;
-        }
-
-        if (msg.t === "open") {
-          await ws.data.session?.close();
-          ws.data.session = null;
-          try {
-            const { cols, rows } = sanitiseGeometry(msg.cols, msg.rows);
-            ws.data.session = await PaneSession.open({
-              target: msg.target,
-              rows,
-              cols,
-              onData: (chunk) => {
-                ws.send(chunk);
-              },
-            });
-          } catch (e) {
-            ws.send(JSON.stringify({ t: "error", message: String(e) }));
-          }
-          return;
-        }
-
-        if (!ws.data.session) return;
-
-        // Belt and braces. PaneSession already swallows the close race, but an
-        // unhandled rejection anywhere in here takes the whole server down for
-        // every other connection — too high a price for one bad message.
-        try {
-          if (msg.t === "keys") {
-            const bytes = Uint8Array.from(
-              msg.hex.split(" ").filter(Boolean).map((h) => parseInt(h, 16)),
-            );
-            await ws.data.session.sendKeys(bytes);
-          } else if (msg.t === "resize") {
-            const { cols, rows } = sanitiseGeometry(msg.cols, msg.rows);
-            await ws.data.session.resize(rows, cols);
-          }
-        } catch (e) {
-          console.error("websocket message failed", e);
-        }
-      },
-
-      async close(ws) {
-        await ws.data.session?.close();
-        ws.data.session = null;
-      },
-    },
-  });
+}
 
   // Collect anything a previous run left behind, then keep sweeping: the
   // explicit close never runs if we are SIGKILLed.
