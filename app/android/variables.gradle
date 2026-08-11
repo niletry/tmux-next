@@ -14,3 +14,9 @@ ext {
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
 }
+// Release signing for the distributable APK. Keys live in app/keystore/,
+// which is NOT committed; regenerate or keep them private.
+ext.releaseKeystore = rootProject.file("../keystore/tmux-next.jks")
+ext.releaseStorePass = System.getenv("TMUX_NEXT_STORE_PASS") ?: ""
+ext.releaseKeyAlias = "tmux-next"
+ext.releaseKeyPass = System.getenv("TMUX_NEXT_KEY_PASS") ?: ""
