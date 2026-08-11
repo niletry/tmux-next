@@ -30,7 +30,16 @@ export function apiUrl(path) {
 /** fetch against the server, wherever it lives. */
 /** @param {string} path @param {RequestInit} [init] */
 export function apiFetch(path, init) {
-  return fetch(apiUrl(path), init);
+  const base = serverBase();
+  if (!base) return fetch(path, init);
+  // Cross-origin (the shell): the WebView holds the login cookie a proxy
+  // (caddy-security) set, so every call must send it or the proxy answers
+  // with a redirect the browser hides. Same-origin (browser mode) needs no
+  // flag — cookies go along by default.
+  return fetch(`${base}/${path}`, {
+    ...init,
+    credentials: "include",
+  });
 }
 
 /** A WebSocket URL for a server-relative path (ws/wss follow http/https). */
@@ -48,11 +57,13 @@ export function apiBeacon(path, body) {
   if (navigator.sendBeacon) {
     navigator.sendBeacon(url, body);
   } else {
+    const base = serverBase();
     fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body,
       keepalive: true,
+      ...(base ? { credentials: "include" } : {}),
     });
   }
 }
