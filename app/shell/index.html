@@ -122,10 +122,9 @@
     if (saved) {
       input.value = saved;
       clear.hidden = false;
-      // Returning to the app goes straight back to the sessions. Absolute
-      // path: if the WebView restored us at a sub-path, a relative jump would
-      // land on /tmux/tmux/….
-      location.replace("/tmux/index.html");
+      // Returning to the app goes straight to the server (same-origin, so the
+      // proxy's login cookie works like in the browser).
+      location.replace(saved);
     }
 
     clear.addEventListener("click", () => {
@@ -136,44 +135,23 @@
       note.textContent = "Address forgotten. Enter a new one to reconnect.";
     });
 
-    connect.addEventListener("click", async () => {
+    connect.addEventListener("click", () => {
       let url = input.value.trim().replace(/\/+$/, "");
       if (!url) return;
       if (!/^https?:\/\//i.test(url)) url = "https://" + url;
-      note.classList.remove("error");
-      note.textContent = "Checking…";
-      // A cross-origin probe cannot see through a login proxy (its redirect
-      // has no CORS headers, so the browser hides it as an opaque response).
-      // All we can reliably learn is reachability: opaque means something
-      // answered, an error means nothing did. Signing in is a separate step
-      // below — the button is always available.
-      let ok = false;
-      try {
-        const r = await fetch(url + "/api/sessions", {
-          method: "GET",
-          mode: "no-cors",
-          signal: AbortSignal.timeout(8000),
-        });
-        ok = r.type === "opaque";
-      } catch {
-        ok = false;
-      }
-
-      if (ok) {
-        try { localStorage.setItem(STORAGE, url); } catch {}
-        location.href = "/tmux/index.html";
-        return;
-      }
-      note.classList.add("error");
-      note.textContent = "Could not reach that address. Check the URL, and that the server is reachable from this phone over HTTPS.";
+      // Open the server directly. The shell's own origin (https://localhost)
+      // is a different site than the server, so a login cookie set by its
+      // proxy (caddy-security, SameSite=Lax) would never travel on cross-site
+      // requests from local assets. Loading the server page itself keeps the
+      // request same-origin: login, session list, terminal and WebSocket all
+      // behave exactly like the phone browser.
+      try { localStorage.setItem(STORAGE, url); } catch {}
+      location.href = url;
     });
 
     login.addEventListener("click", () => {
       let url = input.value.trim().replace(/\/+$/, "");
       if (!/^https?:\/\//i.test(url)) url = "https://" + url;
-      // Save the address so a successful sign-in lands back on the sessions
-      // list; then open the proxy's login page inside this WebView. The cookie
-      // stays with the app, and Connect works afterwards.
       try { localStorage.setItem(STORAGE, url); } catch {}
       location.href = url + "/auth/";
     });
