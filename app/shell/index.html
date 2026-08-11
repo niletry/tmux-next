@@ -65,6 +65,13 @@
     }
     .note code { font-family: var(--mono); }
     .note.error { color: #e2706b; }
+    .ver {
+      margin-top: 1.6rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font: 0.72rem var(--mono);
+    }
     #loginRow { display: none; }
     #loginRow button { background: var(--card); color: var(--ink); border: 1px solid var(--accent); }
   </style>
@@ -98,6 +105,7 @@
       that login page for you; after signing in, come back and connect again. The app keeps
       the address on this device only.
     </p>
+    <p class="ver">app 0.1.0 · frontend {{BUILD}}</p>
   </div>
 
   <script type="module">
