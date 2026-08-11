@@ -288,6 +288,9 @@ function corsHeaders(req: Request): Headers {
   const h = new Headers();
   const origin = req.headers.get("origin");
   if (origin) h.set("Access-Control-Allow-Origin", origin);
+  // The shell's WebView may sit behind a login proxy (caddy-security), so the
+  // cookie must be allowed on cross-origin calls from the app.
+  h.set("Access-Control-Allow-Credentials", "true");
   h.set("Access-Control-Allow-Headers", "content-type, x-api-key");
   h.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   h.set("Access-Control-Max-Age", "86400");
@@ -300,6 +303,7 @@ function withCors(req: Request, res: Response): Response {
   const origin = req.headers.get("origin");
   if (origin) {
     h.set("Access-Control-Allow-Origin", origin);
+    h.set("Access-Control-Allow-Credentials", "true");
     h.set("Vary", "Origin");
   }
   return new Response(res.body, { status: res.status, headers: h });

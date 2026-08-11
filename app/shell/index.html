@@ -64,6 +64,9 @@
       line-height: 1.6;
     }
     .note code { font-family: var(--mono); }
+    .note.error { color: #e2706b; }
+    #loginRow { display: none; }
+    #loginRow button { background: var(--card); color: var(--ink); border: 1px solid var(--accent); }
   </style>
 </head>
 <body>
@@ -85,12 +88,15 @@
       <button class="secondary" id="clear" hidden>Forget</button>
       <button id="connect">Connect</button>
     </div>
+    <div class="row" id="loginRow">
+      <button id="login">Open login page</button>
+    </div>
 
     <p class="note" id="note">
       The address must be <code>https://</code> (or a local <code>http://</code> on the same
-      machine). Your tmux-next server needs a login in front of it — the
-      <a href="https://tmux-next.pages.dev/deploy" style="color:var(--accent)">Caddy guide</a>
-      has a working setup. The app keeps the address on this device only.
+      machine). Your tmux-next server usually has a login in front of it — the app can open
+      that login page for you; after signing in, come back and connect again. The app keeps
+      the address on this device only.
     </p>
   </div>
 
@@ -99,7 +105,11 @@
     const input = document.getElementById("server");
     const connect = document.getElementById("connect");
     const clear = document.getElementById("clear");
+    const loginRow = document.getElementById("loginRow");
+    const login = document.getElementById("login");
     const note = document.getElementById("note");
+
+    let pendingUrl = "";
 
     const saved = (() => {
       try { return localStorage.getItem(STORAGE) || ""; } catch { return ""; }
@@ -116,6 +126,8 @@
       try { localStorage.removeItem(STORAGE); } catch {}
       input.value = "";
       clear.hidden = true;
+      loginRow.style.display = "none";
+      note.classList.remove("error");
       note.textContent = "Address forgotten. Enter a new one to reconnect.";
     });
 
@@ -123,17 +135,52 @@
       let url = input.value.trim().replace(/\/+$/, "");
       if (!url) return;
       if (!/^https?:\/\//i.test(url)) url = "https://" + url;
-      // Verify it is actually a tmux-next server before saving.
+      loginRow.style.display = "none";
+      note.classList.remove("error");
+      note.textContent = "Checking…";
+      // Verify it is actually a tmux-next server. The address may sit behind
+      // a login (caddy-security): the check must distinguish "not a server"
+      // from "server exists but wants me to sign in first".
+      let result;
       try {
-        const r = await fetch(url + "/api/sessions", { method: "GET", signal: AbortSignal.timeout(8000) });
-        if (!r.ok) throw new Error(String(r.status));
-        await r.json();
+        const r = await fetch(url + "/api/sessions", {
+          method: "GET",
+          credentials: "include",     // send the session cookie once signed in
+          redirect: "manual",         // do not silently follow a login redirect
+          signal: AbortSignal.timeout(8000),
+        });
+        if (r.ok) {
+          await r.json();
+          result = "ok";
+        } else if (r.type === "opaqueredirect" || r.status === 302 || r.status === 401) {
+          result = "login";
+        } else {
+          result = "http-" + r.status;
+        }
       } catch {
-        note.textContent = "Could not reach a tmux-next server at that address. Check the URL, and that the server is running behind HTTPS.";
+        result = "network";
+      }
+
+      if (result === "ok") {
+        try { localStorage.setItem(STORAGE, url); } catch {}
+        location.href = "tmux/index.html";
         return;
       }
-      try { localStorage.setItem(STORAGE, url); } catch {}
-      location.href = "tmux/index.html";
+      if (result === "login") {
+        // The server is reachable and answers, but a login proxy is in the
+        // way. Remember the address, then offer the sign-in page; the cookie
+        // lands in this WebView, and Connect works afterwards.
+        try { localStorage.setItem(STORAGE, url); } catch {}
+        pendingUrl = url;
+        note.textContent = "That server is behind a login. Sign in once in the app, then connect again.";
+        loginRow.style.display = "flex";
+        return;
+      }
+      note.textContent = "Could not reach a tmux-next server at that address (" + result + "). Check the URL and that the server is running behind HTTPS.";
+    });
+
+    login.addEventListener("click", () => {
+      if (pendingUrl) location.href = pendingUrl + "/auth/";
     });
 
     input.addEventListener("keydown", (e) => {
