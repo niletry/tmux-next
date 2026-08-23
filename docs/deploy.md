@@ -10,7 +10,10 @@
 
 - plist：`~/Library/LaunchAgents/local.tmux-next.plist`
 - 监听：`127.0.0.1:7682`（**只监听 loopback**，公网访问必须经过 Caddy）
-- 日志：`/tmp/tmux-next.log`、`/tmux-next.err`
+- 日志：`~/.tmux-next/logs/server.log`、`~/.tmux-next/logs/server.err`
+
+  刻意不放 `/tmp`：macOS 会定期清理那里，日志在出事前就被删掉，等你去看现场时只剩空目录。
+  launchd 不会自己创建目录，改路径时要先 `mkdir -p`，否则服务起不来且没有任何提示。
 
 常用操作：
 
@@ -18,7 +21,7 @@
 launchctl list | grep tmux-next          # 查看是否在跑
 launchctl unload ~/Library/LaunchAgents/local.tmux-next.plist   # 停
 launchctl load   ~/Library/LaunchAgents/local.tmux-next.plist   # 起
-tail -f /tmp/tmux-next.log               # 看日志
+tail -f ~/.tmux-next/logs/server.log     # 看日志
 ```
 
 改完代码要重启服务才生效（unload 再 load）。
