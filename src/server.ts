@@ -650,6 +650,14 @@ export function startServer(
               target: msg.target,
               rows,
               cols,
+              // The tmux side went away — the server was replaced, or someone
+              // killed the session elsewhere. Closing tells the page, whose
+              // reconnect loop then rebuilds from capture-pane. Left open, the
+              // page shows "connected" over a socket that is finished.
+              onExit: () => {
+                ws.data.session = null;
+                ws.close();
+              },
               onData: (chunk) => {
                 ws.send(chunk);
               },

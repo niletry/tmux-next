@@ -36,6 +36,11 @@ export type PaneSessionOptions = {
   rows: number;
   cols?: number;
   onData: (chunk: Uint8Array) => void;
+  /**
+   * The control client died without being asked to. The caller should drop the
+   * connection rather than hold one that can no longer carry anything.
+   */
+  onExit?: () => void;
 };
 
 /**
@@ -86,6 +91,17 @@ export class PaneSession {
       )[0]!;
 
       const session = new PaneSession(client, webSession, paneId, opts.onData);
+
+      // A control client that dies takes the session with it. Telling the
+      // caller lets it close the socket, which is all the browser needs: its
+      // onclose already drives a backoff reconnect, and a reconnect reseeds
+      // from capture-pane. Without this the page keeps a live socket that will
+      // never carry another byte.
+      client.onExit(() => {
+        if (session.#closed) return;
+        session.#closed = true;
+        opts.onExit?.();
+      });
       session.#windowId = (
         await client.command(`display-message -p -t ${webSession} '#{window_id}'`)
       )[0]!;

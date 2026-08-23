@@ -14,6 +14,7 @@ export class ControlClient {
   #pending: Pending[] = [];
   #outputListeners = new Map<string, Set<(data: Uint8Array) => void>>();
   #notificationListeners = new Set<(name: string, args: string[]) => void>();
+  #exitListeners = new Set<() => void>();
   #closed = false;
 
   private constructor(proc: Bun.Subprocess<"pipe", "pipe", "pipe">) {
@@ -71,6 +72,21 @@ export class ControlClient {
       // Stream torn down by close(); handled below.
     }
     this.#failAllPending(new Error("tmux control client closed"));
+
+    // The subprocess ended on its own: the tmux server was replaced, or the
+    // session this was attached to was destroyed from somewhere else. Nobody
+    // was told before, so the socket upstream stayed open and the page sat on
+    // "connected" forever, receiving nothing — a reload was the only way out.
+    // A deliberate close() has already informed its caller and is skipped.
+    if (!this.#closed) {
+      this.#closed = true;
+      for (const fn of this.#exitListeners) fn();
+    }
+  }
+
+  /** Called when the control client dies without close() having been asked. */
+  onExit(fn: () => void): void {
+    this.#exitListeners.add(fn);
   }
 
   #failAllPending(error: Error): void {
