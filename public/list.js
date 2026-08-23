@@ -432,29 +432,120 @@ async function fetchRestorable() {
 
 /**
  * Sessions whose tmux died (a reboot, a crash) but whose Claude conversation can
- * be brought back. Recreating each one launches a Claude process, so it waits
- * for a tap rather than restoring on its own.
+ * be brought back.
+ *
+ * Recreating each one launches an agent process, so restoring is expensive in a
+ * way the count alone does not convey — forty records is forty processes. The
+ * banner therefore opens a picker instead of acting: the button that costs the
+ * most should be the one that has to be aimed.
  */
-function restoreBanner(count) {
+function restoreBanner(entries) {
   const bar = el("div", "restore-banner");
-  bar.append(el("span", null, tr("list.restorable", { n: count })));
-  const btn = el("button", "restore-btn", tr("list.restore"));
-  btn.addEventListener("click", async () => {
-    btn.disabled = true;
-    btn.textContent = tr("list.restoring");
+  bar.append(el("span", null, tr("list.restorable", { n: entries.length })));
+  const btn = el("button", "restore-btn", tr("list.choose"));
+  btn.addEventListener("click", () => openRestorePicker(entries));
+  bar.append(btn);
+  return bar;
+}
+
+/** Groups restorable records by directory, preserving first-seen order. */
+function byDirectory(entries) {
+  const groups = new Map();
+  for (const entry of entries) {
+    const dir = entry.cwd || "";
+    if (!groups.has(dir)) groups.set(dir, []);
+    groups.get(dir).push(entry);
+  }
+  return [...groups];
+}
+
+/**
+ * The picker: every restorable conversation, grouped by the directory it ran
+ * in, nothing selected.
+ *
+ * Starting empty is the whole point. The list is long and each entry costs a
+ * process, so the safe default is the one where a mistap does nothing.
+ */
+function openRestorePicker(entries) {
+  const chosen = new Set();
+
+  const dialog = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet restore-sheet");
+  sheet.append(el("h2", null, tr("list.restoreTitle")));
+
+  const list = el("div", "restore-list");
+  const boxes = new Map();
+
+  for (const [dir, members] of byDirectory(entries)) {
+    const head = el("div", "restore-group-head");
+    const label = dir ? dir.replace(/\/+$/, "").split("/").pop() || dir : tr("list.noProject");
+    head.append(el("span", "restore-group-name", label));
+    head.append(el("span", "restore-group-count", String(members.length)));
+    if (dir) head.title = dir;
+    // Tapping the heading takes the whole group — the common case is wanting
+    // everything from one project and nothing from the others.
+    head.addEventListener("click", () => {
+      const wantAll = members.some((m) => !chosen.has(m.session));
+      for (const m of members) {
+        if (wantAll) chosen.add(m.session);
+        else chosen.delete(m.session);
+        boxes.get(m.session).checked = wantAll;
+      }
+      sync();
+    });
+    list.append(head);
+
+    for (const entry of members) {
+      const row = el("label", "restore-row");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.addEventListener("change", () => {
+        if (box.checked) chosen.add(entry.session);
+        else chosen.delete(entry.session);
+        sync();
+      });
+      boxes.set(entry.session, box);
+      row.append(box, el("span", "restore-name", entry.session));
+      list.append(row);
+    }
+  }
+  sheet.append(list);
+
+  const actions = el("div", "sheet-actions");
+  const cancel = el("button", "btn", tr("list.cancel"));
+  const go = el("button", "btn primary restore-go", tr("list.restoreSelected", { n: 0 }));
+  go.disabled = true;
+  actions.append(cancel, go);
+  sheet.append(actions);
+  dialog.append(sheet);
+  document.body.append(dialog);
+
+  function sync() {
+    go.disabled = chosen.size === 0;
+    go.textContent = tr("list.restoreSelected", { n: chosen.size });
+  }
+
+  const close = () => dialog.remove();
+  cancel.addEventListener("click", close);
+  dialog.addEventListener("click", (e) => {
+    if (e.target === dialog) close();
+  });
+
+  go.addEventListener("click", async () => {
+    go.disabled = true;
+    go.textContent = tr("list.restoring");
     try {
       await fetch("api/restore", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ sessions: [...chosen] }),
       });
     } catch {
       // The next render reflects whatever actually came back.
     }
+    close();
     render();
   });
-  bar.append(btn);
-  return bar;
 }
 
 async function render() {
@@ -467,7 +558,7 @@ async function render() {
     setTabWaiting(sessions.filter((s) => s.idle).length);
 
     const children = [];
-    if (restorable.length) children.push(restoreBanner(restorable.length));
+    if (restorable.length) children.push(restoreBanner(restorable));
     children.push(
       ...(sessions.length ? sections(sessions) : [el("p", "empty", tr("list.noSessions"))]),
     );

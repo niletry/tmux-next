@@ -63,6 +63,55 @@ header .count {
 /* Project grouping. The heading is deliberately quiet — it is a divider that
    answers "which project", not a thing to look at. Colour comes from the theme
    tokens only; a literal here would be invisible to the contrast tests. */
+/* The restore picker. Long by nature — one row per recoverable conversation —
+   so the list scrolls inside the sheet while the action stays reachable. */
+.restore-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 8px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.restore-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px 4px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.restore-group-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.restore-group-count {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.restore-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* A checkbox is a small target; the row carries the tap instead. */
+  padding: 9px 4px;
+  cursor: pointer;
+}
+
+.restore-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .group-head {
   display: flex;
   align-items: center;
@@ -102,7 +151,56 @@ header .count {
 }
 
 /* The first heading sits directly under the nav and needs no extra air. */
-.group:first-child .group-head {
+.group:first-child /* The restore picker. Long by nature — one row per recoverable conversation —
+   so the list scrolls inside the sheet while the action stays reachable. */
+.restore-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 8px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.restore-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px 4px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.restore-group-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.restore-group-count {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.restore-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* A checkbox is a small target; the row carries the tap instead. */
+  padding: 9px 4px;
+  cursor: pointer;
+}
+
+.restore-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-head {
   padding-top: 4px;
 }
 

@@ -38,11 +38,18 @@ function session(over: Record<string, unknown> = {}) {
   };
 }
 
-function stubFetch(sessions: unknown[]) {
-  return (async (u: unknown) => {
+/** Bodies the page POSTed, so a test can assert on what it asked the server for. */
+let posted: { url: string; body: string }[] = [];
+
+function stubFetch(sessions: unknown[], restorable: unknown[] = []) {
+  return (async (u: unknown, init?: RequestInit) => {
     const url = String(u);
+    if (init?.method === "POST") {
+      posted.push({ url, body: String(init.body ?? "") });
+      if (url.includes("api/restore")) return new Response(JSON.stringify({ restored: 1 }));
+    }
     if (url.includes("api/sessions")) return new Response(JSON.stringify(sessions));
-    if (url.includes("api/restorable")) return new Response("[]");
+    if (url.includes("api/restorable")) return new Response(JSON.stringify(restorable));
     if (url.includes("api/language")) return new Response(JSON.stringify({ lang: "en" }));
     if (url.includes("api/version"))
       return new Response(JSON.stringify({ version: "0.0.0", build: "test" }));
@@ -67,7 +74,12 @@ afterEach(() => {
   saved.clear();
 });
 
-async function mount(sessions: unknown[], store: Record<string, string> = {}) {
+async function mount(
+  sessions: unknown[],
+  store: Record<string, string> = {},
+  restorable: unknown[] = [],
+) {
+  posted = [];
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
   const doc = win.document;
   doc.body.innerHTML = '<header id="header"></header><main id="list"></main>';
@@ -84,7 +96,7 @@ async function mount(sessions: unknown[], store: Record<string, string> = {}) {
         store[k] = v;
       },
     },
-    fetch: stubFetch(sessions),
+    fetch: stubFetch(sessions, restorable),
     // The page polls every five seconds; a live timer would outlast the test
     // and keep the process from exiting.
     setInterval: () => 0,
@@ -280,4 +292,85 @@ test("unreadable stored state does not stop the list rendering", async () => {
     [COLLAPSE_KEY]: "{{{ not json",
   });
   expect(root.querySelectorAll(".card").length).toBe(1);
+});
+
+/**
+ * Picking what to restore.
+ *
+ * Restoring a session starts an agent process, so "restore" on 43 records is 43
+ * processes at once. The banner used to be exactly that: one button, no way to
+ * see what it would do or to want only some of it. The picker exists so the
+ * expensive action has to be aimed.
+ */
+
+const RESTORABLE = [
+  { session: "spec-a", id: "1", cwd: "/srv/spec" },
+  { session: "spec-b", id: "2", cwd: "/srv/spec" },
+  { session: "app-a", id: "3", cwd: "/srv/app" },
+];
+
+const openPicker = async (root: Element) => {
+  (root.querySelector(".restore-btn") as unknown as HTMLElement).click();
+  await new Promise((r) => setTimeout(r, 50));
+};
+
+test("the restore banner offers a picker rather than restoring outright", async () => {
+  const root = await mount([session()], {}, RESTORABLE);
+  expect(root.querySelector(".restore-banner")).toBeTruthy();
+
+  await openPicker(root as unknown as Element);
+  expect(document.querySelector(".restore-sheet")).toBeTruthy();
+  // Opening the picker must not have restored anything by itself.
+  expect(posted.filter((p) => p.url.includes("api/restore"))).toHaveLength(0);
+});
+
+test("the picker lists every restorable session, grouped by directory", async () => {
+  const root = await mount([session()], {}, RESTORABLE);
+  await openPicker(root as unknown as Element);
+
+  const rows = [...document.querySelectorAll(".restore-row")].map((e) => e.textContent);
+  expect(rows.join(" ")).toContain("spec-a");
+  expect(rows.join(" ")).toContain("app-a");
+  expect(rows).toHaveLength(3);
+
+  const groups = [...document.querySelectorAll(".restore-group-name")].map((e) => e.textContent);
+  expect(groups).toEqual(["spec", "app"]);
+});
+
+test("nothing is selected until you say so", async () => {
+  const root = await mount([session()], {}, RESTORABLE);
+  await openPicker(root as unknown as Element);
+
+  const boxes = [...document.querySelectorAll<HTMLInputElement>(".restore-row input")];
+  expect(boxes.every((b) => !b.checked)).toBe(true);
+  // With nothing chosen there is nothing to do, and the button says so.
+  expect(document.querySelector<HTMLButtonElement>(".restore-go")?.disabled).toBe(true);
+});
+
+test("restoring sends only the chosen sessions", async () => {
+  const root = await mount([session()], {}, RESTORABLE);
+  await openPicker(root as unknown as Element);
+
+  const boxes = [...document.querySelectorAll<HTMLInputElement>(".restore-row input")];
+  boxes[2]!.click(); // app-a
+  await new Promise((r) => setTimeout(r, 20));
+
+  const go = document.querySelector<HTMLButtonElement>(".restore-go")!;
+  expect(go.disabled).toBe(false);
+  go.click();
+  await new Promise((r) => setTimeout(r, 100));
+
+  const call = posted.find((p) => p.url.includes("api/restore"))!;
+  expect(JSON.parse(call.body)).toEqual({ sessions: ["app-a"] });
+});
+
+test("a group's toggle selects that group and no other", async () => {
+  const root = await mount([session()], {}, RESTORABLE);
+  await openPicker(root as unknown as Element);
+
+  (document.querySelectorAll(".restore-group-head")[0] as unknown as HTMLElement).click();
+  await new Promise((r) => setTimeout(r, 20));
+
+  const boxes = [...document.querySelectorAll<HTMLInputElement>(".restore-row input")];
+  expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
 });
