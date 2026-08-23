@@ -13,6 +13,8 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 const run = promisify(execFile);
 
@@ -87,6 +89,34 @@ export const server = async (input: any) => ({
    * not control and its event set will grow.
    */
   event: async ({ event }: any) => {
+    // A new conversation: bind it to its tmux session on disk — same shape and
+    // directory as Claude Code's shell hook and the pi extension write — so
+    // tmux-next can restore it after a reboot and mark its agent in the list.
+    // opencode's session id and project directory ride on the event's info.
+    if (event?.type === "session.created") {
+      const info = event.properties?.info;
+      if (info?.id && info?.directory) {
+        const tmuxName = await tmuxSession();
+        if (tmuxName) {
+          try {
+            const dir = join(process.env.HOME ?? "", ".tmux-next", "sessions");
+            await mkdir(dir, { recursive: true });
+            await writeFile(
+              join(dir, `${info.id}.json`),
+              JSON.stringify({
+                agent: "opencode",
+                id: info.id,
+                session: tmuxName,
+                cwd: info.directory,
+              }),
+            );
+          } catch {
+            // tmux-next not set up here; nothing to record into.
+          }
+        }
+      }
+      return;
+    }
     if (event?.type !== "session.idle") return;
     const session = await tmuxSession();
     if (session) post({ event: "waiting", session });

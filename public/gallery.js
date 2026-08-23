@@ -29,6 +29,83 @@ const ext = (/** @type {string} */ name) => (name.match(/\.([^.]+)$/)?.[1] ?? tr
 let items = [];
 let viewerIndex = -1;
 
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / (1024 * 1024);
+
+/**
+ * Created once and reused across grid reloads, so an upload's "Uploaded n"
+ * message survives the reload that follows it.
+ */
+const statusEl = document.createElement("span");
+statusEl.className = "gal-status";
+
+/**
+ * The row above the grid: an upload button that opens the file picker, plus a
+ * status slot. The input is hidden and driven by the button — on a phone this
+ * is what opens the photos / files sheet.
+ */
+function uploadBar() {
+  const bar = document.createElement("div");
+  bar.className = "gal-toolbar";
+  const btn = document.createElement("button");
+  btn.className = "gal-upload-btn";
+  btn.textContent = tr("gallery.upload");
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.hidden = true;
+  btn.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => {
+    uploadFiles(input.files);
+    input.value = "";
+  });
+  bar.append(btn, statusEl, input);
+  return bar;
+}
+
+/** Uploads the picked files into the gallery, then refreshes the grid. */
+async function uploadFiles(/** @type {FileList | null} */ files) {
+  const list = [...(files ?? [])];
+  if (!list.length) return;
+  statusEl.textContent = tr("gallery.uploading", { n: list.length });
+  let ok = 0;
+  let tooBig = false;
+  let failed = false;
+  for (const file of list) {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      tooBig = true;
+      continue;
+    }
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      const res = await fetch("api/gallery/file", { method: "POST", body: form });
+      if (res.ok) ok++;
+      else failed = true;
+    } catch {
+      failed = true;
+    }
+  }
+  if (ok && !failed) statusEl.textContent = tr("gallery.uploaded", { n: ok });
+  else if (ok) statusEl.textContent = tr("gallery.uploadPartial", { n: ok });
+  else if (tooBig) statusEl.textContent = tr("gallery.uploadTooBig", { mb: MAX_UPLOAD_MB });
+  else statusEl.textContent = tr("gallery.uploadFailed");
+  load();
+}
+
+// Desktop: dragging files onto the page drops them into the folder. Mobile has
+// the button; this costs nothing and makes the drop-folder idea literal.
+listEl.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  listEl.classList.add("gal-drop");
+});
+listEl.addEventListener("dragleave", () => listEl.classList.remove("gal-drop"));
+listEl.addEventListener("drop", (e) => {
+  e.preventDefault();
+  listEl.classList.remove("gal-drop");
+  uploadFiles(e.dataTransfer?.files ?? null);
+});
+
 async function load() {
   try {
     items = await (await fetch("api/gallery")).json();
@@ -38,10 +115,14 @@ async function load() {
   }
 
   setCount(items.length ? tr("gallery.count", { n: items.length }) : "");
+  const toolbar = uploadBar();
   if (!items.length) {
-    listEl.innerHTML =
-      `<p class="empty">${tr("gallery.empty")}<br>` +
-      `<span class="ghint">${tr("gallery.emptyHint")} <code>~/.tmux-next/gallery/</code></span></p>`;
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.innerHTML =
+      `${tr("gallery.empty")}<br>` +
+      `<span class="ghint">${tr("gallery.emptyHint")} <code>~/.tmux-next/gallery/</code></span>`;
+    listEl.replaceChildren(toolbar, empty);
     return;
   }
 
@@ -72,7 +153,7 @@ async function load() {
     cell.append(cap);
     grid.append(cell);
   });
-  listEl.replaceChildren(grid);
+  listEl.replaceChildren(toolbar, grid);
 }
 
 function openViewer(/** @type {number} */ index) {

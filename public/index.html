@@ -6,6 +6,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title data-i18n="list.title">tmux 会话</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <!-- use-credentials: the manifest is fetched by the browser itself, and
+       behind a reverse proxy that asks for a login an anonymous fetch gets
+       the login page instead — the install then fails with no visible
+       reason. This makes the fetch carry the session cookie. -->
+  <link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="list-page">

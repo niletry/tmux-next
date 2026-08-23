@@ -30,7 +30,9 @@ async function enable() {
     // On iPhone this only works once the page is added to the Home Screen.
     throw new Error(tr("push.denied"));
   }
-  const reg = await navigator.serviceWorker.register("sw.js");
+  // A module worker: sw.js imports the logic that decides which window a tapped
+  // notification lands in, so that part can be tested outside a browser.
+  const reg = await navigator.serviceWorker.register("sw.js", { type: "module" });
   await navigator.serviceWorker.ready;
   const { key } = await (await fetch("api/push/key")).json();
   const sub = await reg.pushManager.subscribe({

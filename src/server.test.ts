@@ -47,6 +47,7 @@ process.env.TMUX_NEXT_THEME_PATH = joinPath(
 import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, readdirSync } from "node:fs";
 import { startServer, isLoopback } from "./server";
 import { encodeProjectDir } from "./claude-history";
+import { THEMES } from "../public/themes.js";
 
 const BASE = "srv-test-" + Math.random().toString(36).slice(2, 8);
 let server: { stop(): void; port: number };
@@ -372,6 +373,95 @@ test("gallery refuses a name that tries to climb out", async () => {
 test("gallery is a 404 for a name that does not exist", async () => {
   const res = await fetch(`http://127.0.0.1:${server.port}/api/gallery/file?name=nope.png`);
   expect(res.status).toBe(404);
+});
+
+test("gallery upload saves a multipart file and serves it back", async () => {
+  const base = `http://127.0.0.1:${server.port}/api/gallery/file`;
+  const up = (name: string, body: string) => {
+    const form = new FormData();
+    form.append("file", new File([body], name));
+    return fetch(base, { method: "POST", body: form });
+  };
+
+  const res = await up("note.txt", "hello upload");
+  expect(res.status).toBe(200);
+  expect(((await res.json()) as { name: string }).name).toBe("note.txt");
+
+  const got = await fetch(`${base}?name=note.txt`);
+  expect(got.status).toBe(200);
+  expect(await got.text()).toBe("hello upload");
+  // The upload shows up in the listing.
+  const items = (await (await fetch(`http://127.0.0.1:${server.port}/api/gallery`)).json()) as {
+    name: string;
+  }[];
+  expect(items.some((i) => i.name === "note.txt")).toBe(true);
+});
+
+test("gallery upload dedupes a colliding name instead of overwriting", async () => {
+  const base = `http://127.0.0.1:${server.port}/api/gallery/file`;
+  const up = (name: string) => {
+    const form = new FormData();
+    form.append("file", new File(["x"], name));
+    return fetch(base, { method: "POST", body: form });
+  };
+  expect(((await (await up("dup.png")).json()) as { name: string }).name).toBe("dup.png");
+  expect(((await (await up("dup.png")).json()) as { name: string }).name).toBe("dup-2.png");
+});
+
+test("gallery upload refuses a name that could climb out", async () => {
+  const form = new FormData();
+  form.append("file", new File(["x"], "../escape.png"));
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/gallery/file`, {
+    method: "POST",
+    body: form,
+  });
+  expect(res.status).toBe(400);
+});
+
+test("gallery upload refuses an empty file and a missing field", async () => {
+  const base = `http://127.0.0.1:${server.port}/api/gallery/file`;
+  const empty = new FormData();
+  empty.append("file", new File([], "empty.txt"));
+  expect((await fetch(base, { method: "POST", body: empty })).status).toBe(400);
+
+  const none = new FormData();
+  expect((await fetch(base, { method: "POST", body: none })).status).toBe(400);
+});
+
+test("upload-file saves into the session's working directory", async () => {
+  const dir = realpathSync(mkdtempSync(joinPath(tmpdir(), "upf-srv-")));
+  const name = `upf-srv-${crypto.randomUUID().slice(0, 8)}`;
+  await Bun.$`tmux new-session -d -s ${name} -c ${dir} -x 80 -y 24 sleep 30`.quiet();
+  try {
+    const form = new FormData();
+    form.append("session", name);
+    form.append("file", new File(["hello file"], "任务.txt"));
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/upload-file`, {
+      method: "POST",
+      body: form,
+    });
+    expect(res.status).toBe(200);
+    const { path } = (await res.json()) as { path: string };
+    expect(path).toBe(joinPath(dir, "任务.txt"));
+    expect(await Bun.file(path).text()).toBe("hello file");
+  } finally {
+    await Bun.$`tmux kill-session -t =${name}`.quiet();
+    await Bun.$`rm -rf ${dir}`.quiet();
+  }
+});
+
+test("upload-file 404s for a gone session and 400s for a climbing name", async () => {
+  const base = `http://127.0.0.1:${server.port}/api/upload-file`;
+  const gone = new FormData();
+  gone.append("session", "no-such-session-xyz");
+  gone.append("file", new File(["x"], "x.txt"));
+  expect((await fetch(base, { method: "POST", body: gone })).status).toBe(404);
+
+  // The name is refused before the session is even consulted.
+  const bad = new FormData();
+  bad.append("session", "no-such-session-xyz");
+  bad.append("file", new File(["x"], "../escape.txt"));
+  expect((await fetch(base, { method: "POST", body: bad })).status).toBe(400);
 });
 
 test("pinning a session marks it and sorts it to the top", async () => {
@@ -752,4 +842,66 @@ test("GET /api/language guesses from the browser once, then stays put", async ()
   expect((await post("en")).status).toBe(204);
   expect(((await get("zh-CN")) as { lang: string }).lang).toBe("en");
   expect((await post("klingon")).status).toBe(400);
+});
+
+// --- web app manifest -------------------------------------------------------
+//
+// Without one, Android cannot install the site as an app at all: "add to home
+// screen" leaves a plain browser shortcut, so a tapped notification has no app
+// to launch and lands in whatever tab the browser happens to have. iOS gets a
+// standalone app from apple-mobile-web-app-capable alone, which is why only
+// Android was affected.
+
+test("serves a web app manifest", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/manifest.webmanifest`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("application/manifest+json");
+
+  const m = (await res.json()) as Record<string, unknown>;
+  expect(m.name).toBe("tmux-next");
+  expect(m.short_name).toBe("tmux");
+  expect(m.display).toBe("standalone");
+  expect(m.start_url).toBe("./");
+});
+
+test("the manifest offers the icon sizes Android needs to install", async () => {
+  const m = (await (
+    await fetch(`http://127.0.0.1:${server.port}/manifest.webmanifest`)
+  ).json()) as { icons: { src: string; sizes: string; type: string; purpose?: string }[] };
+
+  // Chrome refuses to install without a 192 and a 512; a maskable one keeps the
+  // icon from being cropped into a circle on Samsung's launcher.
+  expect(m.icons.some((i) => i.sizes === "192x192")).toBe(true);
+  expect(m.icons.some((i) => i.sizes === "512x512")).toBe(true);
+  expect(m.icons.some((i) => i.purpose === "maskable")).toBe(true);
+  expect(m.icons.every((i) => i.type === "image/png")).toBe(true);
+
+  // Every icon it names has to actually be there, or the install silently fails.
+  for (const icon of m.icons) {
+    const res = await fetch(`http://127.0.0.1:${server.port}/${icon.src}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("image/png");
+  }
+});
+
+test("the manifest colours follow the machine's chosen theme", async () => {
+  // Generated rather than a static file so no colour literal escapes themes.js
+  // — the stylesheet and the xterm theme are both derived from there, and a
+  // hard-coded manifest would be the one palette src/themes.test.ts cannot see.
+  const post = (name: string) =>
+    fetch(`http://127.0.0.1:${server.port}/api/theme`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  const colours = async () =>
+    (await (
+      await fetch(`http://127.0.0.1:${server.port}/manifest.webmanifest`)
+    ).json()) as { background_color: string; theme_color: string };
+
+  expect((await post("nord")).status).toBe(204);
+  expect((await colours()).background_color).toBe(THEMES["nord"]!.background);
+
+  expect((await post("one-dark")).status).toBe(204);
+  expect((await colours()).background_color).toBe(THEMES["one-dark"]!.background);
 });

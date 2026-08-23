@@ -3,8 +3,9 @@ import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
+import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
-import { listGallery, galleryFilePath } from "./gallery";
+import { listGallery, galleryFilePath, saveGalleryUpload, MAX_GALLERY_UPLOAD_BYTES } from "./gallery";
 import { setPin } from "./pins";
 import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { createDirectory, listDirectories, resolveDirectory } from "./paths";
@@ -14,6 +15,7 @@ import { listHistory } from "./claude-history";
 import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
 import { readNotifications } from "./notifications";
 import { readTheme, writeTheme } from "./theme";
+import { themeOf } from "../public/themes.js";
 import { readAsrConfig, transcribe } from "./asr";
 import { resolveLanguage, writeLanguage } from "./language";
 import { AGENT_IDS, AGENTS, isKnownAgent } from "./agents";
@@ -233,6 +235,41 @@ export function startServer(
         return uploadResponse(req);
       }
 
+      // Any file, dropped into the session's own working directory — the image
+      // endpoint saves to a fixed dir; this one goes where the user is working.
+      // The reply is the absolute path, which the client types back into the
+      // prompt so the tool in the session can read the file.
+      if (url.pathname === "/api/upload-file" && req.method === "POST") {
+        // Reject by declared length before buffering, so an oversized body never
+        // reaches formData() at all; the check after parsing still guards.
+        const declared = Number(req.headers.get("content-length") ?? "0");
+        if (declared > MAX_SESSION_UPLOAD_BYTES) {
+          return new Response("too big", { status: 413 });
+        }
+        let form: FormData;
+        try {
+          form = await req.formData();
+        } catch {
+          return new Response("bad form", { status: 400 });
+        }
+        const file = form.get("file");
+        const session = form.get("session");
+        if (!(file instanceof File) || typeof session !== "string" || session.length === 0) {
+          return new Response("missing field", { status: 400 });
+        }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (bytes.byteLength === 0) return new Response("empty", { status: 400 });
+        if (bytes.byteLength > MAX_SESSION_UPLOAD_BYTES) {
+          return new Response("too big", { status: 413 });
+        }
+        const result = await saveSessionUpload(session, file.name, bytes);
+        if (!result.ok) {
+          const status = result.reason === "name" ? 400 : 404;
+          return new Response(result.reason, { status });
+        }
+        return Response.json({ path: result.path });
+      }
+
       // Claude conversations whose tmux session died (a reboot, a crash) but
       // whose record on disk survives — offer to recreate them and resume.
       if (url.pathname === "/api/restorable" && req.method === "GET") {
@@ -276,6 +313,30 @@ export function startServer(
         const file = Bun.file(path);
         if (!(await file.exists())) return new Response("not found", { status: 404 });
         return new Response(file);
+      }
+      if (url.pathname === "/api/gallery/file" && req.method === "POST") {
+        // Reject by declared length before buffering, so an oversized body never
+        // reaches formData() at all; the check after parsing still guards.
+        const declared = Number(req.headers.get("content-length") ?? "0");
+        if (declared > MAX_GALLERY_UPLOAD_BYTES) {
+          return new Response("too big", { status: 413 });
+        }
+        let form: FormData;
+        try {
+          form = await req.formData();
+        } catch {
+          return new Response("bad form", { status: 400 });
+        }
+        const file = form.get("file");
+        if (!(file instanceof File)) return new Response("missing file", { status: 400 });
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (bytes.byteLength === 0) return new Response("empty", { status: 400 });
+        if (bytes.byteLength > MAX_GALLERY_UPLOAD_BYTES) {
+          return new Response("too big", { status: 413 });
+        }
+        const name = await saveGalleryUpload(file.name, bytes);
+        if (!name) return new Response("bad name", { status: 400 });
+        return Response.json({ name });
       }
 
       // Which toolbar keys get tapped, so their order can follow the evidence.
@@ -500,6 +561,49 @@ export function startServer(
         return Response.json(
           { error: result.reason },
           { status: result.reason === "missing" ? 404 : 403 },
+        );
+      }
+
+      // The web app manifest, without which Android cannot install this as an
+      // app: "add to home screen" leaves a browser shortcut, and a tapped
+      // notification then has no app to launch. iOS gets a standalone app from
+      // apple-mobile-web-app-capable alone, which is why only Android suffered.
+      //
+      // Generated rather than a static file so its colours come from themes.js
+      // like every other colour in the project. A hard-coded manifest would be
+      // the one palette themes.test.ts cannot see, and it would go stale the
+      // moment the machine's theme changed.
+      if (url.pathname === "/manifest.webmanifest") {
+        const theme = themeOf(await readTheme());
+        return new Response(
+          JSON.stringify({
+            name: "tmux-next",
+            short_name: "tmux",
+            description: "A phone-friendly window onto the tmux sessions on this machine.",
+            start_url: "./",
+            scope: "./",
+            display: "standalone",
+            orientation: "any",
+            background_color: theme.background,
+            theme_color: theme.background,
+            icons: [
+              { src: "icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+              { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+              {
+                src: "icon-maskable-512.png",
+                sizes: "512x512",
+                type: "image/png",
+                purpose: "maskable",
+              },
+            ],
+          }),
+          {
+            headers: {
+              "content-type": "application/manifest+json; charset=utf-8",
+              // Follows the theme, so it must not be held past a theme change.
+              "Cache-Control": "no-cache",
+            },
+          },
         );
       }
 

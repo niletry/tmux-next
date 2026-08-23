@@ -4,6 +4,8 @@ import { createGesture, createPager } from "./scroll-gesture.js";
 
 import { MIN_COLUMNS, computeGeometry } from "./terminal-fit.js";
 import { createCopyGate, decodeOsc52 } from "./copy-on-select.js";
+import { createBackdropDismiss } from "./tap-dismiss.js";
+import { createWebglRenderer } from "./webgl-renderer.js";
 import { xtermTheme } from "./themes.js";
 import { initTheme, cachedTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
@@ -44,12 +46,15 @@ initTheme().then((name) => {
   if (name !== initialTheme) term.options.theme = xtermTheme(name);
 });
 
-try {
-  term.loadAddon(new WebglAddon.WebglAddon());
-} catch (e) {
-  // Falls back to the DOM renderer; not fatal.
-  console.warn("webgl renderer unavailable", e);
-}
+// The catch alone only covered "no WebGL at startup". A context lost later —
+// backgrounding the tab, memory pressure, exactly what a phone does — leaves
+// the addon dead but loaded, and the terminal crawls until a reload. See
+// webgl-renderer.js.
+createWebglRenderer({
+  term,
+  makeAddon: () => new WebglAddon.WebglAddon(),
+  log: (msg, err) => console.warn(msg, err),
+}).start();
 
 // --- select to copy --------------------------------------------------------
 
@@ -529,6 +534,55 @@ async function uploadImage(file) {
   }
 }
 
+// --- sending a file into the working directory ------------------------------
+
+/**
+ * Same idea as an image, for anything the tool in the session can read: the
+ * file lands in the session's own working directory and its absolute path is
+ * typed into the prompt — no Enter, so the user adds their own words.
+ */
+const fileBtn = document.getElementById("file");
+const fileInput = document.getElementById("fileinput");
+
+fileBtn.addEventListener("click", () => fileInput.click());
+
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files && fileInput.files[0];
+  if (file) uploadFile(file);
+  fileInput.value = ""; // so picking the same file twice still fires change
+});
+
+let uploadingFile = false;
+async function uploadFile(file) {
+  if (uploadingFile) return;
+  uploadingFile = true;
+  flashStatus(tr("term.uploadingFile"));
+  try {
+    const form = new FormData();
+    form.append("session", target);
+    form.append("file", file);
+    const res = await fetch("api/upload-file", { method: "POST", body: form });
+    if (!res.ok) {
+      flashStatus(
+        res.status === 413
+          ? tr("term.fileTooBig")
+          : res.status === 404
+            ? tr("term.uploadSessionGone")
+            : tr("term.uploadFailed"),
+      );
+      return;
+    }
+    const { path } = await res.json();
+    send(path + " ");
+    focusTerminal();
+    flashStatus(tr("term.pathInserted"));
+  } catch {
+    flashStatus(tr("term.uploadFailed"));
+  } finally {
+    uploadingFile = false;
+  }
+}
+
 // --- paste (mobile has no Cmd+V) -------------------------------------------
 
 /**
@@ -756,9 +810,13 @@ function showCopyOverlay() {
   box.append(pre);
 
   backdrop.append(box);
-  // A tap on the backdrop (not the content) dismisses it.
-  backdrop.addEventListener("pointerdown", (e) => {
-    if (e.target === backdrop) backdrop.remove();
+  // A tap on the backdrop (not the content) dismisses it — on click, not
+  // pointerdown, or the overlay is gone before the tap finishes and the click
+  // lands on the toolbar button underneath. See tap-dismiss.js.
+  const dismiss = createBackdropDismiss(backdrop);
+  backdrop.addEventListener("pointerdown", (e) => dismiss.down(e.target));
+  backdrop.addEventListener("click", (e) => {
+    if (dismiss.click(e.target)) backdrop.remove();
   });
   document.body.append(backdrop);
 }

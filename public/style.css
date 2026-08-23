@@ -99,7 +99,19 @@ header .count {
 
 .row { display: flex; align-items: center; gap: 8px; }
 
-.name { font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
+/* The name owns its row, so it can take the whole width before truncating. */
+.name-row { min-width: 0; }
+.meta-row { margin-top: 4px; }
+
+.name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .dot {
   flex: 0 0 auto;
@@ -114,6 +126,33 @@ header .count {
   color: var(--dim);
   font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
   opacity: 0.7;
+}
+
+/* Which agent runs in a session, from its binding record. */
+.agent {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #22262f;
+  color: var(--accent);
+  font: 600 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
+}
+
+/* The agent's build, when knowable (Claude's pane command, or --version). */
+.agent-ver {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.75;
+}
+
+/* Precise state in words: working / waiting / unsent input. */
+.status {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .time { margin-left: auto; color: var(--dim); font-size: 13px; white-space: nowrap; }
@@ -615,6 +654,28 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 .gal-name { padding: 8px 10px; font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
 .ghint { font-size: 13px; color: var(--dim); }
 .ghint code { font-size: 0.9em; }
+
+/* Upload row above the grid: pick files, or drop them onto the page. */
+.gal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 4px;
+}
+.gal-upload-btn {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 18px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+.gal-upload-btn:active { opacity: 0.85; }
+.gal-status { color: var(--dim); font-size: 13px; }
+/* A drop-target outline while dragging files over the page. */
+.gal-drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
 
 /* full-screen viewer for one artifact */
 .viewer {

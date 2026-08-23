@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 
 /**
  * A drop folder whose contents the web UI shows: images inline, HTML/SVG
@@ -43,6 +43,51 @@ export function safeGalleryName(name: string): string | null {
 export function galleryFilePath(name: string): string | null {
   const safe = safeGalleryName(name);
   return safe ? join(galleryDir(), safe) : null;
+}
+
+/**
+ * Uploads into the gallery are capped so a broken client cannot balloon the
+ * server's memory; the viewer renders HTML in a sandbox, so unlike the
+ * terminal's image-only upload there is deliberately no type allow-list — the
+ * gallery's job is to show whatever lands in the drop folder.
+ */
+export const MAX_GALLERY_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+/** name → { base, ext }, where ext keeps the dot and is "" when there is none. */
+function splitExt(name: string): { base: string; ext: string } {
+  const m = name.match(/^(.*?)(\.[^.]+)?$/);
+  return { base: m?.[1] ?? name, ext: m?.[2] ?? "" };
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Writes an uploaded file into the gallery, keeping the caller's basename.
+ *
+ * The name goes through `safeGalleryName` first, so it can never name anything
+ * outside the gallery. A collision is given a numeric suffix (`x.png` →
+ * `x-2.png`) rather than silently overwriting what is already there. Returns
+ * the final name on disk, or null when the name is refused.
+ */
+export async function saveGalleryUpload(name: string, bytes: Uint8Array): Promise<string | null> {
+  const safe = safeGalleryName(name);
+  if (!safe) return null;
+  await mkdir(galleryDir(), { recursive: true });
+  const { base, ext } = splitExt(safe);
+  let candidate = safe;
+  for (let i = 2; ; i++) {
+    if (!(await exists(join(galleryDir(), candidate)))) break;
+    candidate = `${base}-${i}${ext}`;
+  }
+  await writeFile(join(galleryDir(), candidate), bytes);
+  return candidate;
 }
 
 export type GalleryEntry = { name: string; kind: GalleryKind; size: number; mtime: number };

@@ -78,6 +78,59 @@ test("lists a session with its geometry and a bounded preview", async () => {
   }
 });
 
+test("a session with a binding record carries its agent marker", async () => {
+  const name = `agent-mark-${crypto.randomUUID().slice(0, 8)}`;
+  const id = crypto.randomUUID();
+  await tmux(["new-session", "-d", "-s", name, "-x", "80", "-y", "24", "sleep 30"]);
+  const dir = process.env.TMUX_NEXT_SESSIONS_DIR!;
+  await Bun.$`mkdir -p ${dir}`.quiet();
+  await Bun.write(
+    join(dir, `${id}.json`),
+    JSON.stringify({ id, session: name, agent: "pi", cwd: "/tmp" }),
+  );
+  try {
+    const mine = (await listSessions()).find((s) => s.name === name);
+    expect(mine?.agent).toBe("pi");
+    expect(mine?.agentLabel).toBe("pi");
+  } finally {
+    await tmux(["kill-session", "-t", `=${name}`]);
+  }
+});
+
+test("a session without a record carries no agent marker", async () => {
+  const name = `agent-none-${crypto.randomUUID().slice(0, 8)}`;
+  await tmux(["new-session", "-d", "-s", name, "-x", "80", "-y", "24", "sleep 30"]);
+  try {
+    const mine = (await listSessions()).find((s) => s.name === name);
+    expect(mine?.agent).toBe(null);
+    expect(mine?.agentLabel).toBe(null);
+    // A plain pane (sleep) is not a versioned binary and has no agent to probe.
+    expect(mine?.version).toBe(null);
+  } finally {
+    await tmux(["kill-session", "-t", `=${name}`]);
+  }
+});
+
+test("a record predating multi-agent support resolves to the default", async () => {
+  const name = `agent-old-${crypto.randomUUID().slice(0, 8)}`;
+  const id = crypto.randomUUID();
+  await tmux(["new-session", "-d", "-s", name, "-x", "80", "-y", "24", "sleep 30"]);
+  const dir = process.env.TMUX_NEXT_SESSIONS_DIR!;
+  await Bun.$`mkdir -p ${dir}`.quiet();
+  // The Claude hook writes {session, id, cwd} with no agent field.
+  await Bun.write(
+    join(dir, `${id}.json`),
+    JSON.stringify({ id, session: name, cwd: "/tmp" }),
+  );
+  try {
+    const mine = (await listSessions()).find((s) => s.name === name);
+    expect(mine?.agent).toBe("claude");
+    expect(mine?.agentLabel).toBe("Claude Code");
+  } finally {
+    await tmux(["kill-session", "-t", `=${name}`]);
+  }
+});
+
 test("orders sessions by most recent activity", async () => {
   const sessions = await listSessions();
   // Non-increasing activity from top to bottom: the freshest session leads, so

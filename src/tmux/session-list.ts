@@ -9,7 +9,8 @@ import {
   dedupeBySession,
 } from "../claude-sessions";
 import { nextStamp, type ActivityEntry } from "./activity-stamp";
-import { agentOf } from "../agents";
+import { agentOf, DEFAULT_AGENT } from "../agents";
+import { agentVersion, versionFromCommand } from "../agents/version";
 
 export type SessionSummary = {
   name: string;
@@ -29,6 +30,17 @@ export type SessionSummary = {
   // Null when the session is not Claude, has no binding record, or predates
   // Claude Code writing the record at all.
   task: string | null;
+  // The agent the binding record names, and its display label. A record that
+  // predates multi-agent support is Claude Code's — its hook wrote it without
+  // an agent field — so it resolves to the default. Only sessions with no
+  // record at all are null: the client shows no marker then, rather than
+  // guessing what runs in a session it never saw launched.
+  agent: string | null;
+  agentLabel: string | null;
+  // The agent's build, as precisely as it can be known: Claude's pane command
+  // is its versioned binary, opencode and pi answer `--version` (cached). Null
+  // when neither applies — the client shows the plain label then.
+  version: string | null;
 };
 
 const PREVIEW_LINES = 4;
@@ -82,8 +94,13 @@ const FIELD_SEP = "|";
 // own it reads "just now" for every live Claude session. We use it only as the
 // seed for a session first seen this process; the shown time then follows
 // actual visible-content changes (see activity-stamp and the capture loop).
+//
+// pane_current_command rides along for free: for a Claude session it is the
+// versioned binary name (2.1.223), which is the version marker. The name stays
+// last so it keeps any `|` of its own; the command sits before it and is a
+// process basename, which cannot contain the separator in practice.
 const LIST_FORMAT =
-  "#{window_width}|#{window_height}|#{window_activity}|#{session_attached}|#{session_name}";
+  "#{window_width}|#{window_height}|#{window_activity}|#{session_attached}|#{pane_current_command}|#{session_name}";
 
 // Per-session record of the last visible-screen change, keyed by session name.
 // Lives for the life of the server process; seeded from window_activity on
@@ -229,9 +246,15 @@ export async function listSessions(): Promise<SessionSummary[]> {
   const summaries = await Promise.all(
     rows.map(async (row): Promise<SessionSummary | null> => {
       const parts = row.split(FIELD_SEP);
-      if (parts.length < 5) return null;
-      const [width, height, activity, attached] = parts as [string, string, string, string];
-      const name = parts.slice(4).join(FIELD_SEP);
+      if (parts.length < 6) return null;
+      const [width, height, activity, attached, command] = parts as [
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
+      const name = parts.slice(5).join(FIELD_SEP);
 
       // Web sessions are this app's own attach points, not something to show.
       if (name.startsWith(WEB_SESSION_PREFIX)) return null;
@@ -273,15 +296,24 @@ export async function listSessions(): Promise<SessionSummary[]> {
       // where the hook recorded both an id and a cwd — the two together locate
       // the transcript without having to search for it.
       const record = recordByName.get(name);
-      // Whichever agent the binding record names. Only Claude Code writes those
-      // records today, so in practice this is claude — but routing through the
-      // registry means teaching another agent to record needs no change here.
+      // Whichever agent the binding record names. Records without an agent
+      // field were written by Claude Code's hook before multi-agent support,
+      // so they are Claude Code; only a missing record stays unknown.
+      const agentId = record ? (record.agent ?? DEFAULT_AGENT) : null;
       const agent = agentOf(record?.agent);
       const task =
         record?.cwd !== undefined && agent.readTask
           ? await agent.readTask(record.cwd, record.id)
           : null;
-      
+
+      // Precise build: Claude's pane command is its versioned binary, and
+      // opencode / pi answer --version (cached per process). Anything else
+      // stays null — the client shows the plain label then.
+      const commandVersion = versionFromCommand(command);
+      const version =
+        commandVersion ??
+        (agentId === "opencode" || agentId === "pi" ? await agentVersion(agentId) : null);
+
       return {
         name,
         windowWidth: Number(width),
@@ -291,6 +323,11 @@ export async function listSessions(): Promise<SessionSummary[]> {
         pinned: pinnedSet.has(name),
         claudeId: claudeIdByName.get(name) ?? null,
         task,
+        // Expose the record's agent so the list can mark it; null keeps an
+        // unmarked card for sessions with no record at all.
+        agent: agentId,
+        agentLabel: agentId ? agent.label : null,
+        version,
         ...parsed,
       };
     }),

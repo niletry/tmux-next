@@ -153,14 +153,40 @@ function card(session) {
   const link = el("a", "card-main");
   link.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
 
-  const row = el("div", "row");
-  if (session.pinned) row.append(pinBadge());
+  // The name gets a line to itself: sharing one with the badges, status and
+  // timestamp squeezed it down to an ellipsis on a phone.
+  const nameRow = el("div", "row name-row");
+  if (session.pinned) nameRow.append(pinBadge());
   if (session.idle) {
     const dot = el("span", "dot");
     dot.title = tr("list.waitingDot");
-    row.append(dot);
+    nameRow.append(dot);
   }
-  row.append(el("span", "name", session.name));
+  nameRow.append(el("span", "name", session.name));
+  link.append(nameRow);
+
+  const row = el("div", "row meta-row");
+  if (session.agentLabel) {
+    // Which agent runs in here — from the binding record, so a session with no
+    // record (or one that predates multi-agent support) simply shows nothing.
+    // The version rides on the same badge when it is knowable.
+    const badge = el("span", "agent", session.agentLabel);
+    badge.title = tr("list.agent");
+    row.append(badge);
+    if (session.version) {
+      const ver = el("span", "agent-ver", session.version);
+      ver.title = tr("list.agentVersion");
+      row.append(ver);
+    }
+  }
+  // Precise state, in words rather than only the small dot: working on a turn,
+  // waiting on the user, or holding unsent input.
+  const statusText = session.pendingInput
+    ? tr("list.pendingInput")
+    : session.idle
+      ? tr("list.waitingDot")
+      : tr("list.working");
+  row.append(el("span", "status", statusText));
   if (session.claudeId) {
     // Short prefix only — enough to eyeball and to match the transcript file
     // under ~/.claude/projects; the full id is on the title for a long-press.

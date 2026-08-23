@@ -1,0 +1,25 @@
+<!-- Source for the maskable app icon (icon-maskable-512.png).
+
+     Same glyph as favicon.svg, but full-bleed instead of a circle: a maskable
+     icon is cropped by the launcher into whatever shape it likes, so it has to
+     paint to the edges and keep its content inside the middle 80%. The chevrons
+     already sit well inside that, so only the backdrop changes.
+
+     The backdrop is the default theme's background, so the icon and the splash
+     screen the manifest asks for are the same colour with no seam. Regenerate
+     the PNGs with:
+
+       inkscape -w 512 -h 512 public/favicon-maskable.svg -o public/icon-maskable-512.png
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="fg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7aa2f7"/>
+      <stop offset="1" stop-color="#9ece6a"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" fill="#1a1b26"/>
+  <path d="M8.5 10.5 L14 16 L8.5 21.5 M15.5 10.5 L21 16 L15.5 21.5"
+        fill="none" stroke="url(#fg)" stroke-width="3"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
