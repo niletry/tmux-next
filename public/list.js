@@ -288,6 +288,133 @@ function card(session) {
   return wrapper;
 }
 
+/** The sort key a card is ordered by — the same one the server sorts on. */
+function orderKey(session) {
+  return session.lastAction ? session.lastAction.epoch : session.lastActivityEpoch;
+}
+
+/**
+ * Which groups are folded shut, by path.
+ *
+ * Per device rather than per machine, for the same reason font size is: it is a
+ * statement about this screen, not about the host. Every read is guarded — a
+ * private window, cleared site data, or a half-written value must not be able
+ * to stop the list from rendering, which is the page's actual job.
+ */
+const COLLAPSE_KEY = "tmux-next.collapsed";
+
+function collapsedSet() {
+  try {
+    const raw = localStorage.getItem(COLLAPSE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function storeCollapsed(set) {
+  try {
+    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set]));
+  } catch {
+    // A browser refusing storage still gets working collapse, just not
+    // remembered — the state lives in the DOM until the next render.
+  }
+}
+
+/**
+ * A group heading, with the directory's name as the label.
+ *
+ * The label is the last path segment because that is what anyone calls the
+ * project; the whole path rides on the title, which is what disambiguates two
+ * checkouts that happen to end in the same word.
+ *
+ * The whole heading is the hit target, not a small chevron: this is used with a
+ * thumb.
+ */
+function groupHeader(label, path, key, count, collapsed) {
+  const head = el("div", "group-head");
+  head.setAttribute("role", "button");
+  head.setAttribute("tabindex", "0");
+  head.setAttribute("aria-expanded", collapsed ? "false" : "true");
+
+  const chevron = el("span", "group-chevron", collapsed ? "▸" : "▾");
+  chevron.setAttribute("aria-hidden", "true");
+  const name = el("span", "group-name", label);
+  if (path) name.title = path;
+  head.append(chevron, name);
+
+  // The count is what a folded group has left to say about itself.
+  if (collapsed) head.append(el("span", "group-count", String(count)));
+
+  const toggle = () => {
+    const set = collapsedSet();
+    if (set.has(key)) set.delete(key);
+    else set.add(key);
+    storeCollapsed(set);
+    render();
+  };
+  head.addEventListener("click", toggle);
+  head.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle();
+    }
+  });
+  return head;
+}
+
+function groupOf(label, path, key, sessions, collapsed) {
+  const group = el("section", "group" + (collapsed ? " collapsed" : ""));
+  group.append(groupHeader(label, path, key, sessions.length, collapsed));
+  if (!collapsed) for (const session of sessions) group.append(card(session));
+  return group;
+}
+
+/**
+ * Sessions arranged into the sections the page draws.
+ *
+ * Pinned first and across projects: pinning means "show me this wherever it
+ * lives", so lifting those out is the whole point of having pinned them. What
+ * remains is grouped by directory, because the question the list answers is
+ * "which of my projects needs me" and a flat run of names does not answer it.
+ *
+ * Groups are ordered by their most recent member, so the project being worked
+ * on rises to the top on its own.
+ */
+function sections(sessions) {
+  const out = [];
+  const collapsed = collapsedSet();
+
+  const pinned = sessions.filter((s) => s.pinned);
+  if (pinned.length) {
+    // A sentinel key: the pinned section has no path of its own, and a real
+    // path could otherwise collide with it.
+    out.push(
+      groupOf(tr("list.pinnedGroup"), null, "\u0000pinned", pinned, collapsed.has("\u0000pinned")),
+    );
+  }
+
+  const byPath = new Map();
+  for (const session of sessions) {
+    if (session.pinned) continue;
+    const path = session.path || "";
+    if (!byPath.has(path)) byPath.set(path, []);
+    byPath.get(path).push(session);
+  }
+
+  const groups = [...byPath].sort(
+    ([, a], [, b]) => Math.max(...b.map(orderKey)) - Math.max(...a.map(orderKey)),
+  );
+  for (const [path, members] of groups) {
+    // A session whose directory tmux could not report still needs a home; it
+    // gets its own heading rather than silently joining someone else's.
+    const label = path ? path.replace(/\/+$/, "").split("/").pop() || path : tr("list.noProject");
+    out.push(groupOf(label, path, path, members, collapsed.has(path)));
+  }
+  return out;
+}
+
 /** Reflects "how many sessions are waiting on you" onto the browser tab. */
 function setTabWaiting(count) {
   document.title = count ? `(${count}) ${tr("list.title")}` : tr("list.title");
@@ -342,7 +469,7 @@ async function render() {
     const children = [];
     if (restorable.length) children.push(restoreBanner(restorable.length));
     children.push(
-      ...(sessions.length ? sessions.map(card) : [el("p", "empty", tr("list.noSessions"))]),
+      ...(sessions.length ? sections(sessions) : [el("p", "empty", tr("list.noSessions"))]),
     );
     listEl.replaceChildren(...children);
   } catch {

@@ -13,7 +13,7 @@ process.env.TMUX_NEXT_SESSIONS_DIR = join(
   tmpdir(),
   `sessions-sl-test-${Math.random().toString(36).slice(2, 10)}`,
 );
-import { extractPreview, listSessions, rankDirectories, sessionNames } from "./session-list";
+import { extractPreview, listSessions, rankDirectories, sessionNames, unescapeFormat } from "./session-list";
 
 // Taken verbatim from a real Claude Code session on this machine.
 const CLAUDE_SCREEN = [
@@ -365,4 +365,25 @@ test("a listed session carries the text on its screen", async () => {
   } finally {
     await tmux(["kill-session", "-t", `=${name}`]);
   }
+});
+
+/**
+ * The session's directory travels through the same `|`-separated format row as
+ * everything else, and a directory may legitimately contain a `|` — unlike the
+ * command field beside it. `#{q:…}` escapes it at the tmux end so the row stays
+ * unambiguous; this is the other half of that.
+ *
+ * Without it the field would have to be greedy, and the row already spends its
+ * one greedy field on the session name, which may also contain a `|`.
+ */
+test("an escaped format field is restored", () => {
+  expect(unescapeFormat("/tmp/tn\\ probe\\|pipe")).toBe("/tmp/tn probe|pipe");
+});
+
+test("a field with nothing escaped is unchanged", () => {
+  expect(unescapeFormat("/Users/x/projects/app")).toBe("/Users/x/projects/app");
+});
+
+test("an escaped backslash survives as one backslash", () => {
+  expect(unescapeFormat("/tmp/a\\\\b")).toBe("/tmp/a\\b");
 });

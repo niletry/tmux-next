@@ -60,6 +60,52 @@ header .count {
   color: var(--dim);
 }
 
+/* Project grouping. The heading is deliberately quiet — it is a divider that
+   answers "which project", not a thing to look at. Colour comes from the theme
+   tokens only; a literal here would be invisible to the contrast tests. */
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 6px;
+  cursor: pointer;
+  /* A thumb lands anywhere on the row, so the whole row is the target; without
+     this the tap selects the label text instead of folding the group. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.group-chevron {
+  color: var(--dim);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+/* What a folded group has left to say: how much is behind it. */
+.group-count {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.group-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+  /* A long path segment must not push the row wide on a phone. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The first heading sits directly under the nav and needs no extra air. */
+.group:first-child .group-head {
+  padding-top: 4px;
+}
+
 .card {
   position: relative;
   background: var(--card);

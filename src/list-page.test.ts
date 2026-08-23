@@ -27,6 +27,7 @@ function session(over: Record<string, unknown> = {}) {
     claudeId: null,
     task: null,
     lastAction: null,
+    path: "/Users/x/projects/app",
     agent: "claude",
     agentLabel: "Claude Code",
     version: null,
@@ -66,7 +67,7 @@ afterEach(() => {
   saved.clear();
 });
 
-async function mount(sessions: unknown[]) {
+async function mount(sessions: unknown[], store: Record<string, string> = {}) {
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
   const doc = win.document;
   doc.body.innerHTML = '<header id="header"></header><main id="list"></main>';
@@ -77,7 +78,12 @@ async function mount(sessions: unknown[]) {
     location: win.location,
     history: win.history,
     URLSearchParams: win.URLSearchParams,
-    localStorage: { getItem: () => null, setItem: () => {} },
+    localStorage: {
+      getItem: (k: string) => (k in store ? store[k]! : null),
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+    },
     fetch: stubFetch(sessions),
     // The page polls every five seconds; a live timer would outlast the test
     // and keep the process from exiting.
@@ -150,4 +156,128 @@ test("an unknown tool keeps its own name in the cell", async () => {
     session({ lastAction: { kind: "other", target: "AskUserQuestion", epoch: NOW - 60 } }),
   ]);
   expect(timeText(root)).toContain("AskUserQuestion");
+});
+
+/**
+ * Grouping by project.
+ *
+ * The list is scanned to answer "which of my projects needs me", and a flat
+ * run of session names does not answer it — two sessions on the same repo look
+ * no more related than two on different machines. The directory is the only
+ * thing that reliably says which project a session belongs to, and it now
+ * arrives from tmux for every session rather than only the ones with a Claude
+ * binding record.
+ */
+
+const headers = (root: Element) =>
+  [...root.querySelectorAll(".group-name")].map((e) => e.textContent);
+
+test("sessions in the same directory share one group", async () => {
+  const root = await mount([
+    session({ name: "a", path: "/srv/spec" }),
+    session({ name: "b", path: "/srv/spec" }),
+  ]);
+  expect(headers(root as unknown as Element)).toEqual(["spec"]);
+  expect(root.querySelectorAll(".card").length).toBe(2);
+});
+
+test("a group header names the directory and carries the full path", async () => {
+  const root = await mount([session({ path: "/Volumes/work/orbit/orbit-spec" })]);
+  const header = root.querySelector(".group-name")!;
+  expect(header.textContent).toBe("orbit-spec");
+  expect(header.getAttribute("title")).toBe("/Volumes/work/orbit/orbit-spec");
+});
+
+test("every project gets a header, including one holding a single session", async () => {
+  const root = await mount([
+    session({ name: "a", path: "/srv/one" }),
+    session({ name: "b", path: "/srv/two" }),
+  ]);
+  expect(headers(root as unknown as Element).length).toBe(2);
+});
+
+test("pinned sessions are lifted out into their own section at the top", async () => {
+  const root = await mount([
+    session({ name: "pinned-one", path: "/srv/spec", pinned: true }),
+    session({ name: "plain", path: "/srv/spec" }),
+  ]);
+  // Pinned leads, and the project group still exists for what stays behind.
+  expect(headers(root as unknown as Element)).toEqual(["Pinned", "spec"]);
+
+  const [pinnedSection, projectSection] = [...root.querySelectorAll(".group")];
+  expect(pinnedSection!.textContent).toContain("pinned-one");
+  expect(pinnedSection!.textContent).not.toContain("plain");
+  // Lifted, not copied: the pinned session appears once on the page.
+  expect(projectSection!.textContent).not.toContain("pinned-one");
+  expect(root.querySelectorAll(".card").length).toBe(2);
+});
+
+test("groups are ordered by their most recent activity", async () => {
+  const root = await mount([
+    session({ name: "old", path: "/srv/stale", lastActivityEpoch: NOW - 9000 }),
+    session({ name: "new", path: "/srv/live", lastActivityEpoch: NOW - 10 }),
+  ]);
+  expect(headers(root as unknown as Element)).toEqual(["live", "stale"]);
+});
+
+/**
+ * Collapsing.
+ *
+ * With a project per group the page grows a heading for every checkout someone
+ * has ever opened, and on a phone the one project being worked on ends up below
+ * the fold. Collapsing is per device rather than per machine, for the same
+ * reason font size is: it is a statement about this screen, not about the host.
+ */
+
+const COLLAPSE_KEY = "tmux-next.collapsed";
+
+test("clicking a group heading collapses it", async () => {
+  const root = await mount([session({ name: "a", path: "/srv/spec" })]);
+  expect(root.querySelectorAll(".card").length).toBe(1);
+
+  (root.querySelector(".group-head") as unknown as HTMLElement).click();
+  // The toggle re-renders, which replaces the subtree — the old nodes are
+  // detached, so the assertion has to look at the page again.
+  await new Promise((r) => setTimeout(r, 100));
+  expect(root.querySelectorAll(".card").length).toBe(0);
+  expect(root.querySelector(".group-name")?.textContent).toBe("spec");
+});
+
+test("a collapsed group is remembered for the next render", async () => {
+  const store: Record<string, string> = {};
+  const root = await mount([session({ name: "a", path: "/srv/spec" })], store);
+  (root.querySelector(".group-head") as unknown as HTMLElement).click();
+  await new Promise((r) => setTimeout(r, 100));
+  expect(JSON.parse(store[COLLAPSE_KEY]!)).toContain("/srv/spec");
+});
+
+test("a group collapsed on a previous visit starts collapsed", async () => {
+  const root = await mount([session({ name: "a", path: "/srv/spec" })], {
+    [COLLAPSE_KEY]: JSON.stringify(["/srv/spec"]),
+  });
+  expect(root.querySelectorAll(".card").length).toBe(0);
+  // The heading is still there — collapsed, not gone.
+  expect(root.querySelector(".group-name")?.textContent).toBe("spec");
+});
+
+test("a collapsed heading says how many sessions it is hiding", async () => {
+  const root = await mount(
+    [session({ name: "a", path: "/srv/spec" }), session({ name: "b", path: "/srv/spec" })],
+    { [COLLAPSE_KEY]: JSON.stringify(["/srv/spec"]) },
+  );
+  expect(root.querySelector(".group-count")?.textContent).toContain("2");
+});
+
+test("the heading reports its state to a screen reader", async () => {
+  const root = await mount([session({ path: "/srv/spec" })], {
+    [COLLAPSE_KEY]: JSON.stringify(["/srv/spec"]),
+  });
+  expect(root.querySelector(".group-head")?.getAttribute("aria-expanded")).toBe("false");
+});
+
+test("unreadable stored state does not stop the list rendering", async () => {
+  const root = await mount([session({ name: "a", path: "/srv/spec" })], {
+    [COLLAPSE_KEY]: "{{{ not json",
+  });
+  expect(root.querySelectorAll(".card").length).toBe(1);
 });

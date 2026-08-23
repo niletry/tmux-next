@@ -31,6 +31,10 @@ export type SessionSummary = {
   // Null when the session is not Claude, has no binding record, or predates
   // Claude Code writing the record at all.
   task: string | null;
+  // The directory this session was opened in — the list groups by it. Always
+  // present: it comes from tmux itself, so it covers sessions with no binding
+  // record and sessions that are not Claude at all.
+  path: string;
   // The most recent tool call in this session's transcript: what it did and
   // when. This is the honest answer to "last updated" — the screen-diff stamp
   // below repaints constantly while a turn runs, so it reads "just now" for
@@ -106,7 +110,20 @@ const FIELD_SEP = "|";
 // last so it keeps any `|` of its own; the command sits before it and is a
 // process basename, which cannot contain the separator in practice.
 const LIST_FORMAT =
-  "#{window_width}|#{window_height}|#{window_activity}|#{session_attached}|#{pane_current_command}|#{session_name}";
+  "#{window_width}|#{window_height}|#{window_activity}|#{session_attached}|#{pane_current_command}|#{q:session_path}|#{session_name}";
+
+/**
+ * Undoes tmux's `#{q:…}` escaping.
+ *
+ * The directory is the one field here that may legitimately contain the row
+ * separator — `pane_current_command` beside it is a process basename and cannot
+ * in practice. The row already spends its single greedy field on the session
+ * name, which may also contain a `|`, so a second unbounded field would make
+ * the split ambiguous. Escaping at the tmux end keeps the position fixed.
+ */
+export function unescapeFormat(value: string): string {
+  return value.replace(/\\(.)/g, "$1");
+}
 
 // Per-session record of the last visible-screen change, keyed by session name.
 // Lives for the life of the server process; seeded from window_activity on
@@ -252,15 +269,20 @@ export async function listSessions(): Promise<SessionSummary[]> {
   const summaries = await Promise.all(
     rows.map(async (row): Promise<SessionSummary | null> => {
       const parts = row.split(FIELD_SEP);
-      if (parts.length < 6) return null;
-      const [width, height, activity, attached, command] = parts as [
+      if (parts.length < 7) return null;
+      const [width, height, activity, attached, command, escapedPath] = parts as [
+        string,
         string,
         string,
         string,
         string,
         string,
       ];
-      const name = parts.slice(5).join(FIELD_SEP);
+      const name = parts.slice(6).join(FIELD_SEP);
+      // Where this session was opened, which is what groups the list by
+      // project. `session_path` rather than `pane_current_path`: a `cd` inside
+      // the pane should not move a session to another project.
+      const path = unescapeFormat(escapedPath);
 
       // Web sessions are this app's own attach points, not something to show.
       if (name.startsWith(WEB_SESSION_PREFIX)) return null;
@@ -336,6 +358,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
         pinned: pinnedSet.has(name),
         claudeId: claudeIdByName.get(name) ?? null,
         task,
+        path,
         lastAction,
         // Expose the record's agent so the list can mark it; null keeps an
         // unmarked card for sessions with no record at all.
