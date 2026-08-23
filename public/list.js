@@ -32,6 +32,65 @@ function relativeTime(epochSeconds) {
   return tr("list.daysAgo", { n: Math.floor(secs / 86400) });
 }
 
+/** A bare span of time — "12 分钟" — for phrasings that supply their own verb. */
+function duration(epochSeconds) {
+  const secs = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds));
+  if (secs < 60) return tr("list.durSeconds", { n: Math.max(1, secs) });
+  if (secs < 3600) return tr("list.durMinutes", { n: Math.floor(secs / 60) });
+  if (secs < 86400) return tr("list.durHours", { n: Math.floor(secs / 3600) });
+  return tr("list.durDays", { n: Math.floor(secs / 86400) });
+}
+
+/**
+ * What the session last did, as a short phrase.
+ *
+ * The verb comes from the tool's kind and the noun from its input, so the row
+ * reads "changed list.js" rather than naming a tool nobody outside the agent
+ * would recognise. A tool this build has no word for arrives as "other" and
+ * keeps its own name as the noun.
+ *
+ * Written out rather than built as `list.act.${kind}`: the dead-key check in
+ * i18n.test.ts scans for literal keys, and a computed one reads as unused. A
+ * check that cries wolf gets ignored, so the keys stay greppable.
+ */
+const ACTION_PHRASE = {
+  edit: (target) => tr("list.act.edit", { target }),
+  read: (target) => tr("list.act.read", { target }),
+  run: (target) => tr("list.act.run", { target }),
+  search: (target) => tr("list.act.search", { target }),
+  web: (target) => tr("list.act.web", { target }),
+  task: (target) => tr("list.act.task", { target }),
+  other: (target) => tr("list.act.other", { target }),
+};
+
+function actionPhrase(action) {
+  // No target means nothing worth naming — the row falls back to the bare
+  // timestamp rather than printing a verb with no object.
+  if (!action || !action.target) return null;
+  const phrase = ACTION_PHRASE[action.kind];
+  return phrase ? phrase(action.target) : null;
+}
+
+/**
+ * The time cell, which says what its number is about.
+ *
+ * Three readings, because one number cannot serve all three states. Waiting on
+ * you is the only one that calls for action, so it leads with that and gives
+ * the span it has been waiting. Otherwise the stamp is anchored to the last
+ * real action — a repaint-driven one reads "just now" forever while a turn
+ * runs, which is why the old cell was empty of information for exactly the
+ * sessions that were busiest.
+ */
+function timeCell(session) {
+  const action = session.lastAction ?? null;
+  const epoch = action ? action.epoch : session.lastActivityEpoch;
+
+  if (session.idle) return tr("list.waitingFor", { t: duration(epoch) });
+
+  const phrase = actionPhrase(action);
+  return phrase ? `${relativeTime(epoch)} · ${phrase}` : relativeTime(epoch);
+}
+
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -194,7 +253,7 @@ function card(session) {
     sid.title = session.claudeId;
     row.append(sid);
   }
-  row.append(el("span", "time", relativeTime(session.lastActivityEpoch)));
+  row.append(el("span", "time", timeCell(session)));
   link.append(row);
 
   // What it was last asked to do, above the screen preview: mid-task the

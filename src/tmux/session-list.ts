@@ -10,6 +10,7 @@ import {
 } from "../claude-sessions";
 import { nextStamp, type ActivityEntry } from "./activity-stamp";
 import { agentOf, DEFAULT_AGENT } from "../agents";
+import type { LastAction } from "../agents/last-action";
 import { agentVersion, versionFromCommand } from "../agents/version";
 
 export type SessionSummary = {
@@ -30,6 +31,11 @@ export type SessionSummary = {
   // Null when the session is not Claude, has no binding record, or predates
   // Claude Code writing the record at all.
   task: string | null;
+  // The most recent tool call in this session's transcript: what it did and
+  // when. This is the honest answer to "last updated" — the screen-diff stamp
+  // below repaints constantly while a turn runs, so it reads "just now" for
+  // every working session and only means anything for an idle one.
+  lastAction: LastAction | null;
   // The agent the binding record names, and its display label. A record that
   // predates multi-agent support is Claude Code's — its hook wrote it without
   // an agent field — so it resolves to the default. Only sessions with no
@@ -306,6 +312,13 @@ export async function listSessions(): Promise<SessionSummary[]> {
           ? await agent.readTask(record.cwd, record.id)
           : null;
 
+      // Read from the same transcript tail the task comes from, so this costs
+      // one more file read per session and no extra tmux round trip.
+      const lastAction =
+        record?.cwd !== undefined && agent.readLastAction
+          ? await agent.readLastAction(record.cwd, record.id)
+          : null;
+
       // Precise build: Claude's pane command is its versioned binary, and
       // opencode / pi answer --version (cached per process). Anything else
       // stays null — the client shows the plain label then.
@@ -323,6 +336,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
         pinned: pinnedSet.has(name),
         claudeId: claudeIdByName.get(name) ?? null,
         task,
+        lastAction,
         // Expose the record's agent so the list can mark it; null keeps an
         // unmarked card for sessions with no record at all.
         agent: agentId,
@@ -347,7 +361,15 @@ export async function listSessions(): Promise<SessionSummary[]> {
   return summaries
     .filter((s): s is SessionSummary => s !== null)
     .sort(
-      (a, b) => Number(b.pinned) - Number(a.pinned) || b.lastActivityEpoch - a.lastActivityEpoch,
+      // Ordered by when each session last *did* something, not when its screen
+      // last changed. A repaint-driven key reshuffled the list continuously
+      // while any session was working; a tool call is one event, so a
+      // thirty-second command no longer drags its card up thirty times.
+      // Sessions with no transcript keep the screen-diff stamp as their key.
+      (a, b) =>
+        Number(b.pinned) - Number(a.pinned) ||
+        (b.lastAction?.epoch ?? b.lastActivityEpoch) -
+          (a.lastAction?.epoch ?? a.lastActivityEpoch),
     );
 }
 

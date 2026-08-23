@@ -23,6 +23,7 @@
 import { readPiTask } from "./pi";
 import { readOpencodeTask } from "./opencode";
 import { readLastPrompt, transcriptPath } from "../claude-activity";
+import { readLastAction, type LastAction } from "./last-action";
 
 /**
  * Per-agent session id shapes.
@@ -47,6 +48,15 @@ export type Agent = {
 
   /** The latest thing this conversation was asked to do, if reachable. */
   readTask?: (cwd: string, id: string) => Promise<string | null>;
+
+  /**
+   * The most recent thing this conversation actually did, if reachable.
+   *
+   * Only agents whose transcript records tool calls can answer this; the others
+   * leave it undefined and the card falls back to the screen-diff timestamp,
+   * which is what every session had before.
+   */
+  readLastAction?: (cwd: string, id: string) => Promise<LastAction | null>;
 
   /**
    * Whether this agent has a "run without asking" mode.
@@ -85,6 +95,7 @@ const claude: Agent = {
   label: "Claude Code",
   supportsSkipPermissions: true,
   readTask: (cwd, id) => readLastPrompt(transcriptPath(cwd, id)),
+  readLastAction,
   launch: ({ skipPermissions }) =>
     skipPermissions
       ? 'exec "$SHELL" -lc "claude --dangerously-skip-permissions"'
