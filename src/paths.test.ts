@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdtempSync, mkdirSync, symlinkSync, rmSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, symlinkSync, rmSync, realpathSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { listDirectories, resolveDirectory } from "./paths";
@@ -45,7 +45,7 @@ test("a symlink resolves to where it lands, not where it sits", async () => {
 test("a path that does not exist is refused", async () => {
   const base = scratch();
   try {
-    expect(await resolveDirectory(join(base, "nope"))).toEqual({ ok: false });
+    expect(await resolveDirectory(join(base, "nope"))).toEqual({ ok: false, reason: "missing" });
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
@@ -56,7 +56,7 @@ test("a file is refused — only directories can be browsed", async () => {
   try {
     const file = join(base, "note.txt");
     await Bun.write(file, "hi");
-    expect(await resolveDirectory(file)).toEqual({ ok: false });
+    expect(await resolveDirectory(file)).toEqual({ ok: false, reason: "missing" });
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
@@ -125,7 +125,7 @@ test("the filesystem root reports no parent, so climbing stops there", async () 
 
 test("a listing that fails carries empty entries rather than throwing", async () => {
   const listed = await listDirectories("/definitely/not/a/path");
-  expect(listed).toEqual({ ok: false, path: null, parent: null, entries: [] });
+  expect(listed).toEqual({ ok: false, path: null, parent: null, entries: [], reason: "missing" });
 });
 
 // --- creating a directory ---------------------------------------------------
@@ -212,4 +212,29 @@ test("createDirectory refuses a parent that does not exist", async () => {
   const result = await createDirectory(join(tmpdir(), "no-such-parent-" + Math.random()), "x");
   expect(result.ok).toBe(false);
   if (!result.ok) expect(result.reason).toBe("badparent");
+});
+
+/**
+ * A directory that exists but cannot be read is not the same as one that is not
+ * there, and the browser needs to say so. Collapsing both into one refusal is
+ * what made a macOS privacy block on an external volume look identical to an
+ * empty folder — the symptom that cost an afternoon to track down.
+ */
+test("an unreadable directory is denied, not missing", async () => {
+  const dir = join(scratch(), "locked");
+  mkdirSync(dir);
+  chmodSync(dir, 0o000);
+  try {
+    const listing = await listDirectories(dir);
+    if (listing.ok) throw new Error("expected the locked directory to be refused");
+    expect(listing.reason).toBe("denied");
+  } finally {
+    chmodSync(dir, 0o700);
+  }
+});
+
+test("a path that is not there is missing, not denied", async () => {
+  const listing = await listDirectories(join(scratch(), "definitely-absent"));
+  if (listing.ok) throw new Error("expected an absent directory to be refused");
+  expect(listing.reason).toBe("missing");
 });

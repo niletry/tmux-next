@@ -55,6 +55,7 @@ const CREATE_STATUS: Record<string, number> = {
   reserved: 400,
   baddir: 400,
   failed: 500,
+  startfailed: 500,
 };
 
 const CREATE_AGENT_STATUS = 400;
@@ -507,7 +508,12 @@ export function startServer(
       // directory, not that it was off limits.
       if (url.pathname === "/api/dirs" && req.method === "GET") {
         const listing = await listDirectories(url.searchParams.get("path") ?? homedir());
-        if (!listing.ok) return Response.json({ error: "notfound" }, { status: 404 });
+        if (!listing.ok) {
+          // A directory that exists but refuses to be read is a different
+          // answer from one that is not there, and the browser says so.
+          const status = listing.reason === "denied" ? 403 : 404;
+          return Response.json({ error: listing.reason }, { status });
+        }
         return Response.json(listing);
       }
 

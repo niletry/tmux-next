@@ -1,5 +1,7 @@
 import { test, expect } from "bun:test";
-import { pickName, validateRequestedName } from "./session-create";
+import { createSession, pickName, validateRequestedName } from "./session-create";
+import { tmux } from "./run";
+import { tmpdir } from "node:os";
 
 test("an unused directory name is used as is", () => {
   expect(pickName("/mnt/data/orbit/orbit-spec", [])).toBe("orbit-spec");
@@ -54,4 +56,38 @@ test("a directory name with dots yields a targetable session name", () => {
 
 test("a directory at the filesystem root still yields a usable name", () => {
   expect(pickName("/", [])).toBe("session");
+});
+
+/**
+ * tmux exits 0 once the session is created, which says nothing about whether
+ * the thing inside it survived. A command that dies on startup — a missing
+ * binary, a working directory the tmux server may not read — left the old code
+ * returning `{ ok: true, created: true }` for a session tmux had already
+ * destroyed, and the browser navigated to a terminal that was not there.
+ *
+ * This is the real case that shipped: bun (started by launchd) could stat a
+ * directory on an external volume, so the pre-flight check passed, but the tmux
+ * server had no macOS privacy grant for that volume and Claude exited EPERM the
+ * instant it started. The check and the execution ran in two different
+ * permission contexts.
+ */
+test("a command that dies on startup is reported, not called created", async () => {
+  const name = `create-death-${process.pid}`;
+  const result = await createSession(tmpdir(), name, [], "false");
+
+  expect(result).toEqual({ ok: false, reason: "startfailed" });
+
+  // And nothing is left behind for the next list to show.
+  const survivors = await tmux(["has-session", "-t", `=${name}`]);
+  expect(survivors.ok).toBe(false);
+});
+
+test("a command that keeps running is created normally", async () => {
+  const name = `create-alive-${process.pid}`;
+  try {
+    const result = await createSession(tmpdir(), name, [], "sleep 30");
+    expect(result).toEqual({ ok: true, name, created: true });
+  } finally {
+    await tmux(["kill-session", "-t", `=${name}`]);
+  }
 });

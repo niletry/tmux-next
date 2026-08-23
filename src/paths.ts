@@ -1,7 +1,23 @@
 import { mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-export type ResolveResult = { ok: true; path: string } | { ok: false };
+export type Refusal = "denied" | "missing";
+
+export type ResolveResult = { ok: true; path: string } | { ok: false; reason: Refusal };
+
+/**
+ * Why a filesystem call failed, in the only two flavours the browser can act on.
+ *
+ * "It is not there" and "you may not look" are different answers and deserve
+ * different words on screen. Collapsing them is what let a macOS privacy block
+ * on an external volume present as an ordinary empty folder, which is the kind
+ * of lie that costs an afternoon: every layer reported success right up to the
+ * point where the session died.
+ */
+function refusalFor(error: unknown): Refusal {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === "EACCES" || code === "EPERM" ? "denied" : "missing";
+}
 
 /**
  * Canonicalises a path and confirms it is a directory.
@@ -21,14 +37,14 @@ export async function resolveDirectory(input: string): Promise<ResolveResult> {
   let resolved: string;
   try {
     resolved = await realpath(input);
-  } catch {
-    return { ok: false };
+  } catch (error) {
+    return { ok: false, reason: refusalFor(error) };
   }
 
   try {
-    if (!(await stat(resolved)).isDirectory()) return { ok: false };
-  } catch {
-    return { ok: false };
+    if (!(await stat(resolved)).isDirectory()) return { ok: false, reason: "missing" };
+  } catch (error) {
+    return { ok: false, reason: refusalFor(error) };
   }
 
   return { ok: true, path: resolved };
@@ -37,9 +53,15 @@ export async function resolveDirectory(input: string): Promise<ResolveResult> {
 export type DirEntry = { name: string; path: string };
 export type Listing =
   | { ok: true; path: string; parent: string | null; entries: DirEntry[] }
-  | { ok: false; path: null; parent: null; entries: [] };
+  | { ok: false; path: null; parent: null; entries: []; reason: Refusal };
 
-const REFUSED: Listing = { ok: false, path: null, parent: null, entries: [] };
+const refused = (reason: Refusal): Listing => ({
+  ok: false,
+  path: null,
+  parent: null,
+  entries: [],
+  reason,
+});
 
 /**
  * Lists the sub-directories of `path` for the browser UI.
@@ -52,14 +74,16 @@ const REFUSED: Listing = { ok: false, path: null, parent: null, entries: [] };
  */
 export async function listDirectories(path: string): Promise<Listing> {
   const resolved = await resolveDirectory(path);
-  if (!resolved.ok) return REFUSED;
+  if (!resolved.ok) return refused(resolved.reason);
 
   let names: string[];
   try {
     const dirents = await readdir(resolved.path, { withFileTypes: true });
     names = dirents.filter((d) => d.isDirectory() && !d.name.startsWith(".")).map((d) => d.name);
-  } catch {
-    return REFUSED;
+  } catch (error) {
+    // Reachable on its own: a directory can be traversable enough to stat and
+    // still refuse to be read.
+    return refused(refusalFor(error));
   }
 
   const parent = dirname(resolved.path);

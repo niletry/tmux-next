@@ -33,6 +33,7 @@ const ERRORS = {
   reserved: () => tr("create.reserved"),
   invalid: () => tr("create.invalid"),
   failed: () => tr("create.failed"),
+  startfailed: () => tr("create.startfailed"),
 };
 
 /**
@@ -280,7 +281,10 @@ export function renderNewSession(root) {
       return;
     }
     if (!res.ok) {
-      error.textContent = tr("new.dirForbidden");
+      // "not there" and "not allowed" are different answers; a privacy block on
+      // an external volume used to read as an ordinary empty folder.
+      const body = await res.json().catch(() => ({}));
+      error.textContent = tr(body.error === "denied" ? "new.dirDenied" : "new.dirForbidden");
       return;
     }
     const body = await res.json();

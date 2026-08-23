@@ -104,7 +104,37 @@ export function pickName(dir: string, existing: string[]): string {
 
 export type CreateResult =
   | { ok: true; name: string; created: boolean }
-  | { ok: false; reason: "empty" | "reserved" | "invalid" | "baddir" | "failed" };
+  | { ok: false; reason: "empty" | "reserved" | "invalid" | "baddir" | "failed" | "startfailed" };
+
+/**
+ * How long a new session is watched before it is called created.
+ *
+ * `new-session` exits 0 once tmux has the session, which says nothing about the
+ * process inside it. A command that dies on startup takes its session down with
+ * it a moment later, so the only honest answer needs a short settle window.
+ * Death is detected as soon as it happens; this bound is what a *successful*
+ * create pays, and it is small next to the page navigation that follows.
+ */
+const SETTLE_MS = 300;
+const POLL_MS = 25;
+
+/**
+ * Whether the session tmux just made is still there once its command has had a
+ * moment to fail.
+ *
+ * The case this exists for: bun (started by launchd) could stat a directory on
+ * an external volume, so the pre-flight check passed, but the tmux server held
+ * no macOS privacy grant for that volume and the agent exited EPERM the instant
+ * it started. The check and the execution ran in two different permission
+ * contexts, and only the execution's verdict counts.
+ */
+async function survives(name: string): Promise<boolean> {
+  for (let waited = 0; waited < SETTLE_MS; waited += POLL_MS) {
+    await Bun.sleep(POLL_MS);
+    if (!(await tmux(["has-session", "-t", `=${name}`])).ok) return false;
+  }
+  return true;
+}
 
 /**
  * Ensures a session exists for `dir`, returning the one already there if the
@@ -151,5 +181,13 @@ export async function createSession(
     command,
   ]);
 
-  return created.ok ? { ok: true, name, created: true } : { ok: false, reason: "failed" };
+  if (!created.ok) return { ok: false, reason: "failed" };
+
+  if (!(await survives(name))) {
+    // tmux has already collected the session; nothing to clean up, and the
+    // caller must not be told to navigate to it.
+    return { ok: false, reason: "startfailed" };
+  }
+
+  return { ok: true, name, created: true };
 }
