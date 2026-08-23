@@ -1,3 +1,12 @@
 node_modules/
 dist/
 .DS_Store
+
+# Android signing material. The keystore and its passwords must never be
+# committed: this repository is public, and a secret in history outlives the
+# commit that removed it. Passwords come from TMUX_NEXT_STORE_PASS and
+# TMUX_NEXT_KEY_PASS in the environment; the store itself stays in app/keystore/.
+*.jks
+*.keystore
+keystore.properties
+app/keystore/
