@@ -5,6 +5,7 @@ import { createGesture, createPager } from "./scroll-gesture.js";
 import { MIN_COLUMNS, computeGeometry } from "./terminal-fit.js";
 import { createCopyGate, decodeOsc52 } from "./copy-on-select.js";
 import { createBackdropDismiss } from "./tap-dismiss.js";
+import { shouldRestoreFocus } from "./focus-restore.js";
 import { createWebglRenderer } from "./webgl-renderer.js";
 import { xtermTheme } from "./themes.js";
 import { initTheme, cachedTheme } from "./theme-apply.js";
@@ -683,6 +684,13 @@ let pager = null;
 // --- copy on mobile --------------------------------------------------------
 
 /**
+ * Whether an overlay currently owns the screen. The focus-restore logic reads
+ * it: while it is up, a blur is the user reaching into the overlay, not
+ * something to undo. See focus-restore.js.
+ */
+let modalOpen = false;
+
+/**
  * The current visible screen as plain text, read from xterm's buffer.
  *
  * A canvas/WebGL renderer draws the text and leaves nothing to select, so
@@ -816,9 +824,25 @@ function showCopyOverlay() {
   const dismiss = createBackdropDismiss(backdrop);
   backdrop.addEventListener("pointerdown", (e) => dismiss.down(e.target));
   backdrop.addEventListener("click", (e) => {
-    if (dismiss.click(e.target)) backdrop.remove();
+    if (dismiss.click(e.target)) closeCopyOverlay(backdrop);
   });
   document.body.append(backdrop);
+  // From here until it closes, the terminal stops taking its focus back: the
+  // long press that selects text in the overlay blurs xterm's textarea, and
+  // pulling focus back would collapse the selection as it is made.
+  modalOpen = true;
+}
+
+/**
+ * Closes the overlay and hands the keyboard back to the terminal — but only if
+ * it is still on screen. The selection that just happened dropped it on most
+ * phones, and popping it open again on the way out is not what the user asked
+ * for; the next tap on the terminal brings it back.
+ */
+function closeCopyOverlay(backdrop) {
+  backdrop.remove();
+  modalOpen = false;
+  if (keyboardWanted && keyboardIsOpen()) focusTerminal();
 }
 
 document.getElementById("copy").addEventListener("click", showCopyOverlay);
@@ -953,11 +977,16 @@ termEl.addEventListener("touchend", (e) => {
 // Restoring focus inside the blur handler itself is ignored by Safari, so it
 // has to be deferred to the next task.
 function restoreFocusSoon() {
-  if (!keyboardWanted) return;
+  const state = () => ({
+    keyboardWanted,
+    renaming: !!renameInput,
+    modalOpen,
+  });
+  if (!shouldRestoreFocus(state())) return;
+  // Re-check on the way out: the blur may itself be the start of a selection
+  // that opens nothing, but the overlay can also have appeared in between.
   setTimeout(() => {
-    // While renaming, the title input owns the keyboard; snatching focus back
-    // to the terminal here is exactly what stopped the field being typable.
-    if (keyboardWanted && !renameInput) focusTerminal();
+    if (shouldRestoreFocus(state())) focusTerminal();
   }, 0);
 }
 
