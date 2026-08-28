@@ -22,7 +22,7 @@
 ```
 plugins/
   registry.js          同构清单数组（浏览器 + 服务端都 import）
-  handlers.ts          id → 服务端 handle 的表（只有服务端 import）
+  handlers.ts          id → 服务端 handle 的表 + enabledPlugins()（只有服务端 import）
   types.ts             Plugin / PluginHandler 类型
   state.ts             pluginStateDir(id)
   gallery/
@@ -95,7 +95,9 @@ for (const p of enabledPlugins()) {
 
 ### 开关
 
-`TMUX_NEXT_DISABLE_PLUGINS=gallery,notifications`（逗号分隔），默认全开。`enabledPlugins()` 在 `registry.js` 里读 env——浏览器没有 `process.env`，所以这个函数只在服务端调用，前端走下面的 `/api/plugins`。
+`TMUX_NEXT_DISABLE_PLUGINS=gallery,notifications`（逗号分隔），默认全开。
+
+`enabledPlugins()` 放在 `handlers.ts` 而不是 `registry.js`：读 env 是服务端的事，浏览器里没有 `process.env`，把它放进同构模块等于埋一个只在浏览器炸的调用。前端要知道启用了什么，走下面的 `/api/plugins`。
 
 ### `/api/plugins`
 
