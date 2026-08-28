@@ -163,11 +163,6 @@ const zh = {
   "term.fontBigger": "字号增大",
   "term.moreKeys": "更多按键",
 
-  "notif.title": "通知历史",
-  "notif.loadFailed": "加载失败",
-  "notif.count": "{n} 条",
-  "notif.empty": "还没有通知",
-
   "push.ended": "会话已结束",
   "push.waiting": "聊完了，在等你",
   "push.attention": "需要你确认",
@@ -342,11 +337,6 @@ const en = {
   "term.fontSmaller": "Smaller font",
   "term.fontBigger": "Larger font",
   "term.moreKeys": "More keys",
-
-  "notif.title": "Notification history",
-  "notif.loadFailed": "Could not load",
-  "notif.count": "{n}",
-  "notif.empty": "No notifications yet",
 
   "push.ended": "Session ended",
   "push.waiting": "Finished — waiting on you",

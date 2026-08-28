@@ -101,3 +101,13 @@ test("禁用一个插件，它的 API 就不在了", () => {
   // env 清掉就回来——说明它是每次调用现读的，不是加载时定死的。
   expect(enabledPlugins().map((p) => p.id)).toContain("gallery");
 });
+
+test("通知页也是个插件：API、页面、顶栏三处都在", async () => {
+  const ids = (await (await fetch(`${base()}/api/plugins`)).json()) as string[];
+  expect(ids).toContain("notifications");
+  expect((await fetch(`${base()}/api/notifications`)).status).toBe(200);
+  expect((await fetch(`${base()}/p/notifications/`)).status).toBe(200);
+  const old = await fetch(`${base()}/notifications.html`, { redirect: "manual" });
+  expect(old.status).toBe(301);
+  expect(old.headers.get("location")).toBe("p/notifications/");
+});

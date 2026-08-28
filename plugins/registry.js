@@ -10,6 +10,7 @@
  */
 
 import gallery from "./gallery/plugin.js";
+import notifications from "./notifications/plugin.js";
 
 /** @type {import("./types").Plugin[]} */
-export const PLUGINS = [gallery];
+export const PLUGINS = [gallery, notifications];

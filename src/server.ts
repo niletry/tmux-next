@@ -14,7 +14,6 @@ import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand, resumeCommand } from "./tmux/session-create";
 import { listHistory } from "./claude-history";
 import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
-import { readNotifications } from "./notifications";
 import { readTheme, writeTheme } from "./theme";
 import { themeOf } from "../public/themes.js";
 import { readAsrConfig, transcribe } from "./asr";
@@ -341,12 +340,6 @@ export function startServer(
         );
       }
 
-      // A log of notifications that were sent, so one swiped away on the phone
-      // can still be found here.
-      if (url.pathname === "/api/notifications" && req.method === "GET") {
-        return Response.json({ notifications: await readNotifications() });
-      }
-
       // What can be started, for the new-session picker. Capabilities travel
       // with each entry so the client does not have to know which agent has
       // which — notably a skip-permissions mode, which only Claude Code has.
@@ -643,6 +636,9 @@ export function startServer(
       // 相对的 location，子路径部署下同样成立。
       if (url.pathname === "/gallery.html") {
         return new Response(null, { status: 301, headers: { Location: "p/gallery/" } });
+      }
+      if (url.pathname === "/notifications.html") {
+        return new Response(null, { status: 301, headers: { Location: "p/notifications/" } });
       }
 
       const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);

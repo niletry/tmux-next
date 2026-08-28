@@ -41,14 +41,15 @@ async function mount(/** 让 /api/plugins 返回什么，null = 让它失败 */ 
 }
 
 test("顶栏画出会话页加每个启用的插件", async () => {
-  const doc = await mount(["gallery"]);
+  const doc = await mount(["gallery", "notifications"]);
   const items = [...doc.querySelectorAll(".hseg-item")];
-  expect(items.length).toBe(2);
+  expect(items.length).toBe(3);
   // 会话页在最左，插件按注册表顺序跟在后面。
   // href 走 url()：绝对 URL 才在反代子路径下不破，所以拿 url() 的产出算期望值，
   // 而不是写死一个相对路径字面量（那样的字面量永远不会等于 url() 的返回值）。
   expect(items[1]!.getAttribute("href")).toBe(url("p/gallery/"));
   expect(items[1]!.getAttribute("aria-label")).toBe("Artifacts");
+  expect(items[2]!.getAttribute("href")).toBe(url("p/notifications/"));
 });
 
 test("被禁用的插件不出现在顶栏", async () => {
