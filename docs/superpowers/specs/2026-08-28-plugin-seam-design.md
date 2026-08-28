@@ -89,6 +89,30 @@ for (const p of enabledPlugins()) {
 
 用 `/p/<id>/` 而不是 `/<id>/`：一级路径迟早跟 `public/` 里的文件或未来的 API 撞名。
 
+### 同构模块要能被浏览器取到
+
+`public/i18n.js` 和 `public/nav.js` 都要 import `plugins/registry.js`，而静态资源现在只从 `public/` 出。所以内核多开两条精确路由——不是把 `plugins/` 整个目录挂出去：
+
+- `/plugins/registry.js`
+- `/plugins/<id>/plugin.js`（`<id>` 必须匹配 `^[a-z][a-z0-9-]*$`）
+
+只有这两种形状，别的一律 404。这两条**不按启用过滤**：字典是全量合并的，禁用一个插件不该让它的清单取不到。
+
+### 页面相对路径：`public/root.js`
+
+现在全站的 fetch 和跳转都是页面相对的——`fetch("api/gallery")`、`location.href = "new.html"`、`fetch("api/language")`。所有页面都在根上时这没问题，插件页搬到 `/p/<id>/` 之后**全部会解析错**（`/p/gallery/api/gallery`）。这不只影响插件自己的脚本，`i18n-apply.js` 和 `nav.js` 是共享的，相对 URL 按**页面**解析而不是按模块。
+
+改绝对路径不行——那会弄断反代子路径部署。
+
+解法是一个共享助手 `public/root.js`：从 `import.meta.url` 推出应用根（它自己永远在根上），再拿它解析。
+
+```js
+export function resolve(base, path) { return new URL(path, base).href; }   // 纯函数，可测
+export function url(path) { return resolve(ROOT, path); }                  // ROOT = new URL("./", import.meta.url)
+```
+
+于是 `fetch(url("api/language"))` 在任何页面深度、任何挂载前缀下都对。
+
 ### 旧地址
 
 `/gallery.html` 和 `/notifications.html` 保留 301 到 `p/gallery/`、`p/notifications/`。手机上存了书签、装了 PWA 的人不该撞 404。
@@ -143,6 +167,8 @@ pluginStateDir(id) = process.env[`TMUX_NEXT_${ID}_DIR`] ?? join(homedir(), ".tmu
 |---|---|
 | `plugins/registry.test.ts` | id 唯一、匹配 `^[a-z][a-z0-9-]*$`、字段齐全、两语言键集一致、**import 图不含 `.ts`** |
 | `src/plugin-routing.test.ts` | 启用时 `/api/gallery` 和 `/p/gallery/` 通；禁用后双双 404；`/p/gallery/../../src/server.ts` 被拒；旧地址 301 |
+| `src/root-url.test.ts` | `resolve()` 在根页、`/p/<id>/` 页、子路径挂载三种基准下都指回应用根 |
+| `src/nav-tabs.test.ts` | 顶栏从注册表渲染出插件 tab；`/api/plugins` 失败时回退成全开 |
 | `src/i18n.test.ts` | 扫描目录加上 `plugins/*/public/*.{js,html}` 和 `plugins/*/plugin.js` |
 | `src/public-parses.test.ts` | 同上，插件的 public 也要过 `Bun.build` |
 | `plugins/gallery/gallery.test.ts` | 由 `src/gallery.test.ts` 搬来，内容不变 |
@@ -157,5 +183,7 @@ pluginStateDir(id) = process.env[`TMUX_NEXT_${ID}_DIR`] ?? join(homedir(), ".tmu
 4. 删 `server.ts` 里的旧路由块，加 301
 5. 扩两个扫描型测试
 6. 更新 `CLAUDE.md` 架构一节、`README.md` 与 `README.zh-CN.md`
+
+`tsconfig.json` 的 `include` 和 `package.json` 的 `files` 都要加上 `plugins`——漏了前者插件代码不过 typecheck，漏了后者发到 npm 的包里没有插件目录，装完就是个空壳。
 
 每一步跑 `bun run test`。第 2 步之后制品库应当行为完全不变——同样的 URL 之外的一切（磁盘目录、上传上限、渲染）都不动。
