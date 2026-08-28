@@ -905,3 +905,17 @@ test("the manifest colours follow the machine's chosen theme", async () => {
   expect((await post("one-dark")).status).toBe(204);
   expect((await colours()).background_color).toBe(THEMES["one-dark"]!.background);
 });
+
+test("插件清单能被浏览器取到，别的 plugins 路径取不到", async () => {
+  const base = `http://127.0.0.1:${server.port}`;
+  for (const path of ["/plugins/registry.js", "/plugins/gallery/plugin.js"]) {
+    const res = await fetch(base + path);
+    expect({ path, status: res.status }).toEqual({ path, status: 200 });
+    expect(res.headers.get("content-type")).toContain("javascript");
+  }
+  // 只开这两种形状，不是把目录挂出去。
+  for (const path of ["/plugins/handlers.ts", "/plugins/gallery/server.ts", "/plugins/"]) {
+    const res = await fetch(base + path);
+    expect({ path, status: res.status }).toEqual({ path, status: 404 });
+  }
+});

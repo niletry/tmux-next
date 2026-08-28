@@ -184,6 +184,7 @@ async function uploadResponse(req: Request): Promise<Response> {
 const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
 
 const PUBLIC_DIR = new URL("../public/", import.meta.url).pathname;
+const PLUGINS_DIR = new URL("../plugins/", import.meta.url).pathname;
 const MODULES_DIR = new URL("../", import.meta.url).pathname;
 
 // A build marker so a phone can see at a glance whether it has the latest
@@ -617,6 +618,27 @@ export function startServer(
       if (url.pathname.startsWith("/node_modules/")) {
         const mod = Bun.file(MODULES_DIR + url.pathname.slice(1));
         if (await mod.exists()) return new Response(mod);
+      }
+
+      // 同构清单：i18n.js 和 nav.js 都要 import 它，而静态资源只从 public/ 出。
+      // 只放这两种精确形状，不是把 plugins/ 整个目录挂出去。
+      // 不按启用过滤：字典是全量合并的，禁用的插件也得取得到清单。
+      if (url.pathname === "/plugins/registry.js") {
+        return new Response(Bun.file(PLUGINS_DIR + "registry.js"), {
+          headers: { "content-type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" },
+        });
+      }
+      const manifest = url.pathname.match(/^\/plugins\/([a-z][a-z0-9-]*)\/plugin\.js$/);
+      if (manifest) {
+        const file = Bun.file(`${PLUGINS_DIR}${manifest[1]}/plugin.js`);
+        if (await file.exists()) {
+          return new Response(file, {
+            headers: {
+              "content-type": "text/javascript; charset=utf-8",
+              "Cache-Control": "no-cache",
+            },
+          });
+        }
       }
 
       const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
