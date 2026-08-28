@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { stat, writeFile } from "node:fs/promises";
 import { tmux } from "./tmux/run";
-import { safeGalleryName } from "./gallery";
+import { safeGalleryName } from "../plugins/gallery/gallery";
 
 /**
  * Uploads into a session's working tree are capped the same way the gallery's

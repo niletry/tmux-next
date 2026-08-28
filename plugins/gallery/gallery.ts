@@ -1,6 +1,6 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { pluginStateDir } from "../state";
 
 /**
  * A drop folder whose contents the web UI shows: images inline, HTML/SVG
@@ -9,7 +9,7 @@ import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
  * machine — the same stance the upload path takes.
  */
 export function galleryDir(): string {
-  return process.env.TMUX_NEXT_GALLERY_DIR || join(homedir(), ".tmux-next", "gallery");
+  return pluginStateDir("gallery");
 }
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;

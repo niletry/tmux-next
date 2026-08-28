@@ -5,7 +5,7 @@ import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
-import { listGallery, galleryFilePath, saveGalleryUpload, MAX_GALLERY_UPLOAD_BYTES } from "./gallery";
+import { HANDLERS, enabledPlugins } from "../plugins/handlers";
 import { setPin } from "./pins";
 import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { createDirectory, listDirectories, resolveDirectory } from "./paths";
@@ -302,45 +302,6 @@ export function startServer(
         return Response.json({ restored: results.filter((r) => r.ok).length, results });
       }
 
-      // The drop-folder gallery: what is in it, and its files one by one. The
-      // name is reduced to a basename inside the gallery, so it can never reach
-      // a file elsewhere on disk. Content types come from Bun.file by extension,
-      // which is what lets the client render images and HTML.
-      if (url.pathname === "/api/gallery" && req.method === "GET") {
-        return Response.json(await listGallery());
-      }
-      if (url.pathname === "/api/gallery/file" && req.method === "GET") {
-        const path = galleryFilePath(url.searchParams.get("name") ?? "");
-        if (!path) return new Response("bad name", { status: 400 });
-        const file = Bun.file(path);
-        if (!(await file.exists())) return new Response("not found", { status: 404 });
-        return new Response(file);
-      }
-      if (url.pathname === "/api/gallery/file" && req.method === "POST") {
-        // Reject by declared length before buffering, so an oversized body never
-        // reaches formData() at all; the check after parsing still guards.
-        const declared = Number(req.headers.get("content-length") ?? "0");
-        if (declared > MAX_GALLERY_UPLOAD_BYTES) {
-          return new Response("too big", { status: 413 });
-        }
-        let form: FormData;
-        try {
-          form = await req.formData();
-        } catch {
-          return new Response("bad form", { status: 400 });
-        }
-        const file = form.get("file");
-        if (!(file instanceof File)) return new Response("missing file", { status: 400 });
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        if (bytes.byteLength === 0) return new Response("empty", { status: 400 });
-        if (bytes.byteLength > MAX_GALLERY_UPLOAD_BYTES) {
-          return new Response("too big", { status: 413 });
-        }
-        const name = await saveGalleryUpload(file.name, bytes);
-        if (!name) return new Response("bad name", { status: 400 });
-        return Response.json({ name });
-      }
-
       // Which toolbar keys get tapped, so their order can follow the evidence.
       // The client batches taps and beacons them here; GET reads the totals back.
       if (url.pathname === "/api/key-usage") {
@@ -612,6 +573,21 @@ export function startServer(
             },
           },
         );
+      }
+
+      // 前端要知道启用了哪些插件才能画顶栏。必须在插件分发**之前**判，
+      // 否则一个叫 plugins 的插件能把它盖掉（registry.test.ts 禁掉了这个 id）。
+      if (url.pathname === "/api/plugins" && req.method === "GET") {
+        return Response.json(enabledPlugins().map((p) => p.id));
+      }
+
+      // 插件的 API，各自挂在自己的前缀下。前缀由这里校验，插件只管自己认的
+      // 子路径；返回 null 就继续往下走到 404，而不是被它吞掉。
+      for (const p of enabledPlugins()) {
+        if (url.pathname === `/api/${p.id}` || url.pathname.startsWith(`/api/${p.id}/`)) {
+          const res = await HANDLERS[p.id]?.(req, url);
+          if (res) return res;
+        }
       }
 
       // xterm.js ships as ES modules; serve them straight from node_modules.
