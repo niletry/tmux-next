@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   galleryKind,
-  safeGalleryName,
   galleryFilePath,
   galleryDir,
   saveGalleryUpload,
   MAX_GALLERY_UPLOAD_BYTES,
 } from "./gallery";
+import { safeBasename } from "../../src/safe-name";
 
 test("classifies files by extension", () => {
   expect(galleryKind("chart.png")).toBe("image");
@@ -22,8 +22,8 @@ test("classifies files by extension", () => {
 });
 
 test("accepts an ordinary basename", () => {
-  expect(safeGalleryName("chart-2.png")).toBe("chart-2.png");
-  expect(safeGalleryName("我的图.png")).toBe("我的图.png");
+  expect(safeBasename("chart-2.png")).toBe("chart-2.png");
+  expect(safeBasename("我的图.png")).toBe("我的图.png");
 });
 
 test("refuses anything that could climb out of the gallery", () => {
@@ -37,7 +37,7 @@ test("refuses anything that could climb out of the gallery", () => {
     "with\0null.png",
     "",
   ]) {
-    expect(safeGalleryName(bad)).toBe(null);
+    expect(safeBasename(bad)).toBe(null);
   }
 });
 

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { stat, writeFile } from "node:fs/promises";
 import { tmux } from "./tmux/run";
-import { safeGalleryName } from "../plugins/gallery/gallery";
+import { safeBasename } from "./safe-name";
 
 /**
  * Uploads into a session's working tree are capped the same way the gallery's
@@ -41,7 +41,7 @@ async function exists(path: string): Promise<boolean> {
  * Writes an uploaded file into a session's working directory, keeping the
  * caller's basename.
  *
- * The name goes through `safeGalleryName` first, so it can never name anything
+ * The name goes through `safeBasename` first, so it can never name anything
  * outside that directory. A collision gets a numeric suffix (`x.txt` → `x-2.txt`)
  * rather than silently overwriting what is already there. Returns the absolute
  * path of the saved file — the value the client types back into the prompt so
@@ -57,7 +57,7 @@ export async function saveSessionUpload(
   fileName: string,
   bytes: Uint8Array,
 ): Promise<SessionUploadResult> {
-  const safe = safeGalleryName(fileName);
+  const safe = safeBasename(fileName);
   if (!safe) return { ok: false, reason: "name" };
   const cwd = await sessionCwd(session);
   if (!cwd) return { ok: false, reason: "session" };

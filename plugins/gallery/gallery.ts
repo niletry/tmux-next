@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { pluginStateDir } from "../state";
+import { safeBasename } from "../../src/safe-name";
 
 /**
  * A drop folder whose contents the web UI shows: images inline, HTML/SVG
@@ -24,24 +25,9 @@ export function galleryKind(name: string): GalleryKind {
   return "other";
 }
 
-/**
- * A caller-supplied name reduced to a plain basename, or null if it is not one.
- *
- * The name reaches a path join, so anything that could climb out of the gallery
- * — a separator, `..`, a null byte — is refused rather than sanitised, and so
- * are dotfiles. What survives can only ever name a file directly inside the
- * gallery directory.
- */
-export function safeGalleryName(name: string): string | null {
-  if (typeof name !== "string" || name.length === 0 || name.length > 255) return null;
-  if (name.includes("/") || name.includes("\\") || name.includes("\0")) return null;
-  if (name.startsWith(".")) return null; // covers "." and ".." and hidden files
-  return name;
-}
-
 /** The on-disk path for a gallery file, or null if the name is not safe. */
 export function galleryFilePath(name: string): string | null {
-  const safe = safeGalleryName(name);
+  const safe = safeBasename(name);
   return safe ? join(galleryDir(), safe) : null;
 }
 
@@ -71,13 +57,13 @@ async function exists(path: string): Promise<boolean> {
 /**
  * Writes an uploaded file into the gallery, keeping the caller's basename.
  *
- * The name goes through `safeGalleryName` first, so it can never name anything
+ * The name goes through `safeBasename` first, so it can never name anything
  * outside the gallery. A collision is given a numeric suffix (`x.png` →
  * `x-2.png`) rather than silently overwriting what is already there. Returns
  * the final name on disk, or null when the name is refused.
  */
 export async function saveGalleryUpload(name: string, bytes: Uint8Array): Promise<string | null> {
-  const safe = safeGalleryName(name);
+  const safe = safeBasename(name);
   if (!safe) return null;
   await mkdir(galleryDir(), { recursive: true });
   const { base, ext } = splitExt(safe);
