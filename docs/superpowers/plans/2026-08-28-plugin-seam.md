@@ -1217,7 +1217,9 @@ bun test src/plugin-routing.test.ts
 
 - [ ] **Step 3: 写清单**
 
-创建 `plugins/notifications/plugin.js`。图标从 `public/nav.js` 的 `ICONS.notifications` 原样搬（就是那两条 `path`），文案从 `public/i18n.js` 把所有 `notif.*` 键搬来（两本都搬，一字不改，搬完 `grep -c '"notif\.' public/i18n.js` 应为 0）：
+创建 `plugins/notifications/plugin.js`。图标从 `public/nav.js` 的 `ICONS.notifications` 原样搬（就是那两条 `path`），文案是 `public/i18n.js` 里那 4 个 `notif.*` 键（两本都搬，搬完 `grep -c '"notif\.' public/i18n.js` 应为 0）。
+
+**只搬 `notif.*`，`push.*` 一个都不动。** 那 8 个键是推送正文，由 `src/push.ts` 在服务端用 `t(key, lang)` 拼出来——它属于推送管线，跟这个插件的启停无关。把它们搬进插件，禁用插件就等于让推送变成一串键名。
 
 ```js
 // @ts-check
@@ -1239,8 +1241,18 @@ export default {
     '<path d="M22 12h-6l-2 3h-4l-2-3H2"/>' +
     '<path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
   i18n: {
-    zh: { /* public/i18n.js 里所有 notif.* 键的中文，原样搬来 */ },
-    en: { /* 同上，英文 */ },
+    zh: {
+      "notif.title": "通知历史",
+      "notif.loadFailed": "加载失败",
+      "notif.count": "{n} 条",
+      "notif.empty": "还没有通知",
+    },
+    en: {
+      "notif.title": "Notification history",
+      "notif.loadFailed": "Could not load",
+      "notif.count": "{n}",
+      "notif.empty": "No notifications yet",
+    },
   },
 };
 ```
