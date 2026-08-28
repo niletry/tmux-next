@@ -54,6 +54,41 @@ test("带连字符的 id 映射成带下划线的 env 名", () => {
   delete process.env.TMUX_NEXT_TWO_WORDS_DIR;
 });
 
+test("插件页面从 /p/<id>/ 出", async () => {
+  const res = await fetch(`${base()}/p/gallery/`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("html");
+  expect(await res.text()).toContain('data-i18n="gallery.title"');
+});
+
+test("插件页面的脚本也出得来", async () => {
+  const res = await fetch(`${base()}/p/gallery/gallery.js`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("javascript");
+});
+
+test("爬不出插件的 public 目录", async () => {
+  // 浏览器会先把 ../ 规范化掉，但裸客户端不会——服务端自己得拒。
+  for (const evil of [
+    "/p/gallery/../../src/server.ts",
+    "/p/gallery/..%2F..%2Fsrc%2Fserver.ts",
+    "/p/gallery/.env",
+  ]) {
+    const res = await fetch(base() + evil);
+    expect({ evil, ok: res.status === 200 }).toEqual({ evil, ok: false });
+  }
+});
+
+test("不存在的插件 id 是 404", async () => {
+  expect((await fetch(`${base()}/p/nosuch/`)).status).toBe(404);
+});
+
+test("旧地址 301 到新地址", async () => {
+  const res = await fetch(`${base()}/gallery.html`, { redirect: "manual" });
+  expect(res.status).toBe(301);
+  expect(res.headers.get("location")).toBe("p/gallery/");
+});
+
 test("禁用一个插件，它的 API 就不在了", () => {
   const before = enabledPlugins().map((p) => p.id);
   expect(before).toContain("gallery");

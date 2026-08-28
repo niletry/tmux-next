@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { readdirSync } from "node:fs";
+import { readdirSync, existsSync } from "node:fs";
 
 /**
  * Every browser module must at least parse.
@@ -14,14 +14,61 @@ import { readdirSync } from "node:fs";
  * syntax and static-resolution errors, not runtime behaviour.
  */
 const dir = new URL("../public/", import.meta.url).pathname;
-const modules = readdirSync(dir).filter((f) => f.endsWith(".js"));
+const pluginsDir = new URL("../plugins/", import.meta.url).pathname;
+
+/**
+ * public/ 和每个插件的 public/。插件页面同样只有浏览器加载，语法错误同样会
+ * 静悄悄发布——这个文件存在的理由一字不差地适用于它们。
+ */
+const modules = [
+  ...readdirSync(dir).filter((f) => f.endsWith(".js")).map((f) => dir + f),
+  ...readdirSync(pluginsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .flatMap((d) => {
+      const pub = `${pluginsDir}${d.name}/public/`;
+      if (!existsSync(pub)) return [];
+      return readdirSync(pub).filter((f) => f.endsWith(".js")).map((f) => pub + f);
+    }),
+  ...readdirSync(pluginsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(`${pluginsDir}${d.name}/plugin.js`))
+    .map((d) => `${pluginsDir}${d.name}/plugin.js`),
+];
 
 test("the public directory has browser modules to check", () => {
   expect(modules.length).toBeGreaterThan(0);
 });
 
+/**
+ * A plugin page's `../../foo.js` is written for how the *browser* resolves
+ * it — from the URL the page is served at (`/p/<id>/…`), one segment
+ * shallower than the file's real home on disk (`plugins/<id>/public/…`),
+ * because `public/` is a directory name that exists on disk but never in a
+ * URL. Left to Bun.build's plain on-disk resolution, that specifier looks
+ * broken even though it is exactly right for the page that will load it.
+ * This plugin re-derives the same `/p/<id>/…` mapping src/server.ts uses, so
+ * the build sees what a browser actually would; unrelated specifiers (e.g.
+ * i18n.js's own single-level "../plugins/registry.js") already resolve fine
+ * on disk and are left alone.
+ */
+const pluginPageResolve: import("bun").BunPlugin = {
+  name: "resolve like a plugin page's browser url",
+  setup(build) {
+    build.onResolve({ filter: /^\.\.\/\.\.\// }, (args) => {
+      const importerId = args.importer.match(new RegExp(`^${pluginsDir}([^/]+)/public/`));
+      if (!importerId) return undefined; // not a plugin page; default resolution applies
+      const served = new URL(args.path, `http://x/p/${importerId[1]}/`).pathname;
+      const asPage = served.match(/^\/p\/([^/]+)\/(.*)$/);
+      if (asPage) return { path: `${pluginsDir}${asPage[1]}/public/${asPage[2]}` };
+      const asManifest = served.match(/^\/plugins\/([^/]+)\/plugin\.js$/);
+      if (asManifest) return { path: `${pluginsDir}${asManifest[1]}/plugin.js` };
+      if (served === "/plugins/registry.js") return { path: `${pluginsDir}registry.js` };
+      return { path: dir + served.slice(1) }; // everything else lives in public/
+    });
+  },
+};
+
 test.each(modules)("%s parses as a browser module", async (file) => {
-  const built = await Bun.build({ entrypoints: [dir + file], target: "browser" });
+  const built = await Bun.build({ entrypoints: [file], target: "browser", plugins: [pluginPageResolve] });
   expect(built.logs.map(String)).toEqual([]);
   expect(built.success).toBe(true);
 });
@@ -40,9 +87,10 @@ test.each(modules)("%s parses as a browser module", async (file) => {
  */
 test.each(modules)("%s references no undefined name", async (file) => {
   const built = await Bun.build({
-    entrypoints: [dir + file],
+    entrypoints: [file],
     target: "browser",
     minify: { identifiers: true, syntax: false, whitespace: false },
+    plugins: [pluginPageResolve],
   });
   expect(built.success).toBe(true);
   const code = await built.outputs[0]!.text();

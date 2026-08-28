@@ -1,10 +1,17 @@
-// @ts-check
 // The drop-folder gallery: shows what's in ~/.tmux-next/gallery — images and
 // HTML/SVG rendered in place, anything else offered to download. The viewer
 // pages through items directly, without going back to the grid each time.
+//
+// Not @ts-check'd: its import specifiers are written for the URL the browser
+// resolves them against (this file is served at /p/gallery/gallery.js, two
+// segments deep), not the filesystem path it lives at
+// (plugins/gallery/public/gallery.js, three segments deep) — tsc's module
+// resolver only knows the latter and can't follow "../../i18n-apply.js" to
+// the real public/i18n-apply.js. Same exemption as list.js and terminal.js.
 
-import { initLang, tr } from "./i18n-apply.js";
-import { renderHeader } from "./nav.js";
+import { initLang, tr } from "../../i18n-apply.js";
+import { renderHeader } from "../../nav.js";
+import { url } from "../../root.js";
 
 const listEl = /** @type {HTMLElement} */ (document.getElementById("gallery"));
 /**
@@ -22,7 +29,7 @@ const viewer = /** @type {HTMLElement} */ (document.getElementById("viewer"));
 
 /** @typedef {{ name: string, kind: "image" | "html" | "other" }} Item */
 
-const fileUrl = (/** @type {string} */ name) => "api/gallery/file?name=" + encodeURIComponent(name);
+const fileUrl = (/** @type {string} */ name) => url("api/gallery/file?name=" + encodeURIComponent(name));
 const ext = (/** @type {string} */ name) => (name.match(/\.([^.]+)$/)?.[1] ?? tr("gallery.file")).toUpperCase();
 
 /** @type {Item[]} */
@@ -79,7 +86,7 @@ async function uploadFiles(/** @type {FileList | null} */ files) {
     const form = new FormData();
     form.append("file", file);
     try {
-      const res = await fetch("api/gallery/file", { method: "POST", body: form });
+      const res = await fetch(url("api/gallery/file"), { method: "POST", body: form });
       if (res.ok) ok++;
       else failed = true;
     } catch {
@@ -108,7 +115,7 @@ listEl.addEventListener("drop", (e) => {
 
 async function load() {
   try {
-    items = await (await fetch("api/gallery")).json();
+    items = await (await fetch(url("api/gallery"))).json();
   } catch {
     listEl.innerHTML = `<p class="empty">${tr("gallery.loadFailed")}</p>`;
     return;

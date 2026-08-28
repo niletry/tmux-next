@@ -6,6 +6,7 @@ import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./uplo
 import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
 import { HANDLERS, enabledPlugins } from "../plugins/handlers";
+import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { createDirectory, listDirectories, resolveDirectory } from "./paths";
@@ -615,6 +616,33 @@ export function startServer(
             },
           });
         }
+      }
+
+      // 插件页面。/p/<id>/ 而不是 /<id>/：一级路径迟早跟 public/ 里的文件或
+      // 未来的 API 撞名。禁用的插件，页面跟着 API 一起消失。
+      const page = url.pathname.match(/^\/p\/([a-z][a-z0-9-]*)\/(.*)$/);
+      if (page) {
+        const [, id, rest] = page;
+        if (!enabledPlugins().some((p) => p.id === id)) {
+          return new Response("not found", { status: 404 });
+        }
+        const file = rest === "" ? "index.html" : rest!;
+        // 跟制品库文件名同一套收窄函数：插件目录同样不能被 ../ 爬出去。浏览器
+        // 会先规范化，裸客户端不会。
+        if (!safeBasename(file)) {
+          return new Response("bad name", { status: 400 });
+        }
+        const asset = Bun.file(`${PLUGINS_DIR}${id}/public/${file}`);
+        if (await asset.exists()) {
+          return new Response(asset, { headers: { "Cache-Control": "no-cache" } });
+        }
+        return new Response("not found", { status: 404 });
+      }
+
+      // 搬家前的地址。手机上存了书签、装了 PWA 的人不该撞 404。
+      // 相对的 location，子路径部署下同样成立。
+      if (url.pathname === "/gallery.html") {
+        return new Response(null, { status: 301, headers: { Location: "p/gallery/" } });
       }
 
       const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
