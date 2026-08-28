@@ -594,9 +594,12 @@ export function startServer(
       // 只放这两种精确形状，不是把 plugins/ 整个目录挂出去。
       // 不按启用过滤：字典是全量合并的，禁用的插件也得取得到清单。
       if (url.pathname === "/plugins/registry.js") {
-        return new Response(Bun.file(PLUGINS_DIR + "registry.js"), {
-          headers: { "content-type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" },
-        });
+        const file = Bun.file(PLUGINS_DIR + "registry.js");
+        if (await file.exists()) {
+          return new Response(file, {
+            headers: { "content-type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" },
+          });
+        }
       }
       const manifest = url.pathname.match(/^\/plugins\/([a-z][a-z0-9-]*)\/plugin\.js$/);
       if (manifest) {

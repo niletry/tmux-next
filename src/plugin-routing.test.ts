@@ -102,6 +102,19 @@ test("禁用一个插件，它的 API 就不在了", () => {
   expect(enabledPlugins().map((p) => p.id)).toContain("gallery");
 });
 
+test("禁用后 API 和页面双双 404，重新启用后双双恢复", async () => {
+  process.env.TMUX_NEXT_DISABLE_PLUGINS = "gallery";
+  try {
+    expect((await fetch(`${base()}/api/gallery`)).status).toBe(404);
+    expect((await fetch(`${base()}/p/gallery/`)).status).toBe(404);
+  } finally {
+    delete process.env.TMUX_NEXT_DISABLE_PLUGINS;
+  }
+  // enabledPlugins() 是逐请求现读的，env 一撤，两处都得原样恢复。
+  expect((await fetch(`${base()}/api/gallery`)).status).toBe(200);
+  expect((await fetch(`${base()}/p/gallery/`)).status).toBe(200);
+});
+
 test("通知页也是个插件：API、页面、顶栏三处都在", async () => {
   const ids = (await (await fetch(`${base()}/api/plugins`)).json()) as string[];
   expect(ids).toContain("notifications");

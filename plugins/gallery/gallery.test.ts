@@ -9,7 +9,10 @@ import {
   saveGalleryUpload,
   MAX_GALLERY_UPLOAD_BYTES,
 } from "./gallery";
-import { safeBasename } from "../../src/safe-name";
+
+// safeBasename 本身的用例（穿越、反斜杠、点文件……）在 src/safe-name.test.ts：
+// 它是内核模块，守着会话上传和 /p/<id>/* 的插件资源路由，不该只在这个插件
+// 存在的时候才有测试。这里只留跟制品库存储真正相关的。
 
 test("classifies files by extension", () => {
   expect(galleryKind("chart.png")).toBe("image");
@@ -19,26 +22,6 @@ test("classifies files by extension", () => {
   expect(galleryKind("page.HTM")).toBe("html");
   expect(galleryKind("notes.pdf")).toBe("other");
   expect(galleryKind("data.txt")).toBe("other");
-});
-
-test("accepts an ordinary basename", () => {
-  expect(safeBasename("chart-2.png")).toBe("chart-2.png");
-  expect(safeBasename("我的图.png")).toBe("我的图.png");
-});
-
-test("refuses anything that could climb out of the gallery", () => {
-  for (const bad of [
-    "../secret",
-    "a/b.png",
-    "a\\b.png",
-    "..",
-    ".",
-    ".hidden",
-    "with\0null.png",
-    "",
-  ]) {
-    expect(safeBasename(bad)).toBe(null);
-  }
 });
 
 test("a file path is always inside the gallery directory", () => {

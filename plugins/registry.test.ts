@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { PLUGINS } from "./registry.js";
+import { KERNEL_KEYS } from "../public/i18n.js";
 
 /**
  * 注册表是写死的，所以这里检的不是"扫描对不对"，而是清单本身自洽——
@@ -42,6 +43,18 @@ test("每个插件的两本字典键集一致", () => {
 
 test("清单里的标题键在它自己的字典里", () => {
   for (const p of PLUGINS) expect(p.i18n.en[p.titleKey]).toBeDefined();
+});
+
+test("没有插件字典键悄悄盖掉内核的键", () => {
+  // public/i18n.js 用 Object.assign 把每个插件的字典合到内核字典上——撞了
+  // 键就静默覆盖，不报错也不留痕迹。这里在合并前就把内核自己的键集存下来，
+  // 拿它跟每个插件的键分别比对。
+  for (const p of PLUGINS) {
+    const collide = [...Object.keys(p.i18n.en), ...Object.keys(p.i18n.zh)].filter((k) =>
+      KERNEL_KEYS.has(k),
+    );
+    expect({ id: p.id, collide: [...new Set(collide)] }).toEqual({ id: p.id, collide: [] });
+  }
 });
 
 test("registry.js 的 import 图里没有 .ts", async () => {

@@ -12,10 +12,12 @@ import { url } from "../public/root.js";
 
 const NAV = new URL("../public/nav.js", import.meta.url).pathname;
 
-const saved = { fetch: globalThis.fetch };
+const saved = { fetch: globalThis.fetch, window: globalThis.window, document: globalThis.document };
 afterEach(() => {
   // 覆盖全局却不还原，曾经一次弄红了别的文件里 38 个测试——Bun 一个进程跑全部。
   globalThis.fetch = saved.fetch;
+  globalThis.window = saved.window;
+  globalThis.document = saved.document;
 });
 
 async function mount(/** 让 /api/plugins 返回什么，null = 让它失败 */ ids: string[] | null) {

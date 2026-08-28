@@ -366,6 +366,11 @@ const en = {
   "common.close": "Close",
 };
 
+// 合并前留一份内核自己的键，好让 plugins/registry.test.ts 查得出插件字典
+// 有没有悄悄盖掉内核的键——Object.assign 是静默覆盖，不留痕迹，合并之后
+// 就再也分不出一个键是内核原有的还是插件带进来的。
+export const KERNEL_KEYS = new Set([...Object.keys(zh), ...Object.keys(en)]);
+
 // 插件的文案。合并的是**全部**插件，不按启用过滤——禁用一个插件不该让它的
 // 文案在 i18n.test.ts 里变成"缺失键"，那个测试的价值恰恰在于它是全量的。
 for (const p of PLUGINS) {
