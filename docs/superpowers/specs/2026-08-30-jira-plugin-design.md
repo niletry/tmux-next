@@ -117,13 +117,13 @@ type Annotation = { text: string; detail?: string; tone?: "ok" | "warn" | "dim" 
 
 ### 建会话这一步的取舍
 
-插件页**自己调内核公开的 `/api/create`**，参数与手工新建完全一致，目录选择复用内核那个已经被测过的纯模块 `dir-filter.js`；建成之后由插件自己写绑定。
+插件页**自己调内核公开的 `POST /api/sessions`**，参数与手工新建完全一致，目录选择复用内核那个已经被测过的纯模块 `dir-filter.js`；建成之后由插件自己写绑定。
 
 代价是插件页与 `new.js` 会有一部分 UI 重复。
 
 另一条路是让内核的新建页接一个 `?bind=` 参数、建成后回调插件——那需要给接缝开**第二个**口子（建后钩子）。一个功能里连开两个口子是坏味道，宁可吃这点重复。若将来第三个插件也要"建完之后做点什么"，那时才是把建后钩子做成正式能力的时候。
 
-预填会话名从单号来，撞名就 `-2`、`-3`。`/api/create` 现在就会报名字冲突，前端接住给建议。
+预填会话名从单号来，撞名就 `-2`、`-3`。`POST /api/sessions` 吃 `{ dir, name?, agent?, skipPermissions?, resume? }`、返回 `{ name, created }`，名字冲突时报 `reserved`/`invalid`，前端接住给建议。
 
 ## SECURITY.md 要补的
 
