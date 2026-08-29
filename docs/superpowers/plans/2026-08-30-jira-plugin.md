@@ -951,8 +951,9 @@ export async function collectAnnotations(
   annotators: Record<string, PluginAnnotator> = ANNOTATORS,
 ): Promise<Record<string, Record<string, Annotation>>> {
   const enabled = new Set(enabledPlugins().map((p) => p.id));
+  // 真实插件按启用状态过滤；测试注进来的假插件不在注册表里，一律放行。
   const entries = Object.entries(annotators).filter(
-    ([id]) => enabled.size === 0 || enabled.has(id) || !PLUGINS.some((p) => p.id === id),
+    ([id]) => !PLUGINS.some((p) => p.id === id) || enabled.has(id),
   );
 
   const results = await Promise.all(
@@ -1259,7 +1260,7 @@ export default {
       "jira.firstSession": "开一个会话",
       "jira.sessions": "{n} 个会话",
       "jira.noSessions": "还没有会话",
-      "jira.dead": "已停止，可恢复",
+      "jira.dead": "已停止",
       "jira.unbind": "解除绑定",
       "jira.open": "进入",
       "jira.createFailed": "创建失败",
@@ -1280,7 +1281,7 @@ export default {
       "jira.firstSession": "Start a session",
       "jira.sessions": "{n} sessions",
       "jira.noSessions": "No sessions yet",
-      "jira.dead": "Stopped — restorable",
+      "jira.dead": "Stopped",
       "jira.unbind": "Unbind",
       "jira.open": "Open",
       "jira.createFailed": "Could not create",
@@ -1369,11 +1370,6 @@ async function issues(refresh: boolean): Promise<IssuesResult> {
   // 只缓存成功：一次网络抖动不该让人盯着错误看满一分钟。
   if (result.ok) cache = { at: Date.now(), result };
   return result;
-}
-
-/** 测试用：把缓存清掉。 */
-export function clearIssuesCache(): void {
-  cache = null;
 }
 
 export async function handle(req: Request, url: URL): Promise<Response | null> {
@@ -1541,7 +1537,7 @@ import { filterEntries, shortPath } from "../../dir-filter.js";
 1. `await initLang()`、`await renderHeader("jira")`，然后拉 `url("api/jira/config")`。`configured` 为假就渲染 `jira.unconfigured` + `jira.unconfiguredHint`，**到此为止**，不再拉工单。
 2. 并行拉 `url("api/jira/issues")` 与 `url("api/jira/bindings")`。
 3. `issues` 返回 `{ ok: false, reason }` 时，按 `reason` 映射到 `jira.authFailed` / `jira.queryFailed` / `jira.unreachable` / `jira.unconfigured` 四条文案之一。**不要**把 reason 直接显示出来。
-4. 渲染：每个工单一组，显示 `key`、`summary`、`status`。组内列出 `bindings` 里 `key` 匹配的会话；`live` 为假的标 `jira.dead`。每个会话是一个链到 `url("terminal.html?target=" + encodeURIComponent(session))` 的行，旁边一个 `jira.unbind` 按钮（`DELETE api/jira/bindings?session=…`）。
+4. 渲染：每个工单一组，显示 `key`、`summary`、`status`。组内列出 `bindings` 里 `key` 匹配的会话；`live` 为假的标 `jira.dead`（只说"已停止"，不说"可恢复"——那要查恢复记录，v1 不做，见下方说明）。每个会话是一个链到 `url("terminal.html?target=" + encodeURIComponent(session))` 的行，旁边一个 `jira.unbind` 按钮（`DELETE api/jira/bindings?session=…`）。
 5. 每组底部一个按钮：有会话时文案 `jira.newSession`，没有时 `jira.firstSession`。点它打开一个建会话的浮层。
 6. 浮层里：目录选择（拉 `url("api/directories")`，用 `filterEntries` 过滤、`shortPath` 显示——**这两个是已经被测过的纯函数，不要自己写一份**）、会话名输入框（预填工单号，撞名再由服务端拒绝）、agent 选择（拉 `url("api/agents")` 如果存在；先读 `public/new.js` 确认它拉的是哪个接口，照同一个来）。
 7. 提交时 `POST url("api/sessions")`，body `{ dir, name, agent, skipPermissions }`。成功返回 `{ name, created }`；随即 `POST url("api/jira/bindings")` 带 `{ session: name, key }`；然后跳到 `url("terminal.html?target=" + encodeURIComponent(name))`。
@@ -1653,3 +1649,7 @@ git commit -m "docs: 记下工单插件、标注能力，以及它带来的暴�
 - [ ] 未配置 Jira 时，整个应用不向外发任何请求
 - [ ] `plugins/jira/` 下不存在真实域名、公司名、工单号、邮箱（`plugins/jira/fixtures.test.ts` 守着）
 - [ ] `~/.tmux-next/` 下没有被测试写过任何东西
+
+## v1 明确不做
+
+spec 里提到"会话既不在跑、也不可恢复才算陈旧"。v1 只区分**在跑 / 不在跑**：判"可恢复"要去读内核的会话恢复记录，为一个标签的措辞引一条依赖不值得。UI 因此只说"已停止"，不声称可恢复——**不做的事不要在界面上说成做了**。
