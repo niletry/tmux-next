@@ -17,7 +17,15 @@
 </head>
 <body class="term-page">
   <div class="term-bar">
-    <a href="./" data-i18n="nav.backToSessions">‹ 会话</a>
+    <!-- Icon only: a back chevron needs no caption, and on a phone the bar's
+         width is better spent on the session name. The accessible name moves
+         to title/aria-label, the way nav.js's icon tabs already do it. -->
+    <a href="./" class="term-back" data-i18n-title="nav.backToSessions" data-i18n-aria="nav.backToSessions">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 18l-6-6 6-6"/>
+      </svg>
+    </a>
     <span class="title" id="title"></span>
     <span class="status" id="status" data-i18n="term.connecting">连接中…</span>
     <button class="term-rename" id="rename" data-i18n-title="term.renameTitle" data-i18n="term.rename">改名</button>

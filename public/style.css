@@ -356,6 +356,18 @@ header .count {
 }
 
 .term-bar a { color: var(--accent); text-decoration: none; }
+
+/* The back link is an icon now, so it needs its own tap target: the chevron is
+   20px but a thumb is not. Padding grows the target, the negative margin keeps
+   it from pushing the session name inward. */
+.term-back {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  margin: -6px -4px -6px -8px;
+}
+.term-back:active { opacity: 0.6; }
 .term-bar .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-bar .status { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; }
 

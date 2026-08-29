@@ -150,7 +150,7 @@ const zh = {
   "create.invalid": "名字里不能有 . 或 :",
   "create.failed": "创建失败，请重试",
 
-  "nav.backToSessions": "‹ 会话",
+  "nav.backToSessions": "会话列表",
   "nav.label": "主导航",
   "term.renameTitle": "重命名会话",
   "term.endTitle": "结束会话",
@@ -325,7 +325,7 @@ const en = {
   "create.invalid": "Name cannot contain . or :",
   "create.failed": "Could not create the session, try again",
 
-  "nav.backToSessions": "‹ Sessions",
+  "nav.backToSessions": "Sessions",
   "nav.label": "Main navigation",
   "term.renameTitle": "Rename session",
   "term.endTitle": "End session",
