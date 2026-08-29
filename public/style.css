@@ -371,6 +371,33 @@ header .count {
 .term-bar .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-bar .status { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; }
 
+/* Connection state, 9px of it. Three readings that survive a colour-blind eye
+   and a phone in sunlight: filled circle up, hollow ring working, filled
+   square broken — shape carries it, colour only reinforces. --term-red comes
+   from the theme's ANSI slots, so it follows the palette like everything else
+   and no colour literal lands in this file. */
+.conn {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.conn.ok { background: var(--idle); }
+.conn.wait {
+  background: transparent;
+  border: 2px solid var(--dim);
+  animation: conn-pulse 1.4s ease-in-out infinite;
+}
+.conn.bad { background: var(--term-red); border-radius: 2px; }
+
+@keyframes conn-pulse { 50% { opacity: 0.35; } }
+
+/* A dot that breathes forever is exactly the kind of motion that costs some
+   people a headache, and it carries no information the shape does not. */
+@media (prefers-reduced-motion: reduce) {
+  .conn.wait { animation: none; }
+}
+
 /* Login expired: the one status that must be noticed and tapped, so it drops
    the dim treatment for the accent and a clear target. */
 .status-relogin {

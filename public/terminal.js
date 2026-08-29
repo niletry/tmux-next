@@ -11,9 +11,11 @@ import { xtermTheme } from "./themes.js";
 import { initTheme, cachedTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
 import { readLayout } from "./key-layout.js";
+import { connClass } from "./conn-state.js";
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
+const connEl = document.getElementById("conn");
 const termEl = document.getElementById("term");
 document.getElementById("title").textContent = target || "";
 // The tab title too, not just the in-page bar: with several sessions open the
@@ -97,6 +99,27 @@ term.parser.registerOscHandler(52, (data) => {
   return true;
 });
 
+/**
+ * Paints the connection dot.
+ *
+ * The words live here rather than in conn-state.js so src/i18n.test.ts can see
+ * them: it finds keys by scanning for literal `tr("…")`, and a key fetched
+ * from a table reads as dead to it.
+ *
+ * @param {string} state
+ */
+function setConn(state) {
+  connEl.className = connClass(state);
+  const label =
+    state === "connected"
+      ? tr("term.connected")
+      : state === "connecting"
+        ? tr("term.connecting")
+        : tr("term.reconnecting");
+  connEl.title = label;
+  connEl.setAttribute("aria-label", label);
+}
+
 let statusResetTimer = null;
 function flashStatus(message) {
   const previous = statusEl.textContent;
@@ -161,12 +184,15 @@ function wsUrl() {
 }
 
 function connect() {
-  statusEl.textContent = tr("term.connecting");
+  setConn("connecting");
   socket = new WebSocket(wsUrl());
   socket.binaryType = "arraybuffer";
 
   socket.onopen = () => {
-    statusEl.textContent = tr("term.connected");
+    setConn("connected");
+    // The bar's message slot is for things that happened, not for the steady
+    // state — a successful connect is the dot's job, so clear it.
+    statusEl.textContent = "";
     reconnectDelay = 500;
     const { cols, rows } = fit();
     socket.send(JSON.stringify({ t: "open", target, rows, cols }));
@@ -189,7 +215,7 @@ function connect() {
     // A rename navigates away to reconnect under the new name. In neither case
     // should we reconnect into the old name.
     if (killing || renaming) return;
-    statusEl.textContent = tr("term.reconnecting");
+    setConn("lost");
     reconnectOrPromptLogin();
   };
 }

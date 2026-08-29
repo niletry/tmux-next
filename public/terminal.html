@@ -27,7 +27,12 @@
       </svg>
     </a>
     <span class="title" id="title"></span>
-    <span class="status" id="status" data-i18n="term.connecting">连接中…</span>
+    <span class="status" id="status"></span>
+    <!-- The connection state as a dot. It used to be a word that sat in the bar
+         for the session's whole life; "up" is the boring case and does not earn
+         that width on a phone. #status above stays for things that actually
+         need a sentence — an error, a rename result, the re-login link. -->
+    <span class="conn wait" id="conn"></span>
     <button class="term-rename" id="rename" data-i18n-title="term.renameTitle" data-i18n="term.rename">改名</button>
     <button class="term-kill" id="kill" data-i18n-title="term.endTitle" data-i18n="term.end">结束</button>
   </div>
