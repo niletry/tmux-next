@@ -6,6 +6,7 @@
 // subscription to the server; disabling it tears that down.
 
 import { tr } from "./i18n-apply.js";
+import { url } from "./root.js";
 
 const supported = () =>
   "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -32,14 +33,14 @@ async function enable() {
   }
   // A module worker: sw.js imports the logic that decides which window a tapped
   // notification lands in, so that part can be tested outside a browser.
-  const reg = await navigator.serviceWorker.register("sw.js", { type: "module" });
+  const reg = await navigator.serviceWorker.register(url("sw.js"), { type: "module" });
   await navigator.serviceWorker.ready;
-  const { key } = await (await fetch("api/push/key")).json();
+  const { key } = await (await fetch(url("api/push/key"))).json();
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: b64urlToBytes(key),
   });
-  const res = await fetch("api/push/subscribe", {
+  const res = await fetch(url("api/push/subscribe"), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(sub),

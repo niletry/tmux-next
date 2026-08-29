@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { DICTS, LANGS, DEFAULT_LANG, t, pickLang } from "../public/i18n.js";
 
 /**
@@ -28,9 +28,21 @@ const srcDir = new URL("../src/", import.meta.url).pathname;
  */
 function usedKeys(): Map<string, string[]> {
   const found = new Map<string, string[]>();
+  const pluginsDir = new URL("../plugins/", import.meta.url).pathname;
+  const pluginFiles = readdirSync(pluginsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .flatMap((d) => {
+      const out = [`${pluginsDir}${d.name}/plugin.js`];
+      const pub = `${pluginsDir}${d.name}/public/`;
+      if (existsSync(pub)) {
+        out.push(...readdirSync(pub).filter((f) => /\.(js|html)$/.test(f)).map((f) => pub + f));
+      }
+      return out.filter((f) => existsSync(f));
+    });
   const files = [
     ...readdirSync(dir).filter((f) => /\.(js|html)$/.test(f)).map((f) => dir + f),
     ...readdirSync(srcDir).filter((f) => /\.ts$/.test(f) && !f.includes(".test.")).map((f) => srcDir + f),
+    ...pluginFiles,
   ];
   for (const path of files) {
     const file = path.slice(path.lastIndexOf("/") + 1);

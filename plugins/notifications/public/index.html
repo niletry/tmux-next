@@ -4,21 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title data-i18n="gallery.title">制品</title>
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <title data-i18n="notif.title">通知</title>
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
   <!-- use-credentials: the manifest is fetched by the browser itself, and
        behind a reverse proxy that asks for a login an anonymous fetch gets
        the login page instead — the install then fails with no visible
        reason. This makes the fetch carry the session cookie. -->
-  <link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
-  <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="../../manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="apple-touch-icon" href="../../icon-192.png">
+  <link rel="stylesheet" href="../../style.css">
 </head>
 <body class="list-page">
   <header id="header">
   </header>
-  <main id="gallery"><p class="empty" data-i18n="list.loading">加载中…</p></main>
-  <div id="viewer" class="viewer" hidden></div>
-  <script type="module" src="gallery.js"></script>
+  <main id="list"><p class="empty" data-i18n="list.loading">加载中…</p></main>
+  <script type="module" src="notifications.js"></script>
 </body>
 </html>

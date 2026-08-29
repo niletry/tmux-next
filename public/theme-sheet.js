@@ -9,6 +9,7 @@ import {
   writeLayout,
   clearLayout,
 } from "./key-layout.js";
+import { url } from "./root.js";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -424,7 +425,7 @@ export function openKeyEditor() {
   });
 
   // Fetch the counts first (they change nothing about the ordering), then draw.
-  fetch("api/key-usage")
+  fetch(url("api/key-usage"))
     .then((r) => r.json())
     .then((rows) => {
       for (const row of Array.isArray(rows) ? rows : []) {

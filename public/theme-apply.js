@@ -9,6 +9,7 @@
  */
 
 import { themeVars, DEFAULT_THEME } from "./themes.js";
+import { url } from "./root.js";
 
 /**
  * localStorage is a *cache*, not the source of truth.
@@ -64,7 +65,7 @@ function cache(name) {
 export async function initTheme() {
   applyTheme(cachedTheme());
   try {
-    const res = await fetch("api/theme");
+    const res = await fetch(url("api/theme"));
     if (!res.ok) return cachedTheme();
     const { name } = await res.json();
     if (typeof name === "string" && name !== document.documentElement.dataset.theme) {
@@ -93,7 +94,7 @@ export async function setTheme(name) {
   applyTheme(name);
   cache(name);
   try {
-    const res = await fetch("api/theme", {
+    const res = await fetch(url("api/theme"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),

@@ -12,16 +12,12 @@
  */
 
 import { tr } from "./i18n-apply.js";
+import { PLUGINS } from "../plugins/registry.js";
+import { url } from "./root.js";
 
-/** @typedef {"sessions" | "gallery" | "notifications"} Page */
+/** @typedef {string} Page "sessions"，或某个插件 id（见 plugins/registry.js）。 */
 
 const ICONS = {
-  gallery:
-    '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>' +
-    '<rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
-  notifications:
-    '<path d="M22 12h-6l-2 3h-4l-2-3H2"/>' +
-    '<path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
   bell:
     '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>' +
     '<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
@@ -46,12 +42,23 @@ function svg(/** @type {string} */ paths) {
   );
 }
 
-/** Order in the header, left to right. */
-const TABS = /** @type {{ page: Page, href: string, key: string }[]} */ ([
-  { page: "sessions", href: "./", key: "list.title" },
-  { page: "gallery", href: "gallery.html", key: "gallery.title" },
-  { page: "notifications", href: "notifications.html", key: "notif.title" },
-]);
+/**
+ * 启用的插件 id。服务端才读得到 TMUX_NEXT_DISABLE_PLUGINS，所以问它一次。
+ *
+ * 问不到就当全开：默认就是全开，而"服务暂时答不上来"跟"用户关掉了它"是两回
+ * 事，把后者的表现给前者，等于离线时功能凭空消失。
+ */
+async function enabledIds() {
+  try {
+    const res = await fetch(url("api/plugins"));
+    if (!res.ok) throw new Error(String(res.status));
+    const ids = await res.json();
+    if (Array.isArray(ids)) return ids;
+  } catch {
+    // 落到下面的默认
+  }
+  return PLUGINS.map((p) => p.id);
+}
 
 /**
  * Renders the page switcher into an existing header.
@@ -75,12 +82,23 @@ const TABS = /** @type {{ page: Page, href: string, key: string }[]} */ ([
  * @param {HTMLElement} header
  * @param {Page} current
  */
-export function renderNav(header, current) {
+export async function renderNav(header, current) {
+  const on = new Set(await enabledIds());
+  const tabs = [
+    { page: "sessions", href: url("./"), key: "list.title", icon: ICONS.sessions },
+    ...PLUGINS.filter((p) => on.has(p.id)).map((p) => ({
+      page: p.id,
+      href: url(`p/${p.id}/`),
+      key: p.titleKey,
+      icon: p.icon,
+    })),
+  ];
+
   const nav = document.createElement("nav");
   nav.className = "hseg";
   nav.setAttribute("aria-label", tr("nav.label"));
 
-  for (const tab of TABS) {
+  for (const tab of tabs) {
     const label = tr(tab.key);
     const active = tab.page === current;
     const node = document.createElement(active ? "span" : "a");
@@ -91,7 +109,7 @@ export function renderNav(header, current) {
       /** @type {HTMLAnchorElement} */ (node).href = tab.href;
     }
 
-    node.innerHTML = svg(ICONS[tab.page]);
+    node.innerHTML = svg(tab.icon);
     // Icons only, so the accessible name is the only thing naming this tab —
     // it is not decoration here, it is the label.
     node.title = label;
@@ -127,7 +145,7 @@ export async function renderHeader(current) {
   const header = /** @type {HTMLElement} */ (document.getElementById("header"));
   if (!header) return;
 
-  renderNav(header, current);
+  await renderNav(header, current);
 
   const actions = document.createElement("div");
   actions.className = "hactions";
@@ -160,7 +178,7 @@ export async function renderHeader(current) {
   // browsing directories needs real height, the soft keyboard needs somewhere
   // to push, and back should walk up the path rather than discard it.
   plus.addEventListener("click", () => {
-    location.href = "new.html";
+    location.href = url("new.html");
   });
 
   const [{ initNotifyToggle }, { openThemeSheet }] = await Promise.all([

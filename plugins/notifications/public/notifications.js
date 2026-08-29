@@ -1,8 +1,17 @@
 // The notification history: a log of pushes that were sent, so one swiped away
 // on the phone can still be found. Each row links to its session's terminal.
+//
+// Not @ts-check'd: its import specifiers are written for the URL the browser
+// resolves them against (this file is served at /p/notifications/notifications.js,
+// two segments deep), not the filesystem path it lives at
+// (plugins/notifications/public/notifications.js, three segments deep) — tsc's
+// module resolver only knows the latter and can't follow "../../i18n-apply.js"
+// to the real public/i18n-apply.js. Same exemption as gallery.js, list.js and
+// terminal.js.
 
-import { initLang, tr } from "./i18n-apply.js";
-import { renderHeader } from "./nav.js";
+import { initLang, tr } from "../../i18n-apply.js";
+import { renderHeader } from "../../nav.js";
+import { url } from "../../root.js";
 
 const listEl = document.getElementById("list");
 /**
@@ -35,7 +44,7 @@ function relativeTime(epochSeconds) {
 async function load() {
   let notifications;
   try {
-    ({ notifications } = await (await fetch("api/notifications")).json());
+    ({ notifications } = await (await fetch(url("api/notifications"))).json());
   } catch {
     listEl.replaceChildren(el("p", "empty", tr("notif.loadFailed")));
     return;
@@ -51,7 +60,7 @@ async function load() {
     ...notifications.map((n) => {
       const card = el("div", "card");
       const link = el("a", "card-main");
-      link.href = `terminal.html?target=${encodeURIComponent(n.session)}`;
+      link.href = url(`terminal.html?target=${encodeURIComponent(n.session)}`);
       const row = el("div", "row");
       row.append(el("span", "name", n.session));
       row.append(el("span", "time", relativeTime(n.ts)));

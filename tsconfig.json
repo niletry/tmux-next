@@ -18,5 +18,5 @@
 
     "types": ["bun"]
   },
-  "include": ["src/**/*.ts", "public/**/*.js"]
+  "include": ["src/**/*.ts", "public/**/*.js", "plugins/**/*.ts", "plugins/**/*.js"]
 }

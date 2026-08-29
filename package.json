@@ -27,6 +27,7 @@
   "files": [
     "src",
     "public",
+    "plugins",
     "hooks",
     "extensions",
     "README.md",

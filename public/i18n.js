@@ -12,6 +12,8 @@
  * is invisible to whoever speaks the other language.
  */
 
+import { PLUGINS } from "../plugins/registry.js";
+
 /** @typedef {Record<string, string>} Dict */
 
 /** @type {Dict} */
@@ -160,29 +162,6 @@ const zh = {
   "term.fontSmaller": "字号减小",
   "term.fontBigger": "字号增大",
   "term.moreKeys": "更多按键",
-
-  "gallery.title": "制品",
-  "gallery.loadFailed": "加载失败",
-  "gallery.count": "{n} 项",
-  "gallery.empty": "还没有制品",
-  "gallery.emptyHint": "把图片 / HTML / SVG 放进",
-  "gallery.prev": "上一个",
-  "gallery.next": "下一个",
-  "gallery.close": "‹ 关闭",
-  "gallery.download": "下载",
-  "gallery.noPreview": "这个类型不支持预览，点右上「下载」查看。",
-  "gallery.file": "文件",
-  "gallery.upload": "上传",
-  "gallery.uploading": "正在上传 {n} 个文件…",
-  "gallery.uploaded": "已上传 {n} 个文件",
-  "gallery.uploadPartial": "已上传 {n} 个，部分失败",
-  "gallery.uploadTooBig": "文件太大，单个不能超过 {mb}MB",
-  "gallery.uploadFailed": "上传失败",
-
-  "notif.title": "通知历史",
-  "notif.loadFailed": "加载失败",
-  "notif.count": "{n} 条",
-  "notif.empty": "还没有通知",
 
   "push.ended": "会话已结束",
   "push.waiting": "聊完了，在等你",
@@ -359,29 +338,6 @@ const en = {
   "term.fontBigger": "Larger font",
   "term.moreKeys": "More keys",
 
-  "gallery.title": "Artifacts",
-  "gallery.loadFailed": "Could not load",
-  "gallery.count": "{n}",
-  "gallery.empty": "No artifacts yet",
-  "gallery.emptyHint": "Drop images / HTML / SVG into",
-  "gallery.prev": "Previous",
-  "gallery.next": "Next",
-  "gallery.close": "‹ Close",
-  "gallery.download": "Download",
-  "gallery.noPreview": "This type cannot be previewed — use Download at the top right.",
-  "gallery.file": "file",
-  "gallery.upload": "Upload",
-  "gallery.uploading": "Uploading {n} files…",
-  "gallery.uploaded": "Uploaded {n} files",
-  "gallery.uploadPartial": "Uploaded {n}, some failed",
-  "gallery.uploadTooBig": "File too large — max {mb}MB each",
-  "gallery.uploadFailed": "Upload failed",
-
-  "notif.title": "Notification history",
-  "notif.loadFailed": "Could not load",
-  "notif.count": "{n}",
-  "notif.empty": "No notifications yet",
-
   "push.ended": "Session ended",
   "push.waiting": "Finished — waiting on you",
   "push.attention": "Needs your confirmation",
@@ -409,6 +365,18 @@ const en = {
   "key.usageCount": "{n} taps",
   "common.close": "Close",
 };
+
+// 合并前留一份内核自己的键，好让 plugins/registry.test.ts 查得出插件字典
+// 有没有悄悄盖掉内核的键——Object.assign 是静默覆盖，不留痕迹，合并之后
+// 就再也分不出一个键是内核原有的还是插件带进来的。
+export const KERNEL_KEYS = new Set([...Object.keys(zh), ...Object.keys(en)]);
+
+// 插件的文案。合并的是**全部**插件，不按启用过滤——禁用一个插件不该让它的
+// 文案在 i18n.test.ts 里变成"缺失键"，那个测试的价值恰恰在于它是全量的。
+for (const p of PLUGINS) {
+  Object.assign(zh, p.i18n.zh);
+  Object.assign(en, p.i18n.en);
+}
 
 /** @type {Record<string, Dict>} */
 export const DICTS = { zh, en };

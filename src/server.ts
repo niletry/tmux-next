@@ -5,7 +5,8 @@ import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
-import { listGallery, galleryFilePath, saveGalleryUpload, MAX_GALLERY_UPLOAD_BYTES } from "./gallery";
+import { HANDLERS, enabledPlugins } from "../plugins/handlers";
+import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { createDirectory, listDirectories, resolveDirectory } from "./paths";
@@ -13,7 +14,6 @@ import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand, resumeCommand } from "./tmux/session-create";
 import { listHistory } from "./claude-history";
 import { getVapid, saveSubscription, validSubscription, notify, type PushEvent } from "./push";
-import { readNotifications } from "./notifications";
 import { readTheme, writeTheme } from "./theme";
 import { themeOf } from "../public/themes.js";
 import { readAsrConfig, transcribe } from "./asr";
@@ -184,6 +184,7 @@ async function uploadResponse(req: Request): Promise<Response> {
 const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
 
 const PUBLIC_DIR = new URL("../public/", import.meta.url).pathname;
+const PLUGINS_DIR = new URL("../plugins/", import.meta.url).pathname;
 const MODULES_DIR = new URL("../", import.meta.url).pathname;
 
 // A build marker so a phone can see at a glance whether it has the latest
@@ -301,45 +302,6 @@ export function startServer(
         return Response.json({ restored: results.filter((r) => r.ok).length, results });
       }
 
-      // The drop-folder gallery: what is in it, and its files one by one. The
-      // name is reduced to a basename inside the gallery, so it can never reach
-      // a file elsewhere on disk. Content types come from Bun.file by extension,
-      // which is what lets the client render images and HTML.
-      if (url.pathname === "/api/gallery" && req.method === "GET") {
-        return Response.json(await listGallery());
-      }
-      if (url.pathname === "/api/gallery/file" && req.method === "GET") {
-        const path = galleryFilePath(url.searchParams.get("name") ?? "");
-        if (!path) return new Response("bad name", { status: 400 });
-        const file = Bun.file(path);
-        if (!(await file.exists())) return new Response("not found", { status: 404 });
-        return new Response(file);
-      }
-      if (url.pathname === "/api/gallery/file" && req.method === "POST") {
-        // Reject by declared length before buffering, so an oversized body never
-        // reaches formData() at all; the check after parsing still guards.
-        const declared = Number(req.headers.get("content-length") ?? "0");
-        if (declared > MAX_GALLERY_UPLOAD_BYTES) {
-          return new Response("too big", { status: 413 });
-        }
-        let form: FormData;
-        try {
-          form = await req.formData();
-        } catch {
-          return new Response("bad form", { status: 400 });
-        }
-        const file = form.get("file");
-        if (!(file instanceof File)) return new Response("missing file", { status: 400 });
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        if (bytes.byteLength === 0) return new Response("empty", { status: 400 });
-        if (bytes.byteLength > MAX_GALLERY_UPLOAD_BYTES) {
-          return new Response("too big", { status: 413 });
-        }
-        const name = await saveGalleryUpload(file.name, bytes);
-        if (!name) return new Response("bad name", { status: 400 });
-        return Response.json({ name });
-      }
-
       // Which toolbar keys get tapped, so their order can follow the evidence.
       // The client batches taps and beacons them here; GET reads the totals back.
       if (url.pathname === "/api/key-usage") {
@@ -376,12 +338,6 @@ export function startServer(
           { version: pkg.version, build: BUILD },
           { headers: { "Cache-Control": "no-cache" } },
         );
-      }
-
-      // A log of notifications that were sent, so one swiped away on the phone
-      // can still be found here.
-      if (url.pathname === "/api/notifications" && req.method === "GET") {
-        return Response.json({ notifications: await readNotifications() });
       }
 
       // What can be started, for the new-session picker. Capabilities travel
@@ -613,10 +569,79 @@ export function startServer(
         );
       }
 
+      // 前端要知道启用了哪些插件才能画顶栏。必须在插件分发**之前**判，
+      // 否则一个叫 plugins 的插件能把它盖掉（registry.test.ts 禁掉了这个 id）。
+      if (url.pathname === "/api/plugins" && req.method === "GET") {
+        return Response.json(enabledPlugins().map((p) => p.id));
+      }
+
+      // 插件的 API，各自挂在自己的前缀下。前缀由这里校验，插件只管自己认的
+      // 子路径；返回 null 就继续往下走到 404，而不是被它吞掉。
+      for (const p of enabledPlugins()) {
+        if (url.pathname === `/api/${p.id}` || url.pathname.startsWith(`/api/${p.id}/`)) {
+          const res = await HANDLERS[p.id]?.(req, url);
+          if (res) return res;
+        }
+      }
+
       // xterm.js ships as ES modules; serve them straight from node_modules.
       if (url.pathname.startsWith("/node_modules/")) {
         const mod = Bun.file(MODULES_DIR + url.pathname.slice(1));
         if (await mod.exists()) return new Response(mod);
+      }
+
+      // 同构清单：i18n.js 和 nav.js 都要 import 它，而静态资源只从 public/ 出。
+      // 只放这两种精确形状，不是把 plugins/ 整个目录挂出去。
+      // 不按启用过滤：字典是全量合并的，禁用的插件也得取得到清单。
+      if (url.pathname === "/plugins/registry.js") {
+        const file = Bun.file(PLUGINS_DIR + "registry.js");
+        if (await file.exists()) {
+          return new Response(file, {
+            headers: { "content-type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" },
+          });
+        }
+      }
+      const manifest = url.pathname.match(/^\/plugins\/([a-z][a-z0-9-]*)\/plugin\.js$/);
+      if (manifest) {
+        const file = Bun.file(`${PLUGINS_DIR}${manifest[1]}/plugin.js`);
+        if (await file.exists()) {
+          return new Response(file, {
+            headers: {
+              "content-type": "text/javascript; charset=utf-8",
+              "Cache-Control": "no-cache",
+            },
+          });
+        }
+      }
+
+      // 插件页面。/p/<id>/ 而不是 /<id>/：一级路径迟早跟 public/ 里的文件或
+      // 未来的 API 撞名。禁用的插件，页面跟着 API 一起消失。
+      const page = url.pathname.match(/^\/p\/([a-z][a-z0-9-]*)\/(.*)$/);
+      if (page) {
+        const [, id, rest] = page;
+        if (!enabledPlugins().some((p) => p.id === id)) {
+          return new Response("not found", { status: 404 });
+        }
+        const file = rest === "" ? "index.html" : rest!;
+        // 跟制品库文件名同一套收窄函数：插件目录同样不能被 ../ 爬出去。浏览器
+        // 会先规范化，裸客户端不会。
+        if (!safeBasename(file)) {
+          return new Response("bad name", { status: 400 });
+        }
+        const asset = Bun.file(`${PLUGINS_DIR}${id}/public/${file}`);
+        if (await asset.exists()) {
+          return new Response(asset, { headers: { "Cache-Control": "no-cache" } });
+        }
+        return new Response("not found", { status: 404 });
+      }
+
+      // 搬家前的地址。手机上存了书签、装了 PWA 的人不该撞 404。
+      // 相对的 location，子路径部署下同样成立。
+      if (url.pathname === "/gallery.html") {
+        return new Response(null, { status: 301, headers: { Location: "p/gallery/" } });
+      }
+      if (url.pathname === "/notifications.html") {
+        return new Response(null, { status: 301, headers: { Location: "p/notifications/" } });
       }
 
       const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
