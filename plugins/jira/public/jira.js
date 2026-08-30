@@ -104,7 +104,7 @@ function issueGroup(issue) {
 
   const startBtn = el("button", "btn primary", sessions.length ? tr("jira.newSession") : tr("jira.firstSession"));
   startBtn.type = "button";
-  startBtn.addEventListener("click", () => openCreateSheet(issue));
+  startBtn.addEventListener("click", () => openCreateSheet(issue, sessions.length > 0));
   group.append(startBtn);
 
   return group;
@@ -177,10 +177,11 @@ const NAME_ERRORS = {
  * for. Duplicating new.js's whole tree here would be the same UI twice for a
  * case that is already the common one.
  */
-function openCreateSheet(issue) {
+function openCreateSheet(issue, hasSessions) {
   const backdrop = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
-  sheet.append(el("h2", null, `${tr("jira.newSession")} — ${issue.key}`));
+  const heading = hasSessions ? tr("jira.newSession") : tr("jira.firstSession");
+  sheet.append(el("h2", null, `${heading} — ${issue.key}`));
 
   const filter = el("input", "field");
   filter.placeholder = tr("new.filterDirs");
@@ -228,7 +229,7 @@ function openCreateSheet(issue) {
   const error = el("p", "sheet-error");
   const actions = el("div", "sheet-actions");
   const cancel = el("button", "btn", tr("new.cancel"));
-  const submit = el("button", "btn primary", tr("jira.firstSession"));
+  const submit = el("button", "btn primary", heading);
   actions.append(cancel, submit);
 
   sheet.append(filter, list, nameField, agentRow, skipRow, error, actions);
