@@ -123,7 +123,7 @@ type Annotation = { text: string; detail?: string; tone?: "ok" | "warn" | "dim" 
 
 另一条路是让内核的新建页接一个 `?bind=` 参数、建成后回调插件——那需要给接缝开**第二个**口子（建后钩子）。一个功能里连开两个口子是坏味道，宁可吃这点重复。若将来第三个插件也要"建完之后做点什么"，那时才是把建后钩子做成正式能力的时候。
 
-预填会话名从单号来，撞名就 `-2`、`-3`。`POST /api/sessions` 吃 `{ dir, name?, agent?, skipPermissions?, resume? }`、返回 `{ name, created }`，名字冲突时报 `reserved`/`invalid`，前端接住给建议。
+预填会话名从单号来，撞名就 `-2`、`-3`。`POST /api/sessions` 吃 `{ dir, name?, agent?, skipPermissions?, resume? }`、返回 `{ name, created }`——**名字冲突时内核不报错**，它会复用已存在的同名会话并把 `created` 置为 `false`；前端得自己接住这个 `created: false`，据此提示用户而不是当成新会话跳转过去。`reserved`/`invalid` 是另外两类真实错误（名字撞了内核自己的 `web-` 前缀、名字里带了 tmux target 里有特殊含义的字符），不是名字冲突走的路径。
 
 ## SECURITY.md 要补的
 

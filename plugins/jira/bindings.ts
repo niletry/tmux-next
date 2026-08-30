@@ -44,8 +44,10 @@ export async function readBindings(): Promise<Record<string, Binding>> {
 /**
  * 写整张表：先写临时文件再 rename。
  *
- * rename 在同一文件系统内是原子的，所以并发的两次写不会把文件截成半截；后写的
- * 赢，而每次写的都是刚读回来的全表，所以丢的最多是一次并发里的一条，不是整张表。
+ * rename 在同一文件系统内是原子的，所以并发的两次写不会把文件截成半截。本进程
+ * 内的写者都排在下面那条队列（serialized）里，不会直接互相竞争；rename 的原子
+ * 性兜的是另一件事——另一个 bun 进程同时在写这份文件时，保证读到的永远是完整
+ * 的一版，不会是写了一半的半截 JSON。
  */
 async function writeBindings(all: Record<string, Binding>): Promise<void> {
   const dir = pluginStateDir("jira");
