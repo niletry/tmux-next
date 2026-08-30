@@ -332,6 +332,22 @@ header .count {
 
 .pending b { color: var(--dim); font-weight: 400; margin-left: 6px; }
 
+/* 插件贴在会话行上的标注。颜色全部取自主题变量，这个文件不该出现颜色字面量。 */
+.session-notes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.note {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--card);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-ok { color: var(--idle); }
+.note-warn { color: var(--term-red); }
+.note-dim { color: var(--dim); }
+
 .empty { padding: 24px; color: var(--dim); text-align: center; }
 
 /* ---- terminal page ---- */
