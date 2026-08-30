@@ -12,6 +12,8 @@ import type { JiraConfig } from "./config";
  */
 
 export type Issue = {
+  /** Jira 的内部数字 id。dev-status 按它查，不认 key。 */
+  id: string;
   key: string;
   summary: string;
   status: string;
@@ -73,7 +75,7 @@ export async function fetchIssues(
   const rows = Array.isArray(data?.issues) ? data.issues : [];
   const issues: Issue[] = [];
   for (const row of rows) {
-    const r = row as { key?: unknown; fields?: Record<string, any> };
+    const r = row as { id?: unknown; key?: unknown; fields?: Record<string, any> };
     // key 缺了就没法绑定也没法跳转，渲染出来只会是一行空白。
     if (typeof r?.key !== "string" || !r.key) continue;
     const f = r.fields ?? {};
@@ -84,6 +86,7 @@ export async function fetchIssues(
       typeof t.hierarchyLevel === "number" ? t.hierarchyLevel : t.subtask === true ? -1 : 0;
 
     issues.push({
+      id: typeof r.id === "string" ? r.id : "",
       key: r.key,
       summary: typeof f.summary === "string" ? f.summary : "",
       status: typeof f.status?.name === "string" ? f.status.name : "",

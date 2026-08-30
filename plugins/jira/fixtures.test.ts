@@ -29,11 +29,23 @@ test("插件目录里有文件可查", () => {
   expect(files.length).toBeGreaterThan(0);
 });
 
-test.each(files)("%s 里出现的域名只有 example.*", (file) => {
+/**
+ * 除 example.* 之外唯一放行的主机：Bitbucket 的公共服务地址。
+ *
+ * 它是这个插件第二跳的目的地，写死在源码里不可避免，而且它是所有人共用的公共域名，
+ * 不指向任何一家公司——这正是这条规则要防的东西的反面。放行写成一条具名的例外，
+ * 而不是把正则放宽，才不会顺手把别的什么也一起放进来。
+ */
+const ALLOWED_HOSTS = /^(api\.)?bitbucket\.org$/;
+
+test.each(files)("%s 里出现的域名只有 example.* 与 bitbucket.org", (file) => {
   const source = readFileSync(file, "utf8");
   const hosts = [...source.matchAll(/https?:\/\/([A-Za-z0-9.-]+)/g)].map((m) => m[1]!);
   const foreign = hosts.filter(
-    (h) => !/(^|\.)example\.(com|net|org)$/.test(h) && !/(^|\.)example\.atlassian\.net$/.test(h),
+    (h) =>
+      !/(^|\.)example\.(com|net|org)$/.test(h) &&
+      !/(^|\.)example\.atlassian\.net$/.test(h) &&
+      !ALLOWED_HOSTS.test(h),
   );
   expect({ file, foreign }).toEqual({ file, foreign: [] });
 });

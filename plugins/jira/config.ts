@@ -13,7 +13,16 @@ import { pluginStateDir } from "../state";
  * 模式跟 src/asr.ts 一样：没有文件就是"没配过"，不是错误。
  */
 
-export type JiraConfig = { url: string; email: string; token: string; jql: string };
+/** CI 那一跳的凭据。缺了就只列 PR、不问构建状态，不是错误。 */
+export type BitbucketConfig = { email: string; appPassword: string };
+
+export type JiraConfig = {
+  url: string;
+  email: string;
+  token: string;
+  jql: string;
+  bitbucket?: BitbucketConfig;
+};
 
 /** 分给我的、还没做完的，最近更新的在前。 */
 export const DEFAULT_JQL = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC";
@@ -36,7 +45,21 @@ export async function readJiraConfig(): Promise<JiraConfig | null> {
     const email = str(data?.email);
     const token = str(data?.token);
     if (!url || !email || !token) return null;
-    return { url, email, token, jql: str(data?.jql) || DEFAULT_JQL };
+
+    // Bitbucket 是可选的：没有它，PR 照列，只是 CI 一栏是"没问到"。半份配置
+    // （只有邮箱没有密码）当作没配，比拿它去打一串必然 401 的请求好。
+    const bb = (data?.bitbucket ?? {}) as Record<string, unknown>;
+    const bbEmail = str(bb.email);
+    const bbPass = str(bb.appPassword);
+    const bitbucket = bbEmail && bbPass ? { email: bbEmail, appPassword: bbPass } : undefined;
+
+    return {
+      url,
+      email,
+      token,
+      jql: str(data?.jql) || DEFAULT_JQL,
+      ...(bitbucket ? { bitbucket } : {}),
+    };
   } catch {
     return null;
   }

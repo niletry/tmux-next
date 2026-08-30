@@ -26,6 +26,7 @@ function fakeFetch(status: number, body: unknown, capture?: (req: Request) => vo
 const OK_BODY = {
   issues: [
     {
+      id: "10001",
       key: "EXAMPLE-1",
       fields: {
         summary: "登录页在窄屏下换行",
@@ -43,6 +44,7 @@ test("成功时把响应裁成渲染要用的形状", async () => {
     ok: true,
     issues: [
       {
+        id: "10001",
         key: "EXAMPLE-1",
         summary: "登录页在窄屏下换行",
         status: "In Progress",

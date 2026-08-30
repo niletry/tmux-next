@@ -1,5 +1,6 @@
 import { readJiraConfig } from "./config";
 import { fetchIssues, type Issue, type IssuesResult } from "./client";
+import { fetchDev, type DevResult } from "./dev";
 import { liveSessions } from "./sessions";
 import { readBindings, bindSession, unbindSession, resolveBindings } from "./bindings";
 import type { Annotation } from "../types";
@@ -27,6 +28,50 @@ async function issues(refresh: boolean): Promise<IssuesResult> {
   return result;
 }
 
+/**
+ * PR 与 CI 的缓存，按 issue id。
+ *
+ * 比工单列表的缓存活得久，因为它贵得多：一个单一次 dev-status，每个 PR 再一次
+ * Bitbucket。五十个单全量刷一遍是上百次请求，做成开页即拉会把速率限制撞穿。
+ *
+ * 所以默认吃缓存，刷新是显式的——而且可以只刷一个单。盯着一个 PR 等 CI 跑完的
+ * 时候，你要的是这一个单的最新状态，不是把另外四十九个也重问一遍。
+ */
+const DEV_CACHE_MS = 5 * 60_000;
+
+const devCache = new Map<string, { at: number; result: DevResult }>();
+
+/** 同时在跑的 dev-status 请求数。批量刷新时不至于一次打出去五十个连接。 */
+const DEV_CONCURRENCY = 4;
+
+async function dev(issueId: string, refresh: boolean): Promise<DevResult> {
+  const hit = devCache.get(issueId);
+  if (!refresh && hit && Date.now() - hit.at < DEV_CACHE_MS) return hit.result;
+
+  const config = await readJiraConfig();
+  if (!config) return { ok: false, reason: "auth" };
+
+  const result = await fetchDev(config, issueId);
+  // 只缓存成功。一次抖动不该让这个单的 PR 消失五分钟。
+  if (result.ok) devCache.set(issueId, { at: Date.now(), result });
+  return result;
+}
+
+/** 有并发上限的 map，跟 dev.ts 里那个同源，此处不共享是为了不把内部函数导出去。 */
+async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]!);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 export async function handle(req: Request, url: URL): Promise<Response | null> {
   if (url.pathname === "/api/jira/config" && req.method === "GET") {
     const config = await readJiraConfig();
@@ -38,6 +83,25 @@ export async function handle(req: Request, url: URL): Promise<Response | null> {
 
   if (url.pathname === "/api/jira/issues" && req.method === "GET") {
     return Response.json(await issues(url.searchParams.get("refresh") === "1"));
+  }
+
+  // PR 与 CI。带 id 就是一个单——这是"只刷这一个"的入口；不带就是当前列表里的全部，
+  // 走缓存加并发上限，而不是让浏览器自己发五十个请求。
+  if (url.pathname === "/api/jira/dev" && req.method === "GET") {
+    const refresh = url.searchParams.get("refresh") === "1";
+    const one = url.searchParams.get("id");
+
+    if (one !== null) {
+      // id 只可能是 Jira 的内部数字 id，它会被拼进一个对外的 URL。
+      if (!/^\d{1,19}$/.test(one)) return new Response("bad id", { status: 400 });
+      return Response.json({ dev: { [one]: await dev(one, refresh) } });
+    }
+
+    const listed = await issues(false);
+    if (!listed.ok) return Response.json({ dev: {} });
+    const ids = listed.issues.map((i) => i.id).filter(Boolean);
+    const results = await mapLimited(ids, DEV_CONCURRENCY, (id) => dev(id, refresh));
+    return Response.json({ dev: Object.fromEntries(ids.map((id, i) => [id, results[i]!])) });
   }
 
   if (url.pathname === "/api/jira/bindings" && req.method === "GET") {
