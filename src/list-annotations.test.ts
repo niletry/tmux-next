@@ -8,7 +8,7 @@ import { Window } from "happy-dom";
  * 以及标注文本永远走 textContent —— 插件不能往内核的列表里塞标记。
  */
 
-const PAGE = "/Users/lau/projects/tmux-next/.claude/worktrees/jira-plugin/public/list.js";
+const PAGE = new URL("../public/list.js", import.meta.url).pathname;
 
 const NOW = Math.floor(Date.now() / 1000);
 
