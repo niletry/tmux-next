@@ -16,6 +16,7 @@ import { initLang, tr } from "../../i18n-apply.js";
 import { renderHeader } from "../../nav.js";
 import { url } from "../../root.js";
 import { filterEntries, shortPath } from "../../dir-filter.js";
+import { pickSessionName } from "./session-name.js";
 
 const mainEl = /** @type {HTMLElement} */ (document.getElementById("issues"));
 
@@ -220,7 +221,17 @@ function openCreateSheet(issue, hasSessions) {
   pathField.autocomplete = "off";
 
   const nameField = el("input", "field");
-  nameField.value = issue.key;
+  // A free name, not always the issue key: the key itself is only free the
+  // first time. On "start another" it is already taken by the earlier
+  // session, and createSession does not error on a taken name — it reuses
+  // that session and reports created: false — so a repeat of the key here
+  // would silently reopen session #1 instead of making #2. The bound names
+  // for this issue are already known from `bindings`; api/sessions below
+  // fills in anything else live that happens to collide.
+  nameField.value = pickSessionName(
+    issue.key,
+    bindingsFor(issue.key).map((b) => b.session),
+  );
   nameField.autocapitalize = "none";
   nameField.autocomplete = "off";
 
@@ -338,6 +349,16 @@ function openCreateSheet(issue, hasSessions) {
       // The session exists either way; a missing binding just means it shows
       // up unattached to the issue rather than under it.
     }
+    if (created.created === false) {
+      // createSession does not error on a taken name — it reuses the
+      // existing session and reports created: false. Navigating as though a
+      // new session had started would hide that from the user entirely; say
+      // so and leave the sheet open so they can pick another name instead.
+      error.textContent = tr("jira.nameReused");
+      busy = false;
+      submit.disabled = false;
+      return;
+    }
     location.href = url("terminal.html?target=" + encodeURIComponent(created.name));
   });
 
@@ -359,6 +380,22 @@ function openCreateSheet(issue, hasSessions) {
         }
       })
       .catch(() => {});
+
+    // Refines the prefilled name against every live tmux session, not just
+    // this issue's bound ones — an unrelated session could already sit on
+    // "${issue.key}-2". Only tightens the field if the user has not already
+    // edited it themselves.
+    fetch(url("api/sessions"))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        const names = (body?.sessions ?? []).map((s) => s.name);
+        if (!names.length || nameField.dataset.touched) return;
+        nameField.value = pickSessionName(issue.key, names);
+      })
+      .catch(() => {});
+    nameField.addEventListener("input", () => {
+      nameField.dataset.touched = "1";
+    });
 
     try {
       const body = await (await fetch(url("api/directories"))).json();

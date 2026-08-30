@@ -34,6 +34,7 @@ export default {
       "jira.open": "进入",
       "jira.createFailed": "创建失败",
       "jira.nameTaken": "名字已被占用，换一个",
+      "jira.nameReused": "这个名字的会话已经存在，没有新建——换个名字再试",
       "jira.dirPath": "或者手动输入目录路径",
     },
     en: {
@@ -56,6 +57,7 @@ export default {
       "jira.open": "Open",
       "jira.createFailed": "Could not create",
       "jira.nameTaken": "That name is taken — pick another",
+      "jira.nameReused": "A session with that name already exists — nothing new was created. Try another name.",
       "jira.dirPath": "Or type a directory path",
     },
   },
