@@ -34,6 +34,7 @@ export default {
       "jira.open": "进入",
       "jira.createFailed": "创建失败",
       "jira.nameTaken": "名字已被占用，换一个",
+      "jira.dirPath": "或者手动输入目录路径",
     },
     en: {
       "jira.title": "Issues",
@@ -55,6 +56,7 @@ export default {
       "jira.open": "Open",
       "jira.createFailed": "Could not create",
       "jira.nameTaken": "That name is taken — pick another",
+      "jira.dirPath": "Or type a directory path",
     },
   },
 };

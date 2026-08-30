@@ -67,7 +67,7 @@ function sessionRow(binding) {
   link.href = url("terminal.html?target=" + encodeURIComponent(binding.session));
   link.title = tr("jira.open");
   if (!binding.live) {
-    row.classList.add("dim");
+    row.classList.add("note-dim");
     link.append(el("span", "group-count", tr("jira.dead")));
   }
   const unbind = el("button", "btn", tr("jira.unbind"));
@@ -143,18 +143,33 @@ async function reloadBindings() {
   }
 }
 
+/** Renders a failure state that still leaves the refresh button reachable, so a retry is one tap. */
+function renderIssuesFailure(message) {
+  setCount("");
+  renderEmpty(message);
+  mainEl.prepend(toolbar());
+}
+
 async function loadIssues(refresh) {
   const issuesUrl = refresh ? url("api/jira/issues?refresh=1") : url("api/jira/issues");
-  const [issuesRes, bindingsBody] = await Promise.all([
-    fetch(issuesUrl).then((r) => r.json()),
-    fetch(url("api/jira/bindings")).then((r) => r.json()),
-  ]);
+  let issuesRes, bindingsBody;
+  try {
+    [issuesRes, bindingsBody] = await Promise.all([
+      fetch(issuesUrl).then((r) => r.json()),
+      fetch(url("api/jira/bindings")).then((r) => r.json()),
+    ]);
+  } catch {
+    // A tmux-next-side hiccup (server restart, transient local failure) — not
+    // a Jira-side one, but "we could not reach our own server" reads the same
+    // to the user as "cannot reach Jira".
+    renderIssuesFailure(tr("jira.unreachable"));
+    return;
+  }
   bindings = bindingsBody.bindings ?? [];
 
   if (!issuesRes.ok) {
-    setCount("");
     const message = (REASON_MESSAGE[issuesRes.reason] ?? REASON_MESSAGE.unreachable)();
-    renderEmpty(message);
+    renderIssuesFailure(message);
     return;
   }
 
@@ -167,6 +182,10 @@ async function loadIssues(refresh) {
 const NAME_ERRORS = {
   reserved: () => tr("jira.nameTaken"),
   invalid: () => tr("jira.nameTaken"),
+  // Not a jira.* key: create.baddir already exists (public/i18n.js), is used
+  // by new.js for the same server error, and says more than "creation
+  // failed" without opening a second dictionary entry for one message.
+  baddir: () => tr("create.baddir"),
 };
 
 /**
@@ -188,6 +207,17 @@ function openCreateSheet(issue, hasSessions) {
   filter.autocapitalize = "none";
   filter.autocomplete = "off";
   const list = el("div", "dir-list");
+
+  // The recents list (api/directories) only ever contains directories that
+  // already have, or recently had, a tmux-next session in them — so an issue
+  // whose repository has never had one could not otherwise get a session
+  // started from this page at all. A free-text field reaches anywhere the
+  // normal new-session page can, without porting its whole drill-down browser
+  // (api/dirs) — the server already validates whatever lands here.
+  const pathField = el("input", "field");
+  pathField.placeholder = tr("jira.dirPath");
+  pathField.autocapitalize = "none";
+  pathField.autocomplete = "off";
 
   const nameField = el("input", "field");
   nameField.value = issue.key;
@@ -232,7 +262,7 @@ function openCreateSheet(issue, hasSessions) {
   const submit = el("button", "btn primary", heading);
   actions.append(cancel, submit);
 
-  sheet.append(filter, list, nameField, agentRow, skipRow, error, actions);
+  sheet.append(filter, list, pathField, nameField, agentRow, skipRow, error, actions);
   backdrop.append(sheet);
   document.body.append(backdrop);
 
@@ -256,6 +286,7 @@ function openCreateSheet(issue, hasSessions) {
         if (entry.path === selected) row.classList.add("on");
         row.addEventListener("click", () => {
           selected = entry.path;
+          pathField.value = "";
           drawList();
         });
         return row;
@@ -266,12 +297,13 @@ function openCreateSheet(issue, hasSessions) {
   let busy = false;
 
   submit.addEventListener("click", async () => {
-    if (!selected || busy) return;
+    const dir = pathField.value.trim() || selected;
+    if (!dir || busy) return;
     busy = true;
     error.textContent = "";
     submit.disabled = true;
 
-    const payload = { dir: selected, name: nameField.value.trim() || issue.key };
+    const payload = { dir, name: nameField.value.trim() || issue.key };
     if (skipBox.checked) payload.skipPermissions = true;
     if (chosenAgent !== "claude") payload.agent = chosenAgent;
 
@@ -317,6 +349,12 @@ function openCreateSheet(issue, hasSessions) {
       .then((body) => {
         if (body?.agents?.length) {
           agents = body.agents;
+          // The default may have come back unavailable on this machine; move
+          // the selection off it rather than leaving a disabled chip selected.
+          const current = agents.find((a) => a.id === chosenAgent);
+          if (current && current.available === false) {
+            chosenAgent = (agents.find((a) => a.available !== false) || agents[0]).id;
+          }
           drawAgents();
         }
       })
