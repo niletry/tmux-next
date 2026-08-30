@@ -1493,3 +1493,79 @@ header .htitle { font-size: 17px; font-weight: 600; }
 .jira-type.epic { color: var(--term-magenta); }
 .jira-type.bug { color: var(--term-red); }
 .jira-type.sub { text-transform: none; letter-spacing: 0; font-weight: 600; }
+
+/* PR rows under an issue. Facts, not a verdict: the counts say what the checks
+   returned and the reader decides what that means — a green tick painted over a
+   failed check would be this page tidying itself at the cost of being true. */
+.jira-prs { border-top: 1px solid var(--bg); }
+
+.jira-pr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  color: inherit;
+  text-decoration: none;
+}
+.jira-pr + .jira-pr { border-top: 1px solid var(--bg); }
+.jira-pr:active { background: var(--bg); }
+
+.jira-pr-id {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.jira-pr-state {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+.jira-pr-state.on { color: var(--accent); }
+.jira-pr-state.done { color: var(--idle); }
+
+/* The branch is the least urgent thing on the row, so it is the one that gives
+   up its width first. */
+.jira-pr-branch {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jira-ci {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.jira-ci.unknown, .jira-ci.none { color: var(--dim); }
+.jira-ci-ok { color: var(--idle); }
+.jira-ci-run { color: var(--accent); }
+.jira-ci-bad { color: var(--term-red); }
+
+/* Refreshing one issue rather than the whole board. Sits with the status so the
+   thing it refreshes is the thing it is next to. */
+.jira-again {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  margin: -6px -4px -6px 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 15px;
+  line-height: 1;
+}
+.jira-again:active { background: var(--bg); color: var(--fg); }
+.jira-again:disabled { opacity: 0.4; }

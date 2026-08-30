@@ -48,6 +48,8 @@ const REASON_MESSAGE = {
 let issues = [];
 /** @type {{ session: string, key: string, live: boolean }[]} */
 let bindings = [];
+/** issue id -> { ok: true, prs } | { ok: false, reason }。取不到就是没有，不是错误页。 */
+let dev = {};
 
 function bindingsFor(key) {
   return bindings.filter((b) => b.key === key);
@@ -59,6 +61,52 @@ function renderEmpty(message, hint) {
     p.append(document.createElement("br"), el("span", "ghint", hint));
   }
   mainEl.replaceChildren(p);
+}
+
+/**
+ * One PR's checks, summed up.
+ *
+ * Counts, not a verdict: which check matters is the reader's call, and a green
+ * tick painted over a failed one would be this page lying to make itself tidy.
+ * "Not asked" stays distinct from "none" for the same reason — one is a fact
+ * about the PR, the other is a fact about us.
+ */
+function checksSummary(pr) {
+  if (!pr.checksKnown) return el("span", "jira-ci unknown", "\u2014");
+  if (!pr.checks.length) return el("span", "jira-ci none", tr("jira.ciNone"));
+
+  const bad = pr.checks.filter((c) => c.state === "FAILED" || c.state === "STOPPED").length;
+  const running = pr.checks.filter((c) => c.state === "INPROGRESS").length;
+  const good = pr.checks.length - bad - running;
+
+  const wrap = el("span", "jira-ci");
+  if (good) wrap.append(el("span", "jira-ci-ok", "\u2713" + good));
+  if (running) wrap.append(el("span", "jira-ci-run", "\u25cf" + running));
+  if (bad) wrap.append(el("span", "jira-ci-bad", "\u2717" + bad));
+  // Per-check detail has to live somewhere reachable; a title costs the layout
+  // nothing, and the counts already carry the part you read at a glance.
+  wrap.title = pr.checks.map((c) => c.name + ": " + c.state).join("\n");
+  return wrap;
+}
+
+/** A PR's state colours itself the way an issue status does: open live, merged calm. */
+function prTone(status) {
+  if (status === "OPEN") return "jira-pr-state on";
+  if (status === "MERGED") return "jira-pr-state done";
+  return "jira-pr-state";
+}
+
+/** One PR, linking out to Bitbucket. Status words come from Jira as they are. */
+function prRow(pr) {
+  const row = el("a", "jira-pr");
+  row.href = pr.url;
+  row.target = "_blank";
+  row.rel = "noopener noreferrer";
+  row.append(el("span", "jira-pr-id", "#" + pr.id));
+  if (pr.status) row.append(el("span", prTone(pr.status), pr.status));
+  if (pr.branch) row.append(el("span", "jira-pr-branch", pr.branch));
+  row.append(checksSummary(pr));
+  return row;
 }
 
 /**
@@ -146,9 +194,34 @@ function issueGroup(issue) {
   }
   head.append(el("span", "jira-key", issue.key));
   if (issue.status) head.append(el("span", statusTone(issue.statusCategory), issue.status));
+
+  // Refreshing one issue rather than all of them: watching a PR's CI finish is a
+  // single-issue errand, and a full sweep is a dev-status call per issue plus one
+  // per PR — a hundred requests to answer a question about one card.
+  const again = el("button", "jira-again", "\u21bb");
+  again.type = "button";
+  again.title = tr("jira.refreshOne");
+  again.setAttribute("aria-label", tr("jira.refreshOne"));
+  again.addEventListener("click", async () => {
+    again.disabled = true;
+    try {
+      await loadDevOne(issue.id);
+    } finally {
+      renderIssues();
+    }
+  });
+  head.append(again);
+
   card.append(head);
 
   if (issue.summary) card.append(el("p", "jira-summary", issue.summary));
+
+  const entry = dev[issue.id];
+  if (entry && entry.ok && entry.prs.length) {
+    const prs = el("div", "jira-prs");
+    for (const pr of entry.prs) prs.append(prRow(pr));
+    card.append(prs);
+  }
 
   const sessions = bindingsFor(issue.key);
   if (sessions.length) {
@@ -196,6 +269,30 @@ function renderIssues() {
   mainEl.replaceChildren(toolbar(), ...issues.map(issueGroup));
 }
 
+/** Every issue's PRs. Cheap when not refreshing — the server caches it. */
+async function loadDev(refresh) {
+  try {
+    const res = await fetch(url("api/jira/dev" + (refresh ? "?refresh=1" : "")));
+    const body = await res.json();
+    dev = body.dev ?? {};
+  } catch {
+    // PRs are extra detail on top of the issue list; failing to get them must
+    // not take the page down with it.
+    dev = {};
+  }
+}
+
+/** One issue only — what you actually want while waiting on one PR's build. */
+async function loadDevOne(issueId) {
+  try {
+    const res = await fetch(url("api/jira/dev?refresh=1&id=" + encodeURIComponent(issueId)));
+    const body = await res.json();
+    Object.assign(dev, body.dev ?? {});
+  } catch {
+    // Same as above: this card keeps whatever it had, which beats an error page.
+  }
+}
+
 async function reloadBindings() {
   try {
     const body = await (await fetch(url("api/jira/bindings"))).json();
@@ -236,6 +333,7 @@ async function loadIssues(refresh) {
   }
 
   issues = issuesRes.issues ?? [];
+  await loadDev(refresh);
   renderIssues();
 }
 
