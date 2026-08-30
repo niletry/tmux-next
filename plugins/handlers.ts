@@ -2,6 +2,7 @@ import { PLUGINS } from "./registry.js";
 import type { Annotation, Plugin, PluginAnnotator, PluginHandler } from "./types";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
+import { handle as jira, annotate as jiraAnnotate } from "./jira/server";
 
 /**
  * 插件的服务端那一半。
@@ -9,7 +10,7 @@ import { handle as notifications } from "./notifications/server";
  * 跟 registry.js 分开，是因为那张表要被浏览器 import：清单里只要引到一个 .ts，
  * 服务端代码就被打进浏览器包。plugins/registry.test.ts 有一条断言专守这个。
  */
-export const HANDLERS: Record<string, PluginHandler> = { gallery, notifications };
+export const HANDLERS: Record<string, PluginHandler> = { gallery, notifications, jira };
 
 /**
  * 启用的插件。env 在这里现读——读 env 是服务端的事，放进同构的 registry.js 等于
@@ -26,7 +27,7 @@ export function enabledPlugins(): Plugin[] {
 }
 
 /** 插件的标注函数表。没有导出 annotate 的插件不出现在这里。 */
-export const ANNOTATORS: Record<string, PluginAnnotator> = {};
+export const ANNOTATORS: Record<string, PluginAnnotator> = { jira: jiraAnnotate };
 
 /** 一个插件最多能占用列表构建的多少时间。 */
 export const ANNOTATE_TIMEOUT_MS = 300;
@@ -68,6 +69,7 @@ export async function collectAnnotations(
         if (!got || typeof got !== "object" || Array.isArray(got)) return null;
         const clean: Record<string, Annotation> = {};
         for (const [session, raw] of Object.entries(got)) {
+          if (!sessions.includes(session)) continue; // 插件只能标注被问到的会话，不能塞进没要求的键
           const a = raw as Record<string, unknown>;
           const text = trim(a?.text, MAX_TEXT);
           if (!text) continue;

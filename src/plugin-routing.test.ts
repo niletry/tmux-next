@@ -6,6 +6,10 @@ process.env.TMUX_NEXT_GALLERY_DIR = join(
   tmpdir(),
   `plugroute-test-${Math.random().toString(36).slice(2, 10)}`,
 );
+process.env.TMUX_NEXT_JIRA_DIR = join(
+  tmpdir(),
+  `jira-test-${Math.random().toString(36).slice(2, 10)}`,
+);
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { startServer } from "./server";
@@ -123,4 +127,27 @@ test("通知页也是个插件：API、页面、顶栏三处都在", async () =>
   const old = await fetch(`${base()}/notifications.html`, { redirect: "manual" });
   expect(old.status).toBe(301);
   expect(old.headers.get("location")).toBe("p/notifications/");
+});
+
+test("jira 插件挂在自己的前缀下，未配置时如实说未配置", async () => {
+  const ids = (await (await fetch(`${base()}/api/plugins`)).json()) as string[];
+  expect(ids).toContain("jira");
+
+  // 这个测试进程没有 config.json（TMUX_NEXT_JIRA_DIR 指向临时目录），
+  // 所以这里检的是"没配置"这条路径，而不是去打真实的 Jira。
+  const cfg = await (await fetch(`${base()}/api/jira/config`)).json();
+  expect(cfg).toEqual({ configured: false });
+
+  const issues = await fetch(`${base()}/api/jira/issues`);
+  expect(issues.status).toBe(200);
+  expect(await issues.json()).toEqual({ ok: false, reason: "unconfigured" });
+});
+
+test("配置接口从不回显 token", async () => {
+  const text = await (await fetch(`${base()}/api/jira/config`)).text();
+  expect(text).not.toContain("token");
+});
+
+test("插件不认识的子路径落到 404", async () => {
+  expect((await fetch(`${base()}/api/jira/nonesuch`)).status).toBe(404);
 });

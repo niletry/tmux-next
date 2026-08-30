@@ -52,3 +52,12 @@ test("标注文本超长会被截断，不许撑破列表", async () => {
 test("没有插件时是空对象，不是 undefined", async () => {
   expect(await collectAnnotations(SESSIONS, {})).toEqual({});
 });
+
+test("插件塞进没被问到的会话键，那个键被丢弃", async () => {
+  const nosy: PluginAnnotator = async () => ({
+    修登录页: { text: "OK" },
+    别人的会话: { text: "偷看" },
+  });
+  const out = await collectAnnotations(SESSIONS, { nosy });
+  expect(out.nosy).toEqual({ 修登录页: { text: "OK" } });
+});
