@@ -1331,3 +1331,165 @@ header .htitle { font-size: 17px; font-weight: 600; }
   font-size: 16px; /* under 16px iOS zooms the page on focus */
 }
 
+/* ---- jira issues page ---- */
+
+/* An issue is a card, not a group heading. `.group-head` is the label this app
+   puts on a directory — uppercase, dim, 0.78rem, one line — and an issue
+   summary rendered through it came out a truncated grey whisper. A card is what
+   this app uses for a thing you act on. */
+.jira-card {
+  background: var(--card);
+  border-radius: 12px;
+  margin: 0 12px 12px;
+  overflow: hidden;
+}
+
+.jira-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 14px 14px 0;
+}
+
+/* An identifier, so it reads like one: accented, tabular, and never wrapped. */
+.jira-key {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status carries a colour as well as a word, so a glance down the list sorts
+   itself without reading. The pill sits on --bg, which is the card's own
+   backdrop — one step down rather than a new colour. */
+.jira-status {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.jira-status.on { color: var(--accent); }
+.jira-status.done { color: var(--idle); }
+
+/* The part you actually read. Two lines then clip: one truncated line loses the
+   half of a Jira title that says what it is about. */
+.jira-summary {
+  margin: 0;
+  padding: 4px 14px 12px;
+  font-size: 15px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Hairlines are --bg against --card: the same step the card already makes,
+   rather than a border colour nobody picked for this theme. */
+.jira-sessions { border-top: 1px solid var(--bg); }
+
+.jira-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 14px;
+}
+.jira-session + .jira-session { border-top: 1px solid var(--bg); }
+
+.jira-session-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 12px 0;
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jira-session-link:active { opacity: 0.6; }
+.jira-session.stopped .jira-session-link { color: var(--dim); }
+
+.jira-dead {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* Small and off to the side: unbinding is not what you came to do. */
+.jira-unbind {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+}
+.jira-unbind:active { background: var(--bg); color: var(--fg); }
+.jira-unbind:disabled { opacity: 0.5; }
+
+/* The card's own action, reading as an affordance rather than a form button. */
+.jira-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-top: 1px solid var(--bg);
+  background: transparent;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+}
+.jira-start:active { background: var(--bg); }
+.jira-plus { font-size: 17px; line-height: 1; }
+
+.jira-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 4px;
+}
+.jira-refresh {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 18px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+.jira-refresh:active { opacity: 0.85; }
+.jira-refresh:disabled { opacity: 0.6; }
+
+/* Type badge. The hierarchy decides the colour, the name only labels it — an
+   instance can rename "Epic" but cannot renumber the levels. Epics take the
+   magenta Jira has trained everyone to read as "container"; bugs take red;
+   everything else stays quiet, because "normal issue" is the common case and
+   does not need to shout. */
+.jira-type {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.jira-type.epic { color: var(--term-magenta); }
+.jira-type.bug { color: var(--term-red); }
+.jira-type.sub { text-transform: none; letter-spacing: 0; font-weight: 600; }

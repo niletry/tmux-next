@@ -15,7 +15,6 @@
 import { initLang, tr } from "../../i18n-apply.js";
 import { renderHeader } from "../../nav.js";
 import { url } from "../../root.js";
-import { filterEntries, shortPath } from "../../dir-filter.js";
 import { pickSessionName } from "./session-name.js";
 
 const mainEl = /** @type {HTMLElement} */ (document.getElementById("issues"));
@@ -62,17 +61,28 @@ function renderEmpty(message, hint) {
   mainEl.replaceChildren(p);
 }
 
+/**
+ * One session bound to an issue.
+ *
+ * The name owns the row and truncates; unbinding is a small icon button off to
+ * the right rather than a text button, because a text button per row turns a
+ * card with three sessions into a wall of buttons. Same reasoning and the same
+ * 36px target as the list page's `.more`.
+ */
 function sessionRow(binding) {
-  const row = el("div", "row jira-session");
+  const row = el("div", binding.live ? "jira-session" : "jira-session stopped");
+
   const link = el("a", "jira-session-link", binding.session);
   link.href = url("terminal.html?target=" + encodeURIComponent(binding.session));
   link.title = tr("jira.open");
-  if (!binding.live) {
-    row.classList.add("note-dim");
-    link.append(el("span", "group-count", tr("jira.dead")));
-  }
-  const unbind = el("button", "btn", tr("jira.unbind"));
+  row.append(link);
+
+  if (!binding.live) row.append(el("span", "jira-dead", tr("jira.dead")));
+
+  const unbind = el("button", "jira-unbind", "\u00d7");
   unbind.type = "button";
+  unbind.title = tr("jira.unbind");
+  unbind.setAttribute("aria-label", tr("jira.unbind"));
   unbind.addEventListener("click", async () => {
     unbind.disabled = true;
     try {
@@ -84,36 +94,87 @@ function sessionRow(binding) {
       renderIssues();
     }
   });
-  row.append(link, unbind);
+  row.append(unbind);
   return row;
 }
 
+/**
+ * The type badge's class.
+ *
+ * Colour comes from the hierarchy level, not the type name: an instance can
+ * rename its types but cannot renumber the levels, so an epic stays an epic
+ * here even where it is called something else. The name is only the label.
+ *
+ * A bug is the one exception worth a colour of its own, matched loosely on the
+ * name and degrading to neutral when it does not match — a wrong guess costs a
+ * grey badge, which is what everything else gets anyway.
+ */
+function typeTone(issue) {
+  if (issue.hierarchy >= 1) return "jira-type epic";
+  if (issue.hierarchy <= -1) return "jira-type sub";
+  if (/^bugs?$/i.test(issue.type.trim())) return "jira-type bug";
+  return "jira-type";
+}
+
+/** Status reads as a colour as well as a word: in progress accented, done calm, the rest neutral. */
+function statusTone(category) {
+  if (category === "done") return "jira-status done";
+  if (category === "indeterminate") return "jira-status on";
+  return "jira-status";
+}
+
+/**
+ * One issue, as a card.
+ *
+ * A card, not a `.group-head`: that class is this app's label for a directory —
+ * uppercase, dim, 0.78rem, single-line — and an issue summary put through it
+ * came out as a truncated grey whisper. `.card` is what this app uses for a
+ * thing you act on, and an issue is exactly that.
+ *
+ * The summary is the part you actually read, so it gets body size and two lines
+ * before it clips; the key is an identifier and gets the accent and the tabular
+ * figures that say so.
+ */
 function issueGroup(issue) {
-  const group = el("section", "group");
-  const head = el("div", "group-head");
-  head.append(el("span", "group-name", `${issue.key} · ${issue.summary}`));
-  head.append(el("span", "group-count", issue.status));
-  group.append(head);
+  const card = el("section", "jira-card");
+
+  const head = el("div", "jira-head");
+  // Sub-tasks carry the arrow because their indentation cannot survive a flat
+  // list — the badge is the only place left to say "this hangs off something".
+  if (issue.type) {
+    head.append(el("span", typeTone(issue), issue.hierarchy <= -1 ? "\u21b3 " + issue.type : issue.type));
+  }
+  head.append(el("span", "jira-key", issue.key));
+  if (issue.status) head.append(el("span", statusTone(issue.statusCategory), issue.status));
+  card.append(head);
+
+  if (issue.summary) card.append(el("p", "jira-summary", issue.summary));
 
   const sessions = bindingsFor(issue.key);
   if (sessions.length) {
-    group.append(el("p", "sheet-sub", tr("jira.sessions", { n: sessions.length })));
-    for (const b of sessions) group.append(sessionRow(b));
-  } else {
-    group.append(el("p", "sheet-sub", tr("jira.noSessions")));
+    const list = el("div", "jira-sessions");
+    for (const b of sessions) list.append(sessionRow(b));
+    card.append(list);
   }
 
-  const startBtn = el("button", "btn primary", sessions.length ? tr("jira.newSession") : tr("jira.firstSession"));
+  // Always "start another", never "open": one issue having several sessions is
+  // the normal case here, not an edge one. There is no "no sessions yet" line —
+  // the absence is already visible, and the button says what to do about it.
+  const startBtn = el("button", "jira-start");
   startBtn.type = "button";
-  startBtn.addEventListener("click", () => openCreateSheet(issue, sessions.length > 0));
-  group.append(startBtn);
+  startBtn.append(
+    el("span", "jira-plus", "\uff0b"),
+    el("span", null, sessions.length ? tr("jira.newSession") : tr("jira.firstSession")),
+  );
+  startBtn.addEventListener("click", () => startSession(issue, sessions.map((b) => b.session)));
+  card.append(startBtn);
 
-  return group;
+  return card;
 }
 
 function toolbar() {
-  const bar = el("div", "gal-toolbar");
-  const refresh = el("button", "gal-upload-btn", tr("jira.refresh"));
+  const bar = el("div", "jira-toolbar");
+  const refresh = el("button", "jira-refresh", tr("jira.refresh"));
   refresh.type = "button";
   refresh.addEventListener("click", async () => {
     refresh.disabled = true;
@@ -180,245 +241,68 @@ async function loadIssues(refresh) {
 
 // --- create-session overlay --------------------------------------------------
 
-const NAME_ERRORS = {
-  reserved: () => tr("jira.nameTaken"),
-  invalid: () => tr("jira.nameTaken"),
-  // Not a jira.* key: create.baddir already exists (public/i18n.js), is used
-  // by new.js for the same server error, and says more than "creation
-  // failed" without opening a second dictionary entry for one message.
-  baddir: () => tr("create.baddir"),
-};
+/**
+ * Hand the user to the kernel's own new-session page.
+ *
+ * This page used to carry its own create overlay, which meant a second, weaker
+ * directory picker: recents plus a typed path, with no browsing and no way to
+ * make a directory. Creating a session from an issue is supposed to take the
+ * same parameters as creating one by hand, and the only honest way to promise
+ * that is to use the same page.
+ *
+ * `return` brings control back here afterwards so the binding gets written —
+ * the kernel never learns what a Jira issue is, it only honours an address it
+ * was handed. new.html refuses anything that could leave this origin.
+ *
+ * The proposed name is a default, not a decision: the field stays editable, and
+ * for an issue that already has sessions it is the first free `-2`, `-3`, … so
+ * a second tap does not land on the first session's name.
+ */
+function startSession(issue, taken) {
+  const back = `p/jira/?bind=${encodeURIComponent(issue.key)}`;
+  const params = new URLSearchParams({
+    name: pickSessionName(issue.key, taken),
+    return: back,
+  });
+  location.href = url(`new.html?${params}`);
+}
 
 /**
- * The directory picker inside the overlay is deliberately not the full
- * browse-any-subdirectory tree from public/new.js — it filters the recent
- * directories the server already knows about (api/directories), which covers
- * the "start another session for the same project" case this page exists
- * for. Duplicating new.js's whole tree here would be the same UI twice for a
- * case that is already the common one.
+ * Coming back from new.html: record what the new session is for, then step out
+ * of the way into the terminal.
+ *
+ * The binding is written before navigating and its failure is swallowed on
+ * purpose — the session exists either way, and stranding someone on a blank
+ * issues page because a small bookkeeping write failed would be the worse of
+ * the two outcomes. An unrecorded session shows up unbound, which is visible
+ * and fixable; a lost session is neither.
  */
-function openCreateSheet(issue, hasSessions) {
-  const backdrop = el("div", "sheet-backdrop");
-  const sheet = el("div", "sheet");
-  const heading = hasSessions ? tr("jira.newSession") : tr("jira.firstSession");
-  sheet.append(el("h2", null, `${heading} — ${issue.key}`));
-
-  const filter = el("input", "field");
-  filter.placeholder = tr("new.filterDirs");
-  filter.autocapitalize = "none";
-  filter.autocomplete = "off";
-  const list = el("div", "dir-list");
-
-  // The recents list (api/directories) only ever contains directories that
-  // already have, or recently had, a tmux-next session in them — so an issue
-  // whose repository has never had one could not otherwise get a session
-  // started from this page at all. A free-text field reaches anywhere the
-  // normal new-session page can, without porting its whole drill-down browser
-  // (api/dirs) — the server already validates whatever lands here.
-  const pathField = el("input", "field");
-  pathField.placeholder = tr("jira.dirPath");
-  pathField.autocapitalize = "none";
-  pathField.autocomplete = "off";
-
-  const nameField = el("input", "field");
-  // A free name, not always the issue key: the key itself is only free the
-  // first time. On "start another" it is already taken by the earlier
-  // session, and createSession does not error on a taken name — it reuses
-  // that session and reports created: false — so a repeat of the key here
-  // would silently reopen session #1 instead of making #2. The bound names
-  // for this issue are already known from `bindings`; api/sessions below
-  // fills in anything else live that happens to collide.
-  nameField.value = pickSessionName(
-    issue.key,
-    bindingsFor(issue.key).map((b) => b.session),
-  );
-  nameField.autocapitalize = "none";
-  nameField.autocomplete = "off";
-
-  const agentRow = el("div", "agent-row");
-  let agents = [{ id: "claude", label: "Claude Code", supportsSkipPermissions: true }];
-  let chosenAgent = "claude";
-
-  function drawAgents() {
-    agentRow.replaceChildren();
-    if (agents.length < 2) return;
-    for (const a of agents) {
-      const btn = el("button", "agent-chip", a.label);
-      btn.type = "button";
-      if (a.id === chosenAgent) btn.classList.add("on");
-      if (a.available === false) {
-        btn.classList.add("missing");
-        btn.disabled = true;
-      }
-      btn.addEventListener("click", () => {
-        chosenAgent = a.id;
-        drawAgents();
-        const supported = agents.find((x) => x.id === chosenAgent)?.supportsSkipPermissions;
-        skipRow.style.display = supported ? "" : "none";
-        if (!supported) skipBox.checked = false;
-      });
-      agentRow.append(btn);
-    }
-  }
-
-  const skipRow = el("label", "check");
-  const skipBox = document.createElement("input");
-  skipBox.type = "checkbox";
-  skipRow.append(skipBox, el("span", null, tr("new.skipPermissions")));
-  skipRow.append(el("b", "check-warn", tr("new.skipWarn")));
-
-  const error = el("p", "sheet-error");
-  const actions = el("div", "sheet-actions");
-  const cancel = el("button", "btn", tr("new.cancel"));
-  const submit = el("button", "btn primary", heading);
-  actions.append(cancel, submit);
-
-  sheet.append(filter, list, pathField, nameField, agentRow, skipRow, error, actions);
-  backdrop.append(sheet);
-  document.body.append(backdrop);
-
-  const close = () => backdrop.remove();
-  cancel.addEventListener("click", close);
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) close();
-  });
-
-  /** @type {{ name: string, path: string }[]} */
-  let dirEntries = [];
-  let home = "";
-  let selected = "";
-
-  function drawList() {
-    const matches = filterEntries(dirEntries, filter.value);
-    list.replaceChildren(
-      ...matches.map((entry) => {
-        const row = el("button", "dir-row", shortPath(entry.path, home));
-        row.type = "button";
-        if (entry.path === selected) row.classList.add("on");
-        row.addEventListener("click", () => {
-          selected = entry.path;
-          pathField.value = "";
-          drawList();
-        });
-        return row;
-      }),
-    );
-  }
-
-  let busy = false;
-
-  submit.addEventListener("click", async () => {
-    const dir = pathField.value.trim() || selected;
-    if (!dir || busy) return;
-    busy = true;
-    error.textContent = "";
-    submit.disabled = true;
-
-    const payload = { dir, name: nameField.value.trim() || issue.key };
-    if (skipBox.checked) payload.skipPermissions = true;
-    if (chosenAgent !== "claude") payload.agent = chosenAgent;
-
-    let res;
-    try {
-      res = await fetch(url("api/sessions"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      error.textContent = tr("jira.createFailed");
-      busy = false;
-      submit.disabled = false;
-      return;
-    }
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      error.textContent = (NAME_ERRORS[body.error]?.()) ?? tr("jira.createFailed");
-      busy = false;
-      submit.disabled = false;
-      return;
-    }
-    const created = await res.json();
-    try {
-      await fetch(url("api/jira/bindings"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ session: created.name, key: issue.key }),
-      });
-    } catch {
-      // The session exists either way; a missing binding just means it shows
-      // up unattached to the issue rather than under it.
-    }
-    if (created.created === false) {
-      // createSession does not error on a taken name — it reuses the
-      // existing session and reports created: false. Navigating as though a
-      // new session had started would hide that from the user entirely; say
-      // so and leave the sheet open so they can pick another name instead.
-      error.textContent = tr("jira.nameReused");
-      busy = false;
-      submit.disabled = false;
-      return;
-    }
-    location.href = url("terminal.html?target=" + encodeURIComponent(created.name));
-  });
-
-  filter.addEventListener("input", drawList);
-
-  (async () => {
-    fetch(url("api/agents"))
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => {
-        if (body?.agents?.length) {
-          agents = body.agents;
-          // The default may have come back unavailable on this machine; move
-          // the selection off it rather than leaving a disabled chip selected.
-          const current = agents.find((a) => a.id === chosenAgent);
-          if (current && current.available === false) {
-            chosenAgent = (agents.find((a) => a.available !== false) || agents[0]).id;
-          }
-          drawAgents();
-        }
-      })
-      .catch(() => {});
-
-    // Refines the prefilled name against every live tmux session, not just
-    // this issue's bound ones — an unrelated session could already sit on
-    // "${issue.key}-2". Only tightens the field if the user has not already
-    // edited it themselves.
-    fetch(url("api/sessions"))
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => {
-        const names = (body?.sessions ?? []).map((s) => s.name);
-        if (!names.length || nameField.dataset.touched) return;
-        nameField.value = pickSessionName(issue.key, names);
-      })
-      .catch(() => {});
-    nameField.addEventListener("input", () => {
-      nameField.dataset.touched = "1";
+async function finishReturn(bind, created) {
+  try {
+    await fetch(url("api/jira/bindings"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session: created, key: bind }),
     });
-
-    try {
-      const body = await (await fetch(url("api/directories"))).json();
-      home = body.home;
-      const recent = body.recent ?? [];
-      // Home is always offered, even with no recent directories yet — the
-      // picker would otherwise have a selection nothing in the list shows.
-      const paths = recent.includes(home) ? recent : [home, ...recent];
-      dirEntries = paths.map((path) => ({
-        name: path.slice(path.lastIndexOf("/") + 1) || path,
-        path,
-      }));
-      selected = dirEntries[0]?.path ?? home;
-    } catch {
-      error.textContent = tr("jira.createFailed");
-    }
-    drawList();
-  })();
+  } catch {
+    // deliberately ignored — see above
+  }
+  location.replace(url("terminal.html?target=" + encodeURIComponent(created)));
 }
 
 // --- page entry --------------------------------------------------------------
 
 initLang().then(async () => {
+  // Handled before anything is drawn: this is a hand-off, not a page visit, and
+  // painting the issue list first would flash a screen nobody asked to see.
+  const q = new URLSearchParams(location.search);
+  const bind = q.get("bind");
+  const created = q.get("created");
+  if (bind && created) {
+    await finishReturn(bind, created);
+    return;
+  }
+
   await renderHeader("jira");
 
   let config;
