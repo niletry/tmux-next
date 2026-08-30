@@ -55,7 +55,9 @@ test("成功时把响应裁成渲染要用的形状", async () => {
 test("认证走 Basic，JQL 来自配置", async () => {
   let seen: Request | undefined;
   await fetchIssues(CONFIG, fakeFetch(200, OK_BODY, (r) => (seen = r)));
-  expect(seen?.url).toStartWith("https://example.atlassian.net/rest/api/3/search");
+  // /rest/api/3/search 停在 2024 年,2025-05-01 被 Jira Cloud 彻底摘掉;这里认
+  // 定新路径 /search/jql,不能只认前缀,不然改回旧路径这条断言也不会报错。
+  expect(seen?.url).toStartWith("https://example.atlassian.net/rest/api/3/search/jql?");
   expect(seen?.headers.get("authorization")).toBe(
     "Basic " + btoa("dev@example.com:secret-token"),
   );

@@ -42,7 +42,7 @@ export async function fetchIssues(
 
   let res: Response;
   try {
-    res = await fetcher(`${config.url}/rest/api/3/search?${query}`, {
+    res = await fetcher(`${config.url}/rest/api/3/search/jql?${query}`, {
       headers: { authorization: auth, accept: "application/json" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
