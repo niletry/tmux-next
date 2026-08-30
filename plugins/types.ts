@@ -17,3 +17,18 @@ export type Plugin = {
  * 前缀由内核校验。返回 null 表示"这个子路径我不认"，内核继续往下走到 404。
  */
 export type PluginHandler = (req: Request, url: URL) => Promise<Response | null>;
+
+/**
+ * 插件贴在会话列表某一行上的一小段只读展示数据。
+ *
+ * 只读、只展示：插件不能改列表行为、不能加动作、不能排序。这条边界是这个口子
+ * 得以存在的前提——当初砍掉"跨页面挂钩"是因为没有消费者，现在有了，但能力面
+ * 仍然按需要开，不按能想到的开。
+ */
+export type Annotation = { text: string; detail?: string; tone?: "ok" | "warn" | "dim" };
+
+/**
+ * 插件可选导出的标注函数。拿到的是会话名，返回会话名到标注的映射；不认识的会话
+ * 不必出现在返回值里。
+ */
+export type PluginAnnotator = (sessions: string[]) => Promise<Record<string, Annotation>>;

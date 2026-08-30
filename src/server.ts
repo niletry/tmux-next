@@ -5,7 +5,7 @@ import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
-import { HANDLERS, enabledPlugins } from "../plugins/handlers";
+import { HANDLERS, collectAnnotations, enabledPlugins } from "../plugins/handlers";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
@@ -224,7 +224,10 @@ export function startServer(
       }
 
       if (url.pathname === "/api/sessions" && req.method === "GET") {
-        return Response.json(await listSessions());
+        const sessions = await listSessions();
+        // 插件贴的只读标注。拿不到就没有，列表照常出——失败语义只有这一种。
+        const annotations = await collectAnnotations(sessions.map((s) => s.name));
+        return Response.json({ sessions, annotations });
       }
 
       if (url.pathname === "/api/sessions" && req.method === "POST") {

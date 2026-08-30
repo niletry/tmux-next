@@ -78,8 +78,8 @@ afterAll(async () => {
 test("serves the session list as JSON", async () => {
   const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions`);
   expect(res.status).toBe(200);
-  const body = (await res.json()) as { name: string }[];
-  expect(body.some((s) => s.name === BASE)).toBe(true);
+  const body = (await res.json()) as { sessions: { name: string }[] };
+  expect(body.sessions.some((s) => s.name === BASE)).toBe(true);
 });
 
 test("serves the list page HTML at the root", async () => {
@@ -474,18 +474,20 @@ test("pinning a session marks it and sorts it to the top", async () => {
     });
 
   expect((await pin(true)).status).toBe(204);
-  let list = (await (await fetch(`${base}/api/sessions`)).json()) as {
-    name: string;
-    pinned: boolean;
-  }[];
+  let list = (
+    (await (await fetch(`${base}/api/sessions`)).json()) as {
+      sessions: { name: string; pinned: boolean }[];
+    }
+  ).sessions;
   expect(list[0]!.name).toBe(BASE);
   expect(list[0]!.pinned).toBe(true);
 
   expect((await pin(false)).status).toBe(204);
-  list = (await (await fetch(`${base}/api/sessions`)).json()) as {
-    name: string;
-    pinned: boolean;
-  }[];
+  list = (
+    (await (await fetch(`${base}/api/sessions`)).json()) as {
+      sessions: { name: string; pinned: boolean }[];
+    }
+  ).sessions;
   expect(list.find((s) => s.name === BASE)!.pinned).toBe(false);
 });
 
@@ -918,4 +920,14 @@ test("插件清单能被浏览器取到，别的 plugins 路径取不到", async
     const res = await fetch(base + path);
     expect({ path, status: res.status }).toEqual({ path, status: 404 });
   }
+});
+
+test("会话列表带上插件标注这一格，即使没有插件标注任何东西", async () => {
+  const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions`);
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as { sessions: unknown; annotations: unknown };
+  expect(Array.isArray(body.sessions)).toBe(true);
+  // 形状永远在，前端就不必到处判 undefined。
+  expect(typeof body.annotations).toBe("object");
+  expect(body.annotations).not.toBeNull();
 });
