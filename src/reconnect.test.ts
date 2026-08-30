@@ -83,8 +83,13 @@ test("repeated reconnects leave no orphan web sessions", async () => {
     session.ws.close();
     await Bun.sleep(500);
   }
+  // Scoped to this process's own sessions: the tmux server is shared, and a real
+  // tmux-next serving someone's phone has web sessions of its own that are not
+  // this test's leak to find. The pid in the name is what tells them apart — the
+  // same discriminator the orphan reaper uses, and the one the kill test below
+  // already relies on.
   const listed = (await Bun.$`tmux list-sessions -F '#{session_name}'`.quiet().nothrow())
-    .stdout.toString().split("\n").filter((l) => l.startsWith("web-"));
+    .stdout.toString().split("\n").filter((l) => l.startsWith(`web-${process.pid}-`));
   expect(listed).toEqual([]);
 });
 

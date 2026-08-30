@@ -98,7 +98,7 @@ Pure logic (paths, geometry, gesture translation, control-protocol parsing, Web 
 
 `src/public-parses.test.ts` bundles every file in `public/` with `Bun.build` — those files are loaded only by a browser, so a syntax error there ships silently and the suite stays green. It exists because that happened twice.
 
-Parallel tmux tests can interfere: orphan-session assertions in `server.test.ts` and `reconnect.test.ts` occasionally flake when runs overlap. Re-run the file alone before treating a failure there as a regression.
+**Orphan-session assertions are scoped by pid, and must stay that way.** The tmux server is shared with everything else on the machine — very often a real tmux-next serving someone's phone, whose sessions are just as legitimately named `web-…`. `server.test.ts` and `reconnect.test.ts` therefore filter on `web-${process.pid}-`, not on `web-`. They used to count every web session on the box, which made them fail permanently on any machine where the app was actually in use, and that failure was written off for a long time as parallel-run flakiness. It was not: it reproduced with the file run alone. The pid in the name (`web-<pid>-<random>`, `session-manager.ts`) is what makes orphan collection decidable from outside the process, and it is what makes "did *I* leak one?" answerable in a test.
 
 ## Docs
 

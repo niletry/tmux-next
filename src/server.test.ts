@@ -52,9 +52,20 @@ import { THEMES } from "../public/themes.js";
 const BASE = "srv-test-" + Math.random().toString(36).slice(2, 8);
 let server: { stop(): void; port: number };
 
+/**
+ * The web sessions **this test process** created, not every one on the machine.
+ *
+ * The tmux server is shared with whatever else the developer is running — very
+ * often a real tmux-next serving their phone — and its web sessions are just as
+ * legitimately named `web-…`. Counting those made these assertions fail forever
+ * on any machine where the app was actually in use, which is every machine that
+ * matters. The pid in the name (`web-<pid>-<random>`, session-manager.ts) is
+ * exactly the discriminator needed: it is what makes orphan collection decidable
+ * from outside the process, and it makes "did I leak one?" answerable here.
+ */
 const webSessions = async () =>
   (await Bun.$`tmux list-sessions -F '#{session_name}'`.quiet().nothrow())
-    .stdout.toString().split("\n").filter((l) => l.startsWith("web-"));
+    .stdout.toString().split("\n").filter((l) => l.startsWith(`web-${process.pid}-`));
 
 const openSocket = async (): Promise<WebSocket> => {
   const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
