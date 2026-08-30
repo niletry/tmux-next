@@ -31,6 +31,7 @@ const OK_BODY = {
         summary: "登录页在窄屏下换行",
         updated: "2026-08-30T10:00:00.000+0000",
         status: { name: "In Progress", statusCategory: { key: "indeterminate" } },
+        issuetype: { name: "Bug", hierarchyLevel: 0 },
       },
     },
   ],
@@ -47,6 +48,8 @@ test("成功时把响应裁成渲染要用的形状", async () => {
         status: "In Progress",
         statusCategory: "indeterminate",
         updated: Date.parse("2026-08-30T10:00:00.000+0000"),
+        type: "Bug",
+        hierarchy: 0,
       },
     ],
   });
@@ -111,4 +114,32 @@ test("失败结果里不含 Jira 的原始错误体", async () => {
   );
   expect(JSON.stringify(res)).not.toContain("lacks permission");
   expect(JSON.stringify(res)).not.toContain("@example.com");
+});
+
+test("层级优先用 hierarchyLevel，认得出史诗和子任务", async () => {
+  const body = {
+    issues: [
+      { key: "EXAMPLE-9", fields: { issuetype: { name: "Epic", hierarchyLevel: 1 } } },
+      { key: "EXAMPLE-8", fields: { issuetype: { name: "Sub-task", hierarchyLevel: -1 } } },
+    ],
+  };
+  const res = await fetchIssues(CONFIG, fakeFetch(200, body));
+  expect(res.ok && res.issues.map((i) => [i.type, i.hierarchy])).toEqual([
+    ["Epic", 1],
+    ["Sub-task", -1],
+  ]);
+});
+
+test("老实例没有 hierarchyLevel 时退回 subtask 布尔", async () => {
+  // 层级判断不能只认新字段，否则老实例上每个子任务都会被当成普通工单。
+  const body = { issues: [{ key: "EXAMPLE-7", fields: { issuetype: { name: "子任务", subtask: true } } }] };
+  const res = await fetchIssues(CONFIG, fakeFetch(200, body));
+  expect(res.ok && res.issues[0]).toMatchObject({ type: "子任务", hierarchy: -1 });
+});
+
+test("完全没有 issuetype 时当普通工单，而不是丢掉这条", async () => {
+  // 认不出的类型该显示成普通工单，不该从列表里消失。
+  const body = { issues: [{ key: "EXAMPLE-6", fields: { summary: "没有类型" } }] };
+  const res = await fetchIssues(CONFIG, fakeFetch(200, body));
+  expect(res.ok && res.issues[0]).toMatchObject({ key: "EXAMPLE-6", type: "", hierarchy: 0 });
 });

@@ -17,6 +17,14 @@ export type Issue = {
   status: string;
   statusCategory: string;
   updated: number;
+  /** 类型名，原样来自实例——它是可以被改名的，所以只当标签用。 */
+  type: string;
+  /**
+   * 层级：史诗 1、普通 0、子任务 -1。
+   *
+   * 判断层级用它而不是用类型名：名字每个实例都能改，层级不能。名字只负责显示。
+   */
+  hierarchy: number;
 };
 
 export type IssuesResult =
@@ -26,7 +34,7 @@ export type IssuesResult =
 /** Jira 挂了不能把页面吊死。 */
 const TIMEOUT_MS = 8000;
 
-const FIELDS = "summary,status,updated";
+const FIELDS = "summary,status,updated,issuetype";
 
 export async function fetchIssues(
   config: JiraConfig,
@@ -69,6 +77,12 @@ export async function fetchIssues(
     // key 缺了就没法绑定也没法跳转，渲染出来只会是一行空白。
     if (typeof r?.key !== "string" || !r.key) continue;
     const f = r.fields ?? {};
+    // hierarchyLevel 是较新的字段；老实例只给 subtask 布尔，所以两条都认，
+    // 都没有就当普通层级——一个认不出的类型该显示成普通工单，不该消失。
+    const t = f.issuetype ?? {};
+    const hierarchy =
+      typeof t.hierarchyLevel === "number" ? t.hierarchyLevel : t.subtask === true ? -1 : 0;
+
     issues.push({
       key: r.key,
       summary: typeof f.summary === "string" ? f.summary : "",
@@ -76,6 +90,8 @@ export async function fetchIssues(
       statusCategory:
         typeof f.status?.statusCategory?.key === "string" ? f.status.statusCategory.key : "",
       updated: Date.parse(typeof f.updated === "string" ? f.updated : "") || 0,
+      type: typeof t.name === "string" ? t.name : "",
+      hierarchy,
     });
   }
   return { ok: true, issues };
