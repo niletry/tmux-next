@@ -48,6 +48,24 @@ service into an open query proxy against your instance.
 Turn the whole thing off with `TMUX_NEXT_DISABLE_PLUGINS=jira`; the tab, the
 API and the pages disappear together.
 
+### And, if you enable the PR view, a Bitbucket one
+
+Listing an issue's pull requests needs nothing extra: Jira's own dev-status
+endpoint answers with the token you already configured. **Build status does
+not** — this instance's CI never reports into Jira, so those come from
+Bitbucket, which means a second credential in the same file:
+`bitbucket.email` and `bitbucket.appPassword`.
+
+That widens the blast radius again. Someone who reaches this service cannot see
+the app password — no endpoint returns it — but they can use it, as you,
+against whatever it is scoped to. **Scope it to reads.** An app password with
+`Repositories: Read` and `Pull requests: Read` is enough for everything this
+plugin does; anything more is capability you are storing for no benefit.
+
+Leave the `bitbucket` section out entirely and the feature degrades honestly:
+pull requests still list, and their checks read as "not asked" rather than
+pretending there are none.
+
 ## Skipping permission prompts
 
 The create dialog can start Claude Code with `--dangerously-skip-permissions`.
