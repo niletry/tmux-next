@@ -11,7 +11,7 @@ process.env.TMUX_NEXT_JIRA_DIR = join(
   `jira-test-${Math.random().toString(36).slice(2, 10)}`,
 );
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { startServer } from "./server";
 import { pluginStateDir } from "../plugins/state";
 import { enabledPlugins } from "../plugins/handlers";
@@ -146,6 +146,42 @@ test("jira 插件挂在自己的前缀下，未配置时如实说未配置", asy
 test("配置接口从不回显 token", async () => {
   const text = await (await fetch(`${base()}/api/jira/config`)).text();
   expect(text).not.toContain("token");
+});
+
+test("已配置时，配置接口也从不回显 token", async () => {
+  // 上一条测试跑的是未配置路径——那条路径下不管回不回显 token 都会通过，因为
+  // 响应体里压根没有这个字段。真正要防的是已配置分支，所以这里单独造一份配置。
+  //
+  // 配置写进*另一个*临时目录，只在这个测试期间把 TMUX_NEXT_JIRA_DIR 指过去、
+  // 用完立刻在 finally 里指回来并删掉临时目录——readJiraConfig() 是逐次现读
+  // 路径的，指针一恢复，同文件里后面那条"未配置"断言（issues 端点）就不会因为
+  // 残留的 config.json 被拖去真的打 Jira。
+  const dir = mkdtempSync(join(tmpdir(), "jira-configured-test-"));
+  const token = "example-token-not-a-real-secret";
+  writeFileSync(
+    join(dir, "config.json"),
+    JSON.stringify({
+      url: "https://example.atlassian.net",
+      email: "dev@example.com",
+      token,
+    }),
+  );
+  const prevDir = process.env.TMUX_NEXT_JIRA_DIR;
+  process.env.TMUX_NEXT_JIRA_DIR = dir;
+  try {
+    const res = await fetch(`${base()}/api/jira/config`);
+    const text = await res.text();
+    expect(text).not.toContain(token);
+    const body = JSON.parse(text);
+    expect(body).toEqual({
+      configured: true,
+      url: "https://example.atlassian.net",
+      email: "dev@example.com",
+    });
+  } finally {
+    process.env.TMUX_NEXT_JIRA_DIR = prevDir;
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("插件不认识的子路径落到 404", async () => {
