@@ -12,6 +12,7 @@
 
 import gallery from "./gallery/plugin.js";
 import notifications from "./notifications/plugin.js";
+import jira from "./jira/plugin.js";
 
 /** @type {import("./types").Plugin[]} */
-export const PLUGINS = [gallery, notifications];
+export const PLUGINS = [gallery, notifications, jira];

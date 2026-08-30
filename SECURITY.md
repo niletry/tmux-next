@@ -30,6 +30,24 @@ Two things are easy to get wrong when setting that proxy up:
   machine with a public interface, or forwarding a port to it, skips the proxy
   entirely.
 
+## It can now hold a Jira credential
+
+With the Jira plugin configured, `~/.tmux-next/jira/config.json` holds an API
+token for your Jira instance. The file is `0600` and no endpoint ever returns
+the token — but that is not the boundary that matters. **Anyone who can reach
+this service can read your Jira through it**, as you, without ever seeing the
+token.
+
+So the warning above changes in kind, not just degree: an exposed port was
+already a shell, and is now a shell plus your issue tracker.
+
+The plugin only ever runs the JQL from `config.json`. It does not accept a
+query from the browser, and it must not be changed to — that would turn the
+service into an open query proxy against your instance.
+
+Turn the whole thing off with `TMUX_NEXT_DISABLE_PLUGINS=jira`; the tab, the
+API and the pages disappear together.
+
 ## Skipping permission prompts
 
 The create dialog can start Claude Code with `--dangerously-skip-permissions`.
