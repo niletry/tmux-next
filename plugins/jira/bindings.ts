@@ -60,8 +60,12 @@ async function writeBindings(all: Record<string, Binding>): Promise<void> {
  *
  * 原子 rename 只保证不会读到半截文件，不保证两次并发的读-改-写不互相覆盖——
  * 三个 bindSession 并发跑，各自先 readBindings() 再各自 writeBindings()，后写的
- * 会拿着自己那份"旧"全表覆盖前面写入的记录。这里用一条链把同一进程内的读-改-写
- * 串起来，跨进程的并发仍然只有 rename 的原子性兜底。
+ * 会拿着自己那份"旧"全表覆盖前面写入的记录。
+ *
+ * 这条队列串起本进程里**所有**对这份文件的写——bindSession、unbindSession，以及
+ * resolveBindings 里改名迁移的那次读-改-写——一个都不能漏在队列外面，漏一个就
+ * 留一个丢记录的洞。跨进程（另一个 bun 进程）的并发不在这条队列的覆盖范围内，
+ * 仍然只有 rename 的原子性兜底。
  */
 let queue: Promise<unknown> = Promise.resolve();
 function serialized<T>(fn: () => Promise<T>): Promise<T> {
@@ -114,14 +118,19 @@ export async function resolveBindings(live: LiveSession[]): Promise<ResolvedBind
   }
 
   if (renames.length) {
-    const next = await readBindings();
-    for (const [from, to] of renames) {
-      const moved = next[from];
-      if (!moved) continue;
-      delete next[from];
-      next[to] = moved;
-    }
-    await writeBindings(next);
+    // 整个读-改-写必须在队列里面，不只是写——在队列外面 readBindings()、再进队列
+    // writeBindings()，中间那道缝跟没排队一样，一次 bindSession 落在缝里就会被
+    // 这里读到的旧快照覆盖掉。
+    await serialized(async () => {
+      const next = await readBindings();
+      for (const [from, to] of renames) {
+        const moved = next[from];
+        if (!moved) continue;
+        delete next[from];
+        next[to] = moved;
+      }
+      await writeBindings(next);
+    });
   }
 
   return out;

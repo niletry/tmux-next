@@ -92,3 +92,16 @@ test("并发写不会丢记录", async () => {
   ]);
   expect(Object.keys(await readBindings()).sort()).toEqual(["a", "b", "c"]);
 });
+
+test("resolveBindings 的改名迁移和并发的 bindSession 不互相丢记录", async () => {
+  // resolveBindings 认出改名后会做一次读-改-写来迁移记录；这次读-改-写如果不在
+  // 跟 bindSession 同一条队列里，两边就会像"并发写不会丢记录"那个案例一样互相
+  // 用各自的旧快照覆盖对方——这里让它们真的并发，两条记录都要在。
+  await bindSession("旧名字", "EXAMPLE-1", "$7");
+  await Promise.all([
+    resolveBindings([{ id: "$7", name: "新名字" }]),
+    bindSession("另一个", "EXAMPLE-2", "$9"),
+  ]);
+  const all = await readBindings();
+  expect(Object.keys(all).sort()).toEqual(["另一个", "新名字"]);
+});
