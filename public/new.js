@@ -159,6 +159,26 @@ export function renderNewSession(root) {
    * directory should be a back step, but re-rendering the same screen should
    * not pile up entries.
    */
+  /**
+   * A caller-supplied place to go after the session is created.
+   *
+   * Plugin pages send the user here rather than duplicating this whole page,
+   * then need control back to record whatever the session means to them. This
+   * is the ordinary `?next=` of any web app, and the kernel stays ignorant of
+   * who is asking — it only knows someone left an address.
+   *
+   * Anything that could leave this origin is refused: a scheme, a
+   * protocol-relative `//host`, or a leading `/` that would escape a
+   * reverse-proxy subpath mount. What survives can only name a page of this
+   * app, resolved the same way every other link here is.
+   */
+  function safeReturn() {
+    const raw = new URLSearchParams(location.search).get("return");
+    if (!raw) return null;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//") || raw.startsWith("/")) return null;
+    return raw;
+  }
+
   function syncUrl(push) {
     // Guarded: history is unavailable in some embedded webviews, and browsers
     // rate-limit these calls. Neither is worth breaking the page over.
@@ -166,6 +186,13 @@ export function renderNewSession(root) {
     const params = new URLSearchParams();
     if (current) params.set("dir", current);
     if (step === 2) params.set("resume", "1");
+    // Carried through directory browsing so a reload mid-flow still knows where
+    // it was going and what it was going to be called.
+    const incoming = new URLSearchParams(location.search);
+    for (const key of ["name", "return"]) {
+      const value = incoming.get(key);
+      if (value) params.set(key, value);
+    }
     const url = `new.html?${params}`;
     if (url === location.pathname.slice(1) + location.search) return;
     try {
@@ -377,6 +404,14 @@ export function renderNewSession(root) {
         return;
       }
       const body = await res.json();
+      const back = safeReturn();
+      if (back) {
+        // The caller gets the created name appended to whatever it asked for,
+        // and decides itself where the user ends up.
+        const sep = back.includes("?") ? "&" : "?";
+        location.href = `${back}${sep}created=${encodeURIComponent(body.name)}`;
+        return;
+      }
       location.href = `terminal.html?target=${encodeURIComponent(body.name)}`;
     } catch {
       error.textContent = tr("new.offline");
@@ -442,6 +477,11 @@ export function renderNewSession(root) {
   // The address bar is the source of truth on load: opening
   // new.html?dir=/some/path lands there directly, and back/forward move
   // between the directories visited rather than leaving the page.
+  // A caller may propose a name; the field stays editable, so this is a default
+  // rather than a decision.
+  const wantName = new URLSearchParams(location.search).get("name");
+  if (wantName) nameField.value = wantName;
+
   window.addEventListener("popstate", () => {
     const params = new URLSearchParams(location.search);
     const want = params.get("dir");
