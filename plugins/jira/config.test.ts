@@ -52,6 +52,7 @@ test("写进去读得回来，JQL 缺省时补默认值", async () => {
     email: "dev@example.com",
     token: "secret-token",
     jql: "",
+    onlyKeyedPrs: true,
   });
   const cfg = await readJiraConfig();
   expect(cfg?.url).toBe("https://example.atlassian.net");
@@ -65,6 +66,7 @@ test("配置文件只有属主可读写", async () => {
     email: "dev@example.com",
     token: "secret-token",
     jql: "",
+    onlyKeyedPrs: true,
   });
   const s = await stat(join(root, "config.json"));
   // 0600。同机器上的别的用户不该能读到这个 token。
@@ -77,4 +79,25 @@ test("末尾斜杠被吃掉，好让 URL 拼接不出双斜杠", async () => {
     JSON.stringify({ url: "https://example.atlassian.net/", email: "dev@example.com", token: "t" }),
   );
   expect((await readJiraConfig())?.url).toBe("https://example.atlassian.net");
+});
+
+test("onlyKeyedPrs 缺省即开，只有显式 false 才关", async () => {
+  // 默认过滤，是因为 dev-status 的关联很松：实测三个单里两个挂着别人的 PR。
+  // 一条挂错的 PR 会骗人，而被滤掉的那些有计数摆在界面上。
+  await writeFile(
+    join(root, "config.json"),
+    JSON.stringify({ url: "https://example.atlassian.net", email: "dev@example.com", token: "t" }),
+  );
+  expect((await readJiraConfig())?.onlyKeyedPrs).toBe(true);
+
+  await writeFile(
+    join(root, "config.json"),
+    JSON.stringify({
+      url: "https://example.atlassian.net",
+      email: "dev@example.com",
+      token: "t",
+      onlyKeyedPrs: false,
+    }),
+  );
+  expect((await readJiraConfig())?.onlyKeyedPrs).toBe(false);
 });

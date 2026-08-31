@@ -22,6 +22,14 @@ export type JiraConfig = {
   token: string;
   jql: string;
   bitbucket?: BitbucketConfig;
+  /**
+   * 只保留分支或标题里带着本单单号的 PR。默认开。
+   *
+   * Jira 的 dev-status 关联很松：提交信息里提到过别的单号，那个 PR 就会挂到这个单
+   * 下面。实测样本里三个单有两个挂着别人的 PR，所以默认是过滤——一条挂错的 PR 会
+   * 骗人，而被过滤掉的那些有计数摆在界面上，看得见也能一键关掉。
+   */
+  onlyKeyedPrs: boolean;
 };
 
 /** 分给我的、还没做完的，最近更新的在前。 */
@@ -58,6 +66,8 @@ export async function readJiraConfig(): Promise<JiraConfig | null> {
       email,
       token,
       jql: str(data?.jql) || DEFAULT_JQL,
+      // 缺省即开：显式写 false 才关掉。
+      onlyKeyedPrs: data?.onlyKeyedPrs !== false,
       ...(bitbucket ? { bitbucket } : {}),
     };
   } catch {

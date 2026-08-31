@@ -44,14 +44,14 @@ const devCache = new Map<string, { at: number; result: DevResult }>();
 /** 同时在跑的 dev-status 请求数。批量刷新时不至于一次打出去五十个连接。 */
 const DEV_CONCURRENCY = 4;
 
-async function dev(issueId: string, refresh: boolean): Promise<DevResult> {
+async function dev(issueId: string, issueKey: string, refresh: boolean): Promise<DevResult> {
   const hit = devCache.get(issueId);
   if (!refresh && hit && Date.now() - hit.at < DEV_CACHE_MS) return hit.result;
 
   const config = await readJiraConfig();
   if (!config) return { ok: false, reason: "auth" };
 
-  const result = await fetchDev(config, issueId);
+  const result = await fetchDev(config, issueId, issueKey);
   // 只缓存成功。一次抖动不该让这个单的 PR 消失五分钟。
   if (result.ok) devCache.set(issueId, { at: Date.now(), result });
   return result;
@@ -91,16 +91,22 @@ export async function handle(req: Request, url: URL): Promise<Response | null> {
     const refresh = url.searchParams.get("refresh") === "1";
     const one = url.searchParams.get("id");
 
+    // 单号从缓存的工单列表里查，不从请求里收：它决定哪些 PR 被留下，让浏览器指定
+    // 等于把过滤规则交给调用方。
+    const listed = await issues(false);
+    const keyById = new Map(listed.ok ? listed.issues.map((i) => [i.id, i.key]) : []);
+
     if (one !== null) {
       // id 只可能是 Jira 的内部数字 id，它会被拼进一个对外的 URL。
       if (!/^\d{1,19}$/.test(one)) return new Response("bad id", { status: 400 });
-      return Response.json({ dev: { [one]: await dev(one, refresh) } });
+      return Response.json({ dev: { [one]: await dev(one, keyById.get(one) ?? "", refresh) } });
     }
 
-    const listed = await issues(false);
     if (!listed.ok) return Response.json({ dev: {} });
     const ids = listed.issues.map((i) => i.id).filter(Boolean);
-    const results = await mapLimited(ids, DEV_CONCURRENCY, (id) => dev(id, refresh));
+    const results = await mapLimited(ids, DEV_CONCURRENCY, (id) =>
+      dev(id, keyById.get(id) ?? "", refresh),
+    );
     return Response.json({ dev: Object.fromEntries(ids.map((id, i) => [id, results[i]!])) });
   }
 

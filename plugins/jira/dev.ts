@@ -43,10 +43,32 @@ export type PullRequest = {
 };
 
 export type DevResult =
-  | { ok: true; prs: PullRequest[] }
+  | {
+      ok: true;
+      prs: PullRequest[];
+      /**
+       * 因为分支和标题里都没有本单单号而被滤掉的条数。
+       *
+       * 报出来而不是默默丢掉：过滤本身就是为了修"显示了不属于这个单的 PR"，如果
+       * 它反过来悄悄藏起真的东西，就只是把一种不准换成了另一种。
+       */
+      hidden: number;
+    }
   | { ok: false; reason: "auth" | "unreachable" };
 
 const TIMEOUT_MS = 8000;
+
+/**
+ * 这段文字里是否提到了这个单号。
+ *
+ * 带词边界：`ENG-451` 不该匹配上 `ENG-4510`，那正好是相邻编号最容易撞的形状。
+ * 大小写不敏感，因为分支名常被写成小写。
+ */
+export function mentionsKey(text: string, key: string): boolean {
+  if (!key) return false;
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Za-z0-9])${escaped}([^0-9]|$)`, "i").test(text);
+}
 
 /** 同时问 Bitbucket 的上限。一个单十几个 PR 时不至于一次打出去十几个连接。 */
 const CI_CONCURRENCY = 4;
@@ -148,6 +170,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Prom
 export async function fetchDev(
   config: JiraConfig,
   issueId: string,
+  issueKey: string,
   fetcher: typeof fetch = fetch,
 ): Promise<DevResult> {
   const url =
@@ -179,5 +202,13 @@ export async function fetchDev(
     };
   });
 
-  return { ok: true, prs: prs.filter((p): p is PullRequest => p !== null) };
+  const all = prs.filter((p): p is PullRequest => p !== null);
+
+  // dev-status 会把"提交信息里提过这个单号"的 PR 也算作关联，所以一个单下面常挂着
+  // 别人的 PR。分支或标题任一带着本单单号就留下——有人只在标题写单号，只看分支会
+  // 把那些误伤掉。没有 key 可比时不过滤：那种情况下过滤等于全删。
+  if (!config.onlyKeyedPrs || !issueKey) return { ok: true, prs: all, hidden: 0 };
+
+  const kept = all.filter((pr) => mentionsKey(pr.branch, issueKey) || mentionsKey(pr.title, issueKey));
+  return { ok: true, prs: kept, hidden: all.length - kept.length };
 }
