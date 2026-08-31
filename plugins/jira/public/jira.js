@@ -57,6 +57,13 @@ let dev = {};
  * 链接比没有链接更糟。
  */
 let instanceUrl = "";
+/**
+ * 每个单的 PR 数据是什么时候被接受的。
+ *
+ * 全量加载要十几秒，单单刷新一秒多。没有这个时间戳，在全量还没回来的窗口里点一次
+ * 单单刷新，等全量落地时会把刚刷到的新数据整个盖回旧的——正是"刷新完了没更新"。
+ */
+let devAt = {};
 
 function bindingsFor(key) {
   return bindings.filter((b) => b.key === key);
@@ -300,11 +307,19 @@ function issueGroup(issue) {
   again.setAttribute("aria-label", tr("jira.refreshOne"));
   again.addEventListener("click", async () => {
     again.disabled = true;
-    try {
-      await loadDevOne(issue.id);
-    } finally {
+    again.classList.remove("err");
+    again.classList.add("spin");
+    const ok = await loadDevOne(issue.id);
+    if (ok) {
+      // 重画会把这个按钮换成新的，转动状态随之消失——这正是"完成了"的信号。
       renderIssues();
+      return;
     }
+    // 失败时**不**重画：重画会抹掉刚设上的错误状态，看起来又变回"什么也没发生"。
+    again.classList.remove("spin");
+    again.classList.add("err");
+    again.title = tr("jira.unreachable");
+    again.disabled = false;
   });
   head.append(again);
 
@@ -378,25 +393,41 @@ function renderIssues() {
 
 /** Every issue's PRs. Cheap when not refreshing — the server caches it. */
 async function loadDev(refresh) {
+  const started = Date.now();
   try {
     const res = await fetch(url("api/jira/dev" + (refresh ? "?refresh=1" : "")));
     const body = await res.json();
-    dev = body.dev ?? {};
+    // Merged per issue, never assigned wholesale, and never over an entry that
+    // arrived after this request went out: the bulk load takes fifteen seconds
+    // and a single-issue refresh takes one, so the slow answer is routinely the
+    // stale one. Replacing the map outright is what made a refresh appear to do
+    // nothing — its result was overwritten seconds later by older data.
+    for (const [id, entry] of Object.entries(body.dev ?? {})) {
+      if ((devAt[id] ?? 0) > started) continue;
+      dev[id] = entry;
+      devAt[id] = Date.now();
+    }
   } catch {
     // PRs are extra detail on top of the issue list; failing to get them must
-    // not take the page down with it.
-    dev = {};
+    // not take the page down with it. Whatever is already shown stays.
   }
 }
 
 /** One issue only — what you actually want while waiting on one PR's build. */
+/** @returns {Promise<boolean>} 拿到新数据没有——调用方要据此决定给什么反馈。 */
 async function loadDevOne(issueId) {
   try {
     const res = await fetch(url("api/jira/dev?refresh=1&id=" + encodeURIComponent(issueId)));
     const body = await res.json();
-    Object.assign(dev, body.dev ?? {});
+    const entry = (body.dev ?? {})[issueId];
+    if (!entry) return false;
+    dev[issueId] = entry;
+    devAt[issueId] = Date.now();
+    return entry.ok !== false;
   } catch {
-    // Same as above: this card keeps whatever it had, which beats an error page.
+    // 这张卡保持原样，好过把整页换成错误页——但**要让人看见没成功**，
+    // 静默失败跟"刷了但没变化"长得一模一样。
+    return false;
   }
 }
 
@@ -480,7 +511,13 @@ function startSession(issue, taken) {
     name: pickSessionName(issue.key, taken),
     return: back,
   });
-  location.href = url(`new.html?${params}`);
+  // A new tab, so the issue list survives the errand. Creating a session is a
+  // detour from reading the list, and on a phone getting back to it otherwise
+  // means the browser's back button through a create page and a terminal.
+  //
+  // Called straight from the click handler with nothing awaited in between,
+  // which is what keeps this out of the popup blocker.
+  window.open(url(`new.html?${params}`), "_blank", "noopener");
 }
 
 /**
@@ -535,4 +572,13 @@ initLang().then(async () => {
   }
 
   await loadIssues();
+
+  // The session is created in the other tab now, so this one has no way to hear
+  // about it. Re-reading the bindings when the tab comes back into view is what
+  // keeps the list from being permanently one session out of date.
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible" || !issues.length) return;
+    await reloadBindings();
+    renderIssues();
+  });
 });

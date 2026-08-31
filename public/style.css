@@ -1633,3 +1633,17 @@ header .htitle { font-size: 17px; font-weight: 600; }
    for attention. */
 a.jira-key, a.jira-parent { text-decoration: none; }
 a.jira-key:active, a.jira-parent:active { opacity: 0.6; }
+
+/* Refresh feedback. Without it the only sign anything happened was the button
+   dimming, which reads the same as a dead button — and a failure looked exactly
+   like a success that changed nothing. */
+.jira-again.spin { animation: jira-spin 0.9s linear infinite; color: var(--accent); }
+.jira-again.err { color: var(--term-red); }
+
+@keyframes jira-spin { to { transform: rotate(360deg); } }
+
+/* A spinner is motion nobody asked for; without it the accent colour still says
+   "working" and the button still returns to normal when it is done. */
+@media (prefers-reduced-motion: reduce) {
+  .jira-again.spin { animation: none; }
+}
