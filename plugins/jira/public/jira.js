@@ -16,6 +16,7 @@ import { initLang, tr } from "../../i18n-apply.js";
 import { renderHeader } from "../../nav.js";
 import { url } from "../../root.js";
 import { pickSessionName } from "./session-name.js";
+import { refreshState } from "./refresh-state.js";
 
 const mainEl = /** @type {HTMLElement} */ (document.getElementById("issues"));
 
@@ -64,6 +65,15 @@ let instanceUrl = "";
  * 单单刷新，等全量落地时会把刚刷到的新数据整个盖回旧的——正是"刷新完了没更新"。
  */
 let devAt = {};
+/**
+ * 正在刷新的单，以及上次刷新失败的单。
+ *
+ * 按钮的状态必须从这里推导，不能靠往 DOM 节点上挂 class：renderIssues() 是整体
+ * 重画，任何一次重画（比如慢半拍的全量加载回来了）都会把正在转的那个按钮连同它
+ * 的状态一起销毁重建。存在模块状态里，重画之后能原样还原。
+ */
+const refreshing = new Set();
+const refreshFailed = new Set();
 
 function bindingsFor(key) {
   return bindings.filter((b) => b.key === key);
@@ -315,25 +325,22 @@ function issueGroup(issue) {
   // Refreshing one issue rather than all of them: watching a PR's CI finish is a
   // single-issue errand, and a full sweep is a dev-status call per issue plus one
   // per PR — a hundred requests to answer a question about one card.
-  const again = el("button", "jira-again", "\u21bb");
+  const state = refreshState(issue.id, refreshing, refreshFailed);
+  const again = el("button", state.className, "\u21bb");
   again.type = "button";
-  again.title = tr("jira.refreshOne");
+  again.disabled = state.disabled;
+  again.title = state.failed ? tr("jira.unreachable") : tr("jira.refreshOne");
   again.setAttribute("aria-label", tr("jira.refreshOne"));
   again.addEventListener("click", async () => {
-    again.disabled = true;
-    again.classList.remove("err");
-    again.classList.add("spin");
+    if (refreshing.has(issue.id)) return;
+    refreshing.add(issue.id);
+    refreshFailed.delete(issue.id);
+    // 立刻重画，状态从上面那两个集合来——所以中途任何一次重画都还原得回来。
+    renderIssues();
     const ok = await loadDevOne(issue.id);
-    if (ok) {
-      // 重画会把这个按钮换成新的，转动状态随之消失——这正是"完成了"的信号。
-      renderIssues();
-      return;
-    }
-    // 失败时**不**重画：重画会抹掉刚设上的错误状态，看起来又变回"什么也没发生"。
-    again.classList.remove("spin");
-    again.classList.add("err");
-    again.title = tr("jira.unreachable");
-    again.disabled = false;
+    refreshing.delete(issue.id);
+    if (!ok) refreshFailed.add(issue.id);
+    renderIssues();
   });
   head.append(again);
 
