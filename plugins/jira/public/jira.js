@@ -134,6 +134,20 @@ function prRow(pr) {
 function sessionRow(binding) {
   const row = el("div", binding.live ? "jira-session" : "jira-session stopped");
 
+  // A terminal glyph, because without it a session is a line of text among
+  // lines of text: the PR rows above it and the summary above those are all set
+  // the same way, and the eye has nothing to catch on. Shape does that work
+  // before any reading starts.
+  const icon = el("span", "jira-session-icon");
+  icon.innerHTML =
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="3" y="4" width="18" height="16" rx="2"/>' +
+    '<path d="m7.5 10 2.5 2.5-2.5 2.5"/>' +
+    '<path d="M13 15h3.5"/>' +
+    "</svg>";
+  row.append(icon);
+
   const link = el("a", "jira-session-link", binding.session);
   link.href = url("terminal.html?target=" + encodeURIComponent(binding.session));
   link.title = tr("jira.open");

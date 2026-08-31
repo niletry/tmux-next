@@ -1647,3 +1647,14 @@ a.jira-key:active, a.jira-parent:active { opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) {
   .jira-again.spin { animation: none; }
 }
+
+/* The terminal glyph on a session row. A live session gets the accent — it is
+   somewhere you can go — and a stopped one goes quiet along with its name, so
+   the whole row reads as past tense rather than only its label. */
+.jira-session-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent);
+}
+.jira-session.stopped .jira-session-icon { color: var(--dim); }
