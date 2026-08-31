@@ -1379,13 +1379,22 @@ header .htitle { font-size: 17px; font-weight: 600; }
 
 /* The part you actually read. Two lines then clip: one truncated line loses the
    half of a Jira title that says what it is about. */
+/* The part you actually read, so it gets body size and three lines before it
+   clips — a Jira title routinely carries its point in the second half, and two
+   lines on a phone is about sixty characters.
+
+   The bottom gap is a margin, not padding, and that is the whole bug this once
+   had: `-webkit-line-clamp` clips at the *content* edge, so any padding-bottom
+   becomes a strip the clipped-away line shows through — a half-height fourth
+   line, visible on a phone and on nothing else. A margin sits outside the
+   overflow area and cannot leak. */
 .jira-summary {
-  margin: 0;
-  padding: 4px 14px 12px;
+  margin: 0 0 12px;
+  padding: 4px 14px 0;
   font-size: 15px;
   line-height: 1.4;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1569,3 +1578,58 @@ header .htitle { font-size: 17px; font-weight: 600; }
 }
 .jira-again:active { background: var(--bg); color: var(--fg); }
 .jira-again:disabled { opacity: 0.4; }
+
+/* Type as a glyph. A column of words in the same small caps has to be read; a
+   bolt, a bookmark and a dot are told apart before reading starts. The name is
+   not lost — it moves to title/aria-label — and a type with no glyph keeps its
+   .jira-type text badge instead, because an icon nobody can decode is worse
+   than the word it replaced. */
+.jira-typeicon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dim);
+}
+.jira-typeicon.epic { color: var(--term-magenta); }
+.jira-typeicon.bug { color: var(--term-red); }
+.jira-typeicon.story { color: var(--idle); }
+.jira-typeicon.task { color: var(--accent); }
+.jira-typeicon.sub { color: var(--dim); }
+
+/* What the key filter took out. Quiet, but present: the filter exists because
+   dev-status attaches other issues' PRs, and a filter that hides silently has
+   only traded one inaccuracy for another. */
+.jira-hidden {
+  margin: 0;
+  padding: 8px 14px;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* The parent, right after the key. Magenta when it is an epic, to agree with the
+   epic glyph; neutral when it is a sub-task's parent task, because calling that
+   an epic would be wrong — the same `parent` field carries both. The summary
+   lives in the title: the card head already holds a type, a key, a status and a
+   refresh, and a second sentence would crowd all of them. */
+.jira-parent {
+  flex: 0 0 auto;
+  max-width: 40%;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jira-parent.epic { color: var(--term-magenta); }
+
+/* The key and the parent chip are links into Jira now. They keep the colour and
+   weight they had as text — the affordance is the tap target, not a blue
+   underline, and underlining two identifiers in a row would fight the summary
+   for attention. */
+a.jira-key, a.jira-parent { text-decoration: none; }
+a.jira-key:active, a.jira-parent:active { opacity: 0.6; }

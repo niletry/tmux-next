@@ -50,6 +50,13 @@ let issues = [];
 let bindings = [];
 /** issue id -> { ok: true, prs } | { ok: false, reason }。取不到就是没有，不是错误页。 */
 let dev = {};
+/**
+ * 这个 Jira 实例的地址，从 /api/jira/config 来，不写死。
+ *
+ * 空字符串表示还没拿到——那种情况下单号退回纯文字：一个指向 undefined/browse/… 的
+ * 链接比没有链接更糟。
+ */
+let instanceUrl = "";
 
 function bindingsFor(key) {
   return bindings.filter((b) => b.key === key);
@@ -147,21 +154,100 @@ function sessionRow(binding) {
 }
 
 /**
- * The type badge's class.
+ * An issue key that opens the issue in Jira.
  *
- * Colour comes from the hierarchy level, not the type name: an instance can
- * rename its types but cannot renumber the levels, so an epic stays an epic
- * here even where it is called something else. The name is only the label.
+ * The instance address comes from the server's config rather than being written
+ * here: this page has no business knowing which Jira it is talking to, and a
+ * hard-coded host would be both wrong for anyone else and one more real name in
+ * a public repository.
  *
- * A bug is the one exception worth a colour of its own, matched loosely on the
- * name and degrading to neutral when it does not match — a wrong guess costs a
- * grey badge, which is what everything else gets anyway.
+ * With no address yet it degrades to plain text — a link to `undefined/browse/X`
+ * is worse than no link, because it looks tappable and goes nowhere.
  */
+function issueLink(key, className) {
+  if (!instanceUrl) return el("span", className, key);
+  const a = el("a", className, key);
+  a.href = `${instanceUrl}/browse/${encodeURIComponent(key)}`;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  return a;
+}
+
+/**
+ * The glyph for an issue type.
+ *
+ * Shapes, because a column of words all set in the same small caps is a column
+ * you have to read; a bolt, a bookmark and a dot are told apart before reading
+ * starts, which is the whole point of putting the type on the card.
+ *
+ * Which glyph is decided by the hierarchy level first and the name only after:
+ * an instance can rename its types but cannot renumber the levels, so an epic
+ * stays an epic here even where it is called something else. The names matched
+ * below are the standard ones; anything else returns null and the caller falls
+ * back to showing the name as text — an icon nobody can decode is worse than
+ * the word it replaced, and inventing a generic glyph for "some custom type"
+ * would erase the one piece of information that type carries.
+ */
+function typeIcon(issue) {
+  const name = issue.type.trim().toLowerCase();
+
+  // Level first: these two cannot be renamed out of recognition.
+  if (issue.hierarchy >= 1) {
+    // A bolt, which is what Jira has trained everyone to read as "epic".
+    return { cls: "epic", fill: true, paths: '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>' };
+  }
+  if (issue.hierarchy <= -1) {
+    // An arrow turning into a box: this hangs off something else.
+    return {
+      cls: "sub",
+      fill: false,
+      paths: '<path d="M4 5v6a2 2 0 0 0 2 2h5"/><path d="m9 10 3 3-3 3"/><rect x="13" y="9" width="7" height="8" rx="1.5"/>',
+    };
+  }
+
+  if (/^bugs?$/.test(name)) {
+    // Solid dot, the way Jira draws a bug, and the only filled circle here.
+    return { cls: "bug", fill: true, paths: '<circle cx="12" cy="12" r="7"/>' };
+  }
+  if (/^(story|stories|用户故事|故事)$/.test(name)) {
+    return { cls: "story", fill: false, paths: '<path d="M6 3h12v18l-6-4.5L6 21z"/>' };
+  }
+  if (/^(task|tasks|任务)$/.test(name)) {
+    return {
+      cls: "task",
+      fill: false,
+      paths: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>',
+    };
+  }
+  return null;
+}
+
+/** The badge for a type with no glyph: the name itself, which still says something. */
 function typeTone(issue) {
-  if (issue.hierarchy >= 1) return "jira-type epic";
-  if (issue.hierarchy <= -1) return "jira-type sub";
-  if (/^bugs?$/i.test(issue.type.trim())) return "jira-type bug";
   return "jira-type";
+}
+
+/**
+ * The type, as an icon where one exists and as its own name where it does not.
+ *
+ * The name never disappears — it moves to `title`/`aria-label`, so a pointer and
+ * a screen reader both still get the word the glyph stands for.
+ */
+function typeMark(issue) {
+  const icon = typeIcon(issue);
+  if (!icon) return el("span", typeTone(issue), issue.type);
+
+  const span = el("span", "jira-typeicon " + icon.cls);
+  span.innerHTML =
+    '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" ' +
+    (icon.fill
+      ? 'fill="currentColor" stroke="none">'
+      : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">') +
+    icon.paths +
+    "</svg>";
+  span.title = issue.type;
+  span.setAttribute("aria-label", issue.type);
+  return span;
 }
 
 /** Status reads as a colour as well as a word: in progress accented, done calm, the rest neutral. */
@@ -189,10 +275,20 @@ function issueGroup(issue) {
   const head = el("div", "jira-head");
   // Sub-tasks carry the arrow because their indentation cannot survive a flat
   // list — the badge is the only place left to say "this hangs off something".
-  if (issue.type) {
-    head.append(el("span", typeTone(issue), issue.hierarchy <= -1 ? "\u21b3 " + issue.type : issue.type));
+  if (issue.type) head.append(typeMark(issue));
+  head.append(issueLink(issue.key, "jira-key"));
+
+  // 父级跟在单号后面。同一个字段既装史诗也装子任务的父任务，所以叫法由层级决定：
+  // 把子任务的父任务标成「史诗」是错的，而两者作为上下文都值得显示。
+  if (issue.parent) {
+    const isEpic = issue.parent.hierarchy >= 1;
+    const chip = issueLink(issue.parent.key, isEpic ? "jira-parent epic" : "jira-parent");
+    // 标题进 title：卡片头已经有类型、单号、状态和刷新，再塞一句话就挤了。
+    chip.title = issue.parent.summary
+      ? `${issue.parent.key} · ${issue.parent.summary}`
+      : issue.parent.key;
+    head.append(chip);
   }
-  head.append(el("span", "jira-key", issue.key));
   if (issue.status) head.append(el("span", statusTone(issue.statusCategory), issue.status));
 
   // Refreshing one issue rather than all of them: watching a PR's CI finish is a
@@ -217,9 +313,14 @@ function issueGroup(issue) {
   if (issue.summary) card.append(el("p", "jira-summary", issue.summary));
 
   const entry = dev[issue.id];
-  if (entry && entry.ok && entry.prs.length) {
+  if (entry && entry.ok && (entry.prs.length || entry.hidden)) {
     const prs = el("div", "jira-prs");
     for (const pr of entry.prs) prs.append(prRow(pr));
+    // Say what was filtered rather than just filtering. The whole point of the
+    // filter is that dev-status attaches PRs that belong to other issues; a
+    // filter that then hides things silently has only swapped one kind of
+    // inaccuracy for another.
+    if (entry.hidden) prs.append(el("p", "jira-hidden", tr("jira.prHidden", { n: entry.hidden })));
     card.append(prs);
   }
 
@@ -251,8 +352,14 @@ function toolbar() {
   refresh.type = "button";
   refresh.addEventListener("click", async () => {
     refresh.disabled = true;
-    await loadIssues(true);
-    refresh.disabled = false;
+    try {
+      await loadIssues(true);
+    } finally {
+      // Re-enabled when the *list* is back, not when the PR data catches up —
+      // renderIssues() has already replaced this button by then anyway, and
+      // leaving it dead for another fourteen seconds would read as a hang.
+      refresh.disabled = false;
+    }
   });
   bar.append(refresh);
   return bar;
@@ -333,8 +440,19 @@ async function loadIssues(refresh) {
   }
 
   issues = issuesRes.issues ?? [];
-  await loadDev(refresh);
   renderIssues();
+
+  // PRs and builds arrive after the list is already on screen, not before it.
+  //
+  // The issue list itself answers in a second or two; the dev data behind it is
+  // a dev-status call per issue plus a Bitbucket call per PR, and measured
+  // against the real instance that is fourteen seconds for fifty issues.
+  // Awaiting it here — which is what this did at first — bought a blank page for
+  // the length of the slowest part of the page, to show a detail that is
+  // supplementary by its own design. The same sentence that justifies swallowing
+  // its failures applies to its latency: extra detail must not make the main
+  // thing wait for it.
+  loadDev(refresh).then(renderIssues);
 }
 
 // --- create-session overlay --------------------------------------------------
@@ -409,6 +527,8 @@ initLang().then(async () => {
   } catch {
     config = { configured: false };
   }
+  instanceUrl = typeof config.url === "string" ? config.url.replace(/\/+$/, "") : "";
+
   if (!config.configured) {
     renderEmpty(tr("jira.unconfigured"), tr("jira.unconfiguredHint"));
     return;
