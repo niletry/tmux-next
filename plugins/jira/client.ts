@@ -22,6 +22,14 @@ export type Issue = {
   /** 类型名，原样来自实例——它是可以被改名的，所以只当标签用。 */
   type: string;
   /**
+   * 父级，没有就是 null。
+   *
+   * 对普通工单来说父级就是它所属的史诗；对子任务来说是它挂着的那个任务。两者
+   * 都来自同一个 `parent` 字段，所以这里把父级的层级一并带上，让显示端自己决定
+   * 要不要叫它「史诗」——把子任务的父任务标成史诗是错的。
+   */
+  parent: { key: string; summary: string; hierarchy: number } | null;
+  /**
    * 层级：史诗 1、普通 0、子任务 -1。
    *
    * 判断层级用它而不是用类型名：名字每个实例都能改，层级不能。名字只负责显示。
@@ -36,7 +44,7 @@ export type IssuesResult =
 /** Jira 挂了不能把页面吊死。 */
 const TIMEOUT_MS = 8000;
 
-const FIELDS = "summary,status,updated,issuetype";
+const FIELDS = "summary,status,updated,issuetype,parent";
 
 export async function fetchIssues(
   config: JiraConfig,
@@ -85,6 +93,25 @@ export async function fetchIssues(
     const hierarchy =
       typeof t.hierarchyLevel === "number" ? t.hierarchyLevel : t.subtask === true ? -1 : 0;
 
+    // 父级用的是新式的 `parent` 字段，不是老的 Epic Link 自定义字段：这个实例里
+    // 两者都还在，但 parent 是现在填得准的那个，而自定义字段的编号每个实例都不同。
+    const pRaw = f.parent;
+    const pFields = pRaw?.fields ?? {};
+    const pType = pFields.issuetype ?? {};
+    const parent =
+      pRaw && typeof pRaw.key === "string" && pRaw.key
+        ? {
+            key: pRaw.key,
+            summary: typeof pFields.summary === "string" ? pFields.summary : "",
+            hierarchy:
+              typeof pType.hierarchyLevel === "number"
+                ? pType.hierarchyLevel
+                : pType.subtask === true
+                  ? -1
+                  : 0,
+          }
+        : null;
+
     issues.push({
       id: typeof r.id === "string" ? r.id : "",
       key: r.key,
@@ -95,6 +122,7 @@ export async function fetchIssues(
       updated: Date.parse(typeof f.updated === "string" ? f.updated : "") || 0,
       type: typeof t.name === "string" ? t.name : "",
       hierarchy,
+      parent,
     });
   }
   return { ok: true, issues };

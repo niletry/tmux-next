@@ -14,6 +14,7 @@ const CONFIG: JiraConfig = {
   email: "dev@example.com",
   token: "secret-token",
   jql: "assignee = currentUser()",
+  onlyKeyedPrs: true,
 };
 
 function fakeFetch(status: number, body: unknown, capture?: (req: Request) => void) {
@@ -33,6 +34,10 @@ const OK_BODY = {
         updated: "2026-08-30T10:00:00.000+0000",
         status: { name: "In Progress", statusCategory: { key: "indeterminate" } },
         issuetype: { name: "Bug", hierarchyLevel: 0 },
+        parent: {
+          key: "EXAMPLE-100",
+          fields: { summary: "登录体验", issuetype: { name: "Epic", hierarchyLevel: 1 } },
+        },
       },
     },
   ],
@@ -52,6 +57,7 @@ test("成功时把响应裁成渲染要用的形状", async () => {
         updated: Date.parse("2026-08-30T10:00:00.000+0000"),
         type: "Bug",
         hierarchy: 0,
+        parent: { key: "EXAMPLE-100", summary: "登录体验", hierarchy: 1 },
       },
     ],
   });
@@ -144,4 +150,35 @@ test("完全没有 issuetype 时当普通工单，而不是丢掉这条", async 
   const body = { issues: [{ key: "EXAMPLE-6", fields: { summary: "没有类型" } }] };
   const res = await fetchIssues(CONFIG, fakeFetch(200, body));
   expect(res.ok && res.issues[0]).toMatchObject({ key: "EXAMPLE-6", type: "", hierarchy: 0 });
+});
+
+test("没有父级时 parent 是 null，不是半个对象", async () => {
+  const body = { issues: [{ id: "1", key: "EXAMPLE-5", fields: { summary: "独立的单" } }] };
+  const res = await fetchIssues(CONFIG, fakeFetch(200, body));
+  expect(res.ok && res.issues[0]!.parent).toBeNull();
+});
+
+test("子任务的父级是任务，层级如实带出来——它不是史诗", async () => {
+  // 同一个 parent 字段既装史诗也装父任务，把两者都标成史诗是错的，所以层级要
+  // 一路带到显示端由它决定叫什么。
+  const body = {
+    issues: [
+      {
+        id: "2",
+        key: "EXAMPLE-6",
+        fields: {
+          issuetype: { name: "Sub-task", hierarchyLevel: -1 },
+          parent: { key: "EXAMPLE-5", fields: { summary: "父任务", issuetype: { name: "Task", hierarchyLevel: 0 } } },
+        },
+      },
+    ],
+  };
+  const res = await fetchIssues(CONFIG, fakeFetch(200, body));
+  expect(res.ok && res.issues[0]!.parent).toEqual({ key: "EXAMPLE-5", summary: "父任务", hierarchy: 0 });
+});
+
+test("请求里带上 parent 字段，否则父级永远是空的", async () => {
+  let seen: Request | undefined;
+  await fetchIssues(CONFIG, fakeFetch(200, OK_BODY, (r) => (seen = r)));
+  expect(decodeURIComponent(seen?.url ?? "")).toContain("parent");
 });
