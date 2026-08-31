@@ -1658,3 +1658,44 @@ a.jira-key:active, a.jira-parent:active { opacity: 0.6; }
   color: var(--accent);
 }
 .jira-session.stopped .jira-session-icon { color: var(--dim); }
+
+/* Filter rows. The chips are the app's existing selectable-chip vocabulary (the
+   agent picker uses the same), so a tapped one looks tapped without inventing a
+   second visual language. A selected chip tapped again clears itself, which is
+   why there is no "all" button taking up a slot. */
+.jira-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.jira-filter-row::-webkit-scrollbar { display: none; }
+
+.jira-filter-label {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* The row scrolls sideways rather than wrapping: a wrapped row of a dozen
+   statuses pushes the first card off a phone screen entirely. */
+.jira-filter-row .chip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.jira-filter-n {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}

@@ -17,6 +17,7 @@ import { renderHeader } from "../../nav.js";
 import { url } from "../../root.js";
 import { pickSessionName } from "./session-name.js";
 import { refreshState } from "./refresh-state.js";
+import { matches, options, NO_FILTERS } from "./filter.js";
 
 const mainEl = /** @type {HTMLElement} */ (document.getElementById("issues"));
 
@@ -74,6 +75,9 @@ let devAt = {};
  */
 const refreshing = new Set();
 const refreshFailed = new Set();
+
+/** 当前筛选。空字符串表示这一维不筛。 */
+let filters = { ...NO_FILTERS };
 
 function bindingsFor(key) {
   return bindings.filter((b) => b.key === key);
@@ -382,6 +386,31 @@ function issueGroup(issue) {
   return card;
 }
 
+/**
+ * 一行可点的筛选项。选中的再点一次就是取消——不需要单独的「全部」按钮。
+ *
+ * 标签收的是**翻译好的文本**而不是 key：src/i18n.test.ts 靠扫描字面量 `tr("…")`
+ * 找使用点，一个经变量传进来的 key 在它眼里是死键。
+ */
+function filterRow(label, dim, entries) {
+  if (!entries.length) return null;
+  const row = el("div", "jira-filter-row");
+  row.append(el("span", "jira-filter-label", label));
+
+  for (const [value, n] of entries) {
+    const on = filters[dim] === value;
+    const chip = el("button", on ? "chip on" : "chip");
+    chip.type = "button";
+    chip.append(el("span", null, value), el("span", "jira-filter-n", String(n)));
+    chip.addEventListener("click", () => {
+      filters = { ...filters, [dim]: on ? "" : value };
+      renderIssues();
+    });
+    row.append(chip);
+  }
+  return row;
+}
+
 function toolbar() {
   const bar = el("div", "jira-toolbar");
   const refresh = el("button", "jira-refresh", tr("jira.refresh"));
@@ -408,8 +437,21 @@ function renderIssues() {
     mainEl.prepend(toolbar());
     return;
   }
-  setCount(tr("jira.count", { n: issues.length }));
-  mainEl.replaceChildren(toolbar(), ...issues.map(issueGroup));
+
+  // 筛选项从当前这批工单算出来，所以只会出现真的有东西的选项。
+  const { epics, statuses } = options(issues, filters);
+  const shown = issues.filter((i) => matches(i, filters));
+
+  const bars = [toolbar(), filterRow(tr("jira.filterEpic"), "epic", epics), filterRow(tr("jira.filterStatus"), "status", statuses)];
+
+  setCount(tr("jira.count", { n: shown.length }));
+
+  if (!shown.length) {
+    // 筛没了跟本来就没有是两回事，所以留着筛选条——不然连取消都点不到。
+    mainEl.replaceChildren(...bars.filter(Boolean), el("p", "empty", tr("jira.noneMatch")));
+    return;
+  }
+  mainEl.replaceChildren(...bars.filter(Boolean), ...shown.map(issueGroup));
 }
 
 /** Every issue's PRs. Cheap when not refreshing — the server caches it. */
