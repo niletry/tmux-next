@@ -13,13 +13,12 @@ import type { ResolvedBinding } from "./session-binding";
  * 纯函数：不碰磁盘、不碰 tmux。要什么由调用方查好了传进来，于是这里能无头地测。
  */
 
-/** 一张单的 agent 状态：等你 › 在跑 › 闲着 › 没有会话。 */
-type AgentState = "waiting" | "working" | "idle" | "none";
+/** 一张单的 agent 状态：等你 › 在跑 › 没有会话。 */
+type AgentState = "waiting" | "working" | "none";
 
 const AGENT_TONE: Record<AgentState, Facet["tone"]> = {
   waiting: "warn",
   working: "ok",
-  idle: "dim",
   none: "dim",
 };
 
@@ -29,10 +28,13 @@ const AGENT_TONE: Record<AgentState, Facet["tone"]> = {
  * `turn` 优先：它从 transcript 的 stop_reason 读出来，是记录格式的一部分。读不到
  * 才退回 `idle`——那是认 TUI 屏幕上的空闲标记，会随 agent 改版无声失效，所以只当
  * 兜底，不当依据。
+ *
+ * 注意：这里 `idle` 是本仓库对"在提示符等你"这个状态的既定叫法。见 `public/list.js:219`
+ * 的等待点和 `:581` 的"等待你"徽章，它们都用 `session.idle` 来表示。
  */
-function stateOf(session: SessionSummary): "waiting" | "working" | "idle" {
+function stateOf(session: SessionSummary): "waiting" | "working" {
   if (session.turn) return session.turn;
-  return session.idle ? "idle" : "working";
+  return session.idle ? "waiting" : "working";
 }
 
 /**
@@ -40,13 +42,15 @@ function stateOf(session: SessionSummary): "waiting" | "working" | "idle" {
  *
  * 只要有**一个**会话在等你，整张单就算等你——手机上第一眼要回答的是"该我动了吗"，
  * 而一个在等的会话不该被同一张单下另一个正在跑的会话盖过去。
+ *
+ * 状态集只有三个：等你 › 在跑 › 没有会话。没有"闲着"这个状态，因为每一条活着的
+ * 会话要么在等（turn 或屏幕标记），要么在跑，二者必其一。
  */
 function agentState(sessions: SessionSummary[]): AgentState {
   if (!sessions.length) return "none";
   const states = sessions.map(stateOf);
   if (states.includes("waiting")) return "waiting";
-  if (states.includes("working")) return "working";
-  return "idle";
+  return "working";
 }
 
 export function kernelFacets(

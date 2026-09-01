@@ -59,9 +59,9 @@ test("没有会话的单，agent 维度是 none", () => {
   expect(dims(got, "it-1")["item.agent"]).toBe("none");
 });
 
-test("有活着的会话但都不在跑，是 idle", () => {
+test("没有 turn 时 idle 读作「在等你」", () => {
   const got = kernelFacets([item()], [session({ turn: null, idle: true })], [bind("甲", "it-1")]);
-  expect(dims(got, "it-1")["item.agent"]).toBe("idle");
+  expect(dims(got, "it-1")["item.agent"]).toBe("waiting");
 });
 
 test("turn 说在跑就是 working", () => {
@@ -133,4 +133,14 @@ test("多张单各算各的", () => {
   );
   expect(dims(got, "it-1")["item.agent"]).toBe("waiting");
   expect(dims(got, "it-2")["item.agent"]).toBe("none");
+});
+
+// `idle` 是本仓库对"在提示符等你"这个状态的既定叫法。见 `public/list.js:219` 的等待点
+// 和 `:581` 的"等待你"徽章，都用 `session.idle` 来标记。所以 idle: true 必须映射到
+// item.agent 的 "waiting"，不能是别的。这个测试锁住这个语义，防止它被字面意思重新诠释。
+test("idle 是本仓库对等待的既定叫法", () => {
+  const got = kernelFacets([item()], [session({ turn: null, idle: true })], [bind("甲", "it-1")]);
+  const agentFacet = got["it-1"]!.find((f) => f.dim === "item.agent")!;
+  expect(agentFacet.value).toBe("waiting");
+  expect(agentFacet.tone).toBe("warn");
 });
