@@ -232,7 +232,7 @@ function renderAnnotations(row, name, annotations) {
   row.append(wrap);
 }
 
-function card(session, annotations) {
+function card(session, annotations, itemsById) {
   const wrapper = el("div", "card");
   const link = el("a", "card-main");
   link.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
@@ -247,6 +247,18 @@ function card(session, annotations) {
     nameRow.append(dot);
   }
   nameRow.append(el("span", "name", session.name));
+  // A session bound to a work item shows that item's title. `itemId` pointing
+  // at nothing — the item was archived and swept, or an old page is reading a
+  // stale binding — is treated exactly like no binding at all: this list is
+  // not item-driven yet, so a dangling id must degrade silently rather than
+  // throw and blank the whole card.
+  const item = session.itemId ? itemsById?.get(session.itemId) : null;
+  if (item) {
+    const chip = el("span", "item-chip", item.title);
+    chip.title = `${tr("list.itemOf")}: ${item.title}`;
+    chip.setAttribute("aria-label", chip.title);
+    nameRow.append(chip);
+  }
   link.append(nameRow);
 
   const row = el("div", "row meta-row");
@@ -391,10 +403,11 @@ function groupHeader(label, path, key, count, collapsed) {
   return head;
 }
 
-function groupOf(label, path, key, sessions, collapsed, annotations) {
+function groupOf(label, path, key, sessions, collapsed, annotations, itemsById) {
   const group = el("section", "group" + (collapsed ? " collapsed" : ""));
   group.append(groupHeader(label, path, key, sessions.length, collapsed));
-  if (!collapsed) for (const session of sessions) group.append(card(session, annotations));
+  if (!collapsed)
+    for (const session of sessions) group.append(card(session, annotations, itemsById));
   return group;
 }
 
@@ -409,7 +422,7 @@ function groupOf(label, path, key, sessions, collapsed, annotations) {
  * Groups are ordered by their most recent member, so the project being worked
  * on rises to the top on its own.
  */
-function sections(sessions, annotations) {
+function sections(sessions, annotations, itemsById) {
   const out = [];
   const collapsed = collapsedSet();
 
@@ -420,7 +433,7 @@ function sections(sessions, annotations) {
     out.push(
       groupOf(
         tr("list.pinnedGroup"), null, "\u0000pinned", pinned,
-        collapsed.has("\u0000pinned"), annotations,
+        collapsed.has("\u0000pinned"), annotations, itemsById,
       ),
     );
   }
@@ -440,7 +453,7 @@ function sections(sessions, annotations) {
     // A session whose directory tmux could not report still needs a home; it
     // gets its own heading rather than silently joining someone else's.
     const label = path ? path.replace(/\/+$/, "").split("/").pop() || path : tr("list.noProject");
-    out.push(groupOf(label, path, path, members, collapsed.has(path), annotations));
+    out.push(groupOf(label, path, path, members, collapsed.has(path), annotations, itemsById));
   }
   return out;
 }
@@ -585,10 +598,14 @@ async function render() {
       fetchRestorable(),
     ]);
     // Older servers (and a phone holding a cached page against a newer one)
-    // return a bare array; a fresh server wraps it with plugin annotations.
-    const { sessions, annotations } = Array.isArray(body)
-      ? { sessions: body, annotations: {} }
+    // return a bare array; a fresh server wraps it with plugin annotations and
+    // the work items sessions may be bound to. Keep tolerating the bare-array
+    // shape either way — an old page can hit a new server just as easily as
+    // the reverse — so `items` simply falls back to empty.
+    const { sessions, annotations, items } = Array.isArray(body)
+      ? { sessions: body, annotations: {}, items: [] }
       : body;
+    const itemsById = new Map((items ?? []).map((item) => [item.id, item]));
     setCount(sessions.length ? tr("list.count", { n: sessions.length }) : "");
     setTabWaiting(sessions.filter((s) => s.idle).length);
 
@@ -596,7 +613,7 @@ async function render() {
     if (restorable.length) children.push(restoreBanner(restorable));
     children.push(
       ...(sessions.length
-        ? sections(sessions, annotations ?? {})
+        ? sections(sessions, annotations ?? {}, itemsById)
         : [el("p", "empty", tr("list.noSessions"))]),
     );
     listEl.replaceChildren(...children);

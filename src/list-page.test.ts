@@ -12,7 +12,13 @@ import { Window } from "happy-dom";
  * test in the suite would stay green.
  */
 
-const PAGE = "/Users/lau/projects/tmux-next/public/list.js";
+// Worktree-relative on purpose: a hardcoded absolute path here silently tests
+// whatever checkout happens to sit at that path rather than this one — proven
+// by editing public/list.js in this worktree into a syntax error and watching
+// every test in this file still pass, because it was importing the main
+// checkout's copy instead. `list-annotations.test.ts` already resolves this
+// way; this file just hadn't been touched since before worktrees were in use.
+const PAGE = new URL("../public/list.js", import.meta.url).pathname;
 
 const NOW = Math.floor(Date.now() / 1000);
 
@@ -34,6 +40,7 @@ function session(over: Record<string, unknown> = {}) {
     idle: false,
     pendingInput: null,
     preview: [],
+    itemId: null,
     ...over,
   };
 }
@@ -41,14 +48,17 @@ function session(over: Record<string, unknown> = {}) {
 /** Bodies the page POSTed, so a test can assert on what it asked the server for. */
 let posted: { url: string; body: string }[] = [];
 
-function stubFetch(sessions: unknown[], restorable: unknown[] = []) {
+function stubFetch(sessions: unknown[], restorable: unknown[] = [], items: unknown[] = []) {
   return (async (u: unknown, init?: RequestInit) => {
     const url = String(u);
     if (init?.method === "POST") {
       posted.push({ url, body: String(init.body ?? "") });
       if (url.includes("api/restore")) return new Response(JSON.stringify({ restored: 1 }));
     }
-    if (url.includes("api/sessions")) return new Response(JSON.stringify(sessions));
+    // 新形状：{ sessions, items, annotations }。裸数组那条兼容分支留在 list.js 里，
+    // 因为装成 PWA 的旧页面会打到新服务器，反过来也会。
+    if (url.includes("api/sessions"))
+      return new Response(JSON.stringify({ sessions, items, annotations: {} }));
     if (url.includes("api/restorable")) return new Response(JSON.stringify(restorable));
     if (url.includes("api/language")) return new Response(JSON.stringify({ lang: "en" }));
     if (url.includes("api/version"))
@@ -78,6 +88,7 @@ async function mount(
   sessions: unknown[],
   store: Record<string, string> = {},
   restorable: unknown[] = [],
+  items: unknown[] = [],
 ) {
   posted = [];
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
@@ -96,7 +107,7 @@ async function mount(
         store[k] = v;
       },
     },
-    fetch: stubFetch(sessions, restorable),
+    fetch: stubFetch(sessions, restorable, items),
     // The page polls every five seconds; a live timer would outlast the test
     // and keep the process from exiting.
     setInterval: () => 0,
@@ -373,4 +384,39 @@ test("a group's toggle selects that group and no other", async () => {
 
   const boxes = [...document.querySelectorAll<HTMLInputElement>(".restore-row input")];
   expect(boxes.map((b) => b.checked)).toEqual([true, true, false]);
+});
+
+/**
+ * The item a session is bound to.
+ *
+ * The kernel now knows which work item a session belongs to; this is the one
+ * place that binding becomes visible to a person deciding which row to open.
+ */
+
+const ITEM = {
+  id: "it-1",
+  title: "把登录页的报错文案改掉",
+  cwd: "/Users/x/projects/app",
+  source: { provider: "jira", ref: "EXAMPLE-1" },
+  tags: [],
+  createdAt: NOW - 3600,
+  closedAt: null,
+};
+
+test("绑了单的会话行上显示单标题", async () => {
+  const root = await mount([session({ name: "orbit", itemId: "it-1" })], {}, [], [ITEM]);
+  expect(root.querySelector(".item-chip")?.textContent).toContain("把登录页的报错文案改掉");
+});
+
+test("没绑单的会话不画标记，也不炸", async () => {
+  const root = await mount([session({ name: "orbit", itemId: null })], {}, [], [ITEM]);
+  expect(root.querySelector(".name")?.textContent).toBe("orbit");
+  expect(root.querySelector(".item-chip")).toBeNull();
+});
+
+// 绑定指向一张已经归档并被清掉的单时，渲染不能抛——抛了会吞掉整页，而不是少一个标记。
+test("itemId 指向一张不在 items 里的单时，当作没绑", async () => {
+  const root = await mount([session({ name: "orbit", itemId: "it-gone" })], {}, [], [ITEM]);
+  expect(root.querySelector(".name")?.textContent).toBe("orbit");
+  expect(root.querySelector(".item-chip")).toBeNull();
 });
