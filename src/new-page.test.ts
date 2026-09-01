@@ -151,7 +151,7 @@ test("创建成功且带 item 参数时，用服务端返回的名字去绑定�
   }) as typeof fetch;
 
   const root = await mount(fetchImpl, "/new.html?item=it-42");
-  const nameField = [...root.querySelectorAll(".field")][1] as HTMLInputElement | undefined;
+  const nameField = [...root.querySelectorAll(".field")][1] as unknown as HTMLInputElement | undefined;
   if (nameField) nameField.value = "myproj";
   (root.querySelector(".btn.primary") as unknown as HTMLElement).click();
   await new Promise((r) => setTimeout(r, 100));
