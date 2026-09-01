@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { fetchIssues } from "./client";
+import { fetchIssue, fetchIssues } from "./client";
 import type { JiraConfig } from "./config";
 
 /**
@@ -181,4 +181,40 @@ test("请求里带上 parent 字段，否则父级永远是空的", async () => 
   let seen: Request | undefined;
   await fetchIssues(CONFIG, fakeFetch(200, OK_BODY, (r) => (seen = r)));
   expect(decodeURIComponent(seen?.url ?? "")).toContain("parent");
+});
+
+// ---- 单条工单 ---------------------------------------------------------------
+
+test("单条刷新走 /issue/{key}，不拼 JQL", async () => {
+  // 这里完全不需要查询语言；而"服务端拼 JQL"这个动作一旦存在，下一个人就会想把它
+  // 参数化——JQL 只来自配置这条边界，最好连拼的能力都不给。
+  let seen: Request | undefined;
+  await fetchIssue(CONFIG, "EXAMPLE-1", fakeFetch(200, { key: "EXAMPLE-1", fields: {} }, (r) => (seen = r)));
+  expect(seen?.url).toContain("/rest/api/3/issue/EXAMPLE-1");
+  expect(seen?.url).not.toContain("jql");
+});
+
+test("单条与列表用同一套解析——两处各写一份必然会飘", async () => {
+  const raw = {
+    id: "10001",
+    key: "EXAMPLE-1",
+    fields: {
+      summary: "登录页在窄屏下换行",
+      updated: "2026-08-30T10:00:00.000+0000",
+      status: { name: "In Progress", statusCategory: { key: "indeterminate" } },
+      issuetype: { name: "Bug", hierarchyLevel: 0 },
+      parent: { key: "EXAMPLE-100", fields: { summary: "登录体验", issuetype: { hierarchyLevel: 1 } } },
+    },
+  };
+  const one = await fetchIssue(CONFIG, "EXAMPLE-1", fakeFetch(200, raw));
+  const many = await fetchIssues(CONFIG, fakeFetch(200, { issues: [raw] }));
+  expect(one.ok).toBe(true);
+  expect(many.ok).toBe(true);
+  if (!one.ok || !many.ok) return;
+  expect(one.issue).toEqual(many.issues[0]!);
+});
+
+test("单条：404 报查询有误，401 报凭据无效", async () => {
+  expect(await fetchIssue(CONFIG, "EXAMPLE-9", fakeFetch(404, {}))).toEqual({ ok: false, reason: "query" });
+  expect(await fetchIssue(CONFIG, "EXAMPLE-9", fakeFetch(401, {}))).toEqual({ ok: false, reason: "auth" });
 });

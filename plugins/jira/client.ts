@@ -46,6 +46,58 @@ const TIMEOUT_MS = 8000;
 
 const FIELDS = "summary,status,updated,issuetype,parent";
 
+/**
+ * 一行搜索结果 → 一个 Issue，认不出就是 null。
+ *
+ * 抽出来是因为现在有两条路进来：列表用搜索接口，单条刷新用 `/issue/{key}`。两处
+ * 各写一份解析，迟早会在某个字段上飘——而飘的那一刻没有任何测试会红，只是某个卡片
+ * 少了个史诗。
+ */
+export function toIssue(row: unknown): Issue | null {
+  const r = row as { id?: unknown; key?: unknown; fields?: Record<string, any> };
+  // key 缺了就没法绑定也没法跳转，渲染出来只会是一行空白。
+  if (typeof r?.key !== "string" || !r.key) return null;
+  const f = r.fields ?? {};
+
+  // hierarchyLevel 是较新的字段；老实例只给 subtask 布尔，所以两条都认，
+  // 都没有就当普通层级——一个认不出的类型该显示成普通工单，不该消失。
+  const t = f.issuetype ?? {};
+  const hierarchy =
+    typeof t.hierarchyLevel === "number" ? t.hierarchyLevel : t.subtask === true ? -1 : 0;
+
+  // 父级用的是新式的 `parent` 字段，不是老的 Epic Link 自定义字段：这个实例里
+  // 两者都还在，但 parent 是现在填得准的那个，而自定义字段的编号每个实例都不同。
+  const pRaw = f.parent;
+  const pFields = pRaw?.fields ?? {};
+  const pType = pFields.issuetype ?? {};
+  const parent =
+    pRaw && typeof pRaw.key === "string" && pRaw.key
+      ? {
+          key: pRaw.key,
+          summary: typeof pFields.summary === "string" ? pFields.summary : "",
+          hierarchy:
+            typeof pType.hierarchyLevel === "number"
+              ? pType.hierarchyLevel
+              : pType.subtask === true
+                ? -1
+                : 0,
+        }
+      : null;
+
+  return {
+    id: typeof r.id === "string" ? r.id : "",
+    key: r.key,
+    summary: typeof f.summary === "string" ? f.summary : "",
+    status: typeof f.status?.name === "string" ? f.status.name : "",
+    statusCategory:
+      typeof f.status?.statusCategory?.key === "string" ? f.status.statusCategory.key : "",
+    updated: Date.parse(typeof f.updated === "string" ? f.updated : "") || 0,
+    type: typeof t.name === "string" ? t.name : "",
+    hierarchy,
+    parent,
+  };
+}
+
 export async function fetchIssues(
   config: JiraConfig,
   fetcher: typeof fetch = fetch,
@@ -83,47 +135,44 @@ export async function fetchIssues(
   const rows = Array.isArray(data?.issues) ? data.issues : [];
   const issues: Issue[] = [];
   for (const row of rows) {
-    const r = row as { id?: unknown; key?: unknown; fields?: Record<string, any> };
-    // key 缺了就没法绑定也没法跳转，渲染出来只会是一行空白。
-    if (typeof r?.key !== "string" || !r.key) continue;
-    const f = r.fields ?? {};
-    // hierarchyLevel 是较新的字段；老实例只给 subtask 布尔，所以两条都认，
-    // 都没有就当普通层级——一个认不出的类型该显示成普通工单，不该消失。
-    const t = f.issuetype ?? {};
-    const hierarchy =
-      typeof t.hierarchyLevel === "number" ? t.hierarchyLevel : t.subtask === true ? -1 : 0;
-
-    // 父级用的是新式的 `parent` 字段，不是老的 Epic Link 自定义字段：这个实例里
-    // 两者都还在，但 parent 是现在填得准的那个，而自定义字段的编号每个实例都不同。
-    const pRaw = f.parent;
-    const pFields = pRaw?.fields ?? {};
-    const pType = pFields.issuetype ?? {};
-    const parent =
-      pRaw && typeof pRaw.key === "string" && pRaw.key
-        ? {
-            key: pRaw.key,
-            summary: typeof pFields.summary === "string" ? pFields.summary : "",
-            hierarchy:
-              typeof pType.hierarchyLevel === "number"
-                ? pType.hierarchyLevel
-                : pType.subtask === true
-                  ? -1
-                  : 0,
-          }
-        : null;
-
-    issues.push({
-      id: typeof r.id === "string" ? r.id : "",
-      key: r.key,
-      summary: typeof f.summary === "string" ? f.summary : "",
-      status: typeof f.status?.name === "string" ? f.status.name : "",
-      statusCategory:
-        typeof f.status?.statusCategory?.key === "string" ? f.status.statusCategory.key : "",
-      updated: Date.parse(typeof f.updated === "string" ? f.updated : "") || 0,
-      type: typeof t.name === "string" ? t.name : "",
-      hierarchy,
-      parent,
-    });
+    const issue = toIssue(row);
+    if (issue) issues.push(issue);
   }
   return { ok: true, issues };
+}
+
+/**
+ * 单条工单的最新样子。
+ *
+ * 走 `/rest/api/3/issue/{key}` 而不是拼一句 `key = X` 的 JQL：这里完全不需要查询
+ * 语言，而"服务端拼 JQL"这个动作一旦存在，下一个人就会想把它参数化——JQL 只来自
+ * 配置这条边界，最好连拼的能力都不给。
+ *
+ * key 由调用方从自己缓存的工单列表里取，不从请求里收。
+ */
+export async function fetchIssue(
+  config: JiraConfig,
+  key: string,
+  fetcher: typeof fetch = fetch,
+): Promise<{ ok: true; issue: Issue } | { ok: false; reason: "auth" | "query" | "unreachable" }> {
+  const auth = "Basic " + btoa(`${config.email}:${config.token}`);
+  let res: Response;
+  try {
+    res = await fetcher(`${config.url}/rest/api/3/issue/${encodeURIComponent(key)}?fields=${FIELDS}`, {
+      headers: { authorization: auth, accept: "application/json" },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    return { ok: false, reason: "unreachable" };
+  }
+  if (res.status === 401 || res.status === 403) return { ok: false, reason: "auth" };
+  if (res.status >= 500) return { ok: false, reason: "unreachable" };
+  if (!res.ok) return { ok: false, reason: "query" };
+
+  try {
+    const issue = toIssue(await res.json());
+    return issue ? { ok: true, issue } : { ok: false, reason: "query" };
+  } catch {
+    return { ok: false, reason: "unreachable" };
+  }
 }

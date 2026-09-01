@@ -548,6 +548,13 @@ async function loadDevOne(issueId) {
   try {
     const res = await fetch(url("api/jira/dev?refresh=1&id=" + encodeURIComponent(issueId)));
     const body = await res.json();
+    // 工单本身也可能一起回来了——按钮在哪张卡上，就该把那张卡整个刷新，
+    // 而不是只刷它下半截的 PR。
+    if (body.issue) {
+      const at = issues.findIndex((i) => i.key === body.issue.key);
+      if (at >= 0) issues[at] = body.issue;
+    }
+
     const entry = (body.dev ?? {})[issueId];
     if (!entry) return false;
     dev[issueId] = entry;

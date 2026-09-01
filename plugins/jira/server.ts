@@ -1,5 +1,5 @@
 import { readJiraConfig } from "./config";
-import { fetchIssues, type Issue, type IssuesResult } from "./client";
+import { fetchIssue, fetchIssues, type Issue, type IssuesResult } from "./client";
 import { fetchDev, type DevResult } from "./dev";
 import { liveSessions } from "./sessions";
 import { readBindings, bindSession, unbindSession, resolveBindings } from "./bindings";
@@ -72,6 +72,26 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Prom
   return out;
 }
 
+/**
+ * 重取一条工单，并把它写回列表缓存。
+ *
+ * 写回是要紧的一步：不写回的话，这次拿到的新状态只活在这一个响应里，页面下一次
+ * 重画（或者别处触发的一次渲染）就会用回缓存里的旧值，看起来像是刷新没生效。
+ */
+async function refreshIssue(key: string): Promise<Issue | null> {
+  const config = await readJiraConfig();
+  if (!config) return null;
+  const got = await fetchIssue(config, key);
+  if (!got.ok) return null;
+
+  if (cache?.result.ok) {
+    const list = cache.result.issues;
+    const at = list.findIndex((i) => i.key === key);
+    if (at >= 0) list[at] = got.issue;
+  }
+  return got.issue;
+}
+
 export async function handle(req: Request, url: URL): Promise<Response | null> {
   if (url.pathname === "/api/jira/config" && req.method === "GET") {
     const config = await readJiraConfig();
@@ -99,7 +119,19 @@ export async function handle(req: Request, url: URL): Promise<Response | null> {
     if (one !== null) {
       // id 只可能是 Jira 的内部数字 id，它会被拼进一个对外的 URL。
       if (!/^\d{1,19}$/.test(one)) return new Response("bad id", { status: 400 });
-      return Response.json({ dev: { [one]: await dev(one, keyById.get(one) ?? "", refresh) } });
+      const key = keyById.get(one) ?? "";
+
+      // 单条刷新连工单本身一起刷。
+      //
+      // 从前它只刷 PR 与构建，于是一个长在卡片上的刷新按钮只刷了卡片的一半：状态
+      // 还是几分钟前的样子。那不是 bug，但会被读成 bug——按钮在哪张卡上，就该把那
+      // 张卡刷新。
+      const fresh = refresh && key ? await refreshIssue(key) : null;
+
+      return Response.json({
+        dev: { [one]: await dev(one, key, refresh) },
+        ...(fresh ? { issue: fresh } : {}),
+      });
     }
 
     if (!listed.ok) return Response.json({ dev: {} });
