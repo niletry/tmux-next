@@ -268,13 +268,63 @@ async function openQuestion(session) {
     body.textContent = tr("jira.loadingAsk");
     sheet.append(body);
 
+    // 快捷回复。读完它问什么，多半就是一两句话能答的——为这一两句话先进终端、
+    // 等 xterm 起来、再找输入框，是这个页面本来要省掉的那段路。
+    const form = el("form", "jira-reply");
+    const input = el("input", "field jira-reply-input");
+    input.type = "text";
+    input.placeholder = tr("jira.replyPlaceholder");
+    input.setAttribute("aria-label", tr("jira.replyPlaceholder"));
+    // 手机键盘上把回车画成「发送」，并且不要自动大写/纠正——这是命令，不是散文。
+    input.enterKeyHint = "send";
+    input.autocapitalize = "off";
+    input.autocorrect = "off";
+    input.spellcheck = false;
+
+    const send = el("button", "btn primary jira-reply-send", tr("jira.send"));
+    send.type = "submit";
+    const said = el("p", "jira-reply-note");
+
+    form.append(input, send);
+    sheet.append(form, said);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      send.disabled = true;
+      input.disabled = true;
+      said.textContent = tr("jira.sending");
+      try {
+        const res = await fetch(url("api/sessions/" + encodeURIComponent(session) + "/keys"), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        // 发出去之后这个会话就从「等你」变成「在跑」了，所以顺手把状态重取一遍
+        // 再关——不然回到列表还写着等你回复，看起来像没发出去。
+        close();
+        await loadSessions();
+        renderIssues();
+      } catch {
+        said.textContent = tr("jira.sendFailed");
+        send.disabled = false;
+        input.disabled = false;
+      }
+    });
+
     const actions = el("div", "sheet-actions");
     const closeBtn = el("button", "btn", tr("jira.close"));
+    closeBtn.type = "button";
     closeBtn.addEventListener("click", close);
     const open = el("a", "btn primary", tr("jira.open"));
     open.href = url("terminal.html?target=" + encodeURIComponent(session));
     actions.append(closeBtn, open);
     sheet.append(actions);
+
+    // 浮层一开就把光标放进输入框：绝大多数情况下打开它就是为了回一句。
+    setTimeout(() => input.focus(), 50);
   });
 
   try {

@@ -8,6 +8,7 @@ import { recordUsage, readUsage } from "./key-usage";
 import { SERVERS, collectAnnotations, enabledPlugins } from "../plugins/handlers";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
+import { sendText } from "./tmux/send-text";
 import { dedupeBySession, readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { createDirectory, listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
@@ -547,6 +548,27 @@ export function startServer(
             ? await agent.readTurnMessage(record.cwd, record.id)
             : null;
         return Response.json({ text });
+      }
+
+      // 往一个会话里敲一行字。
+      //
+      // 权限上没有新增任何东西：任何能碰到这个服务的人本来就能通过 /ws 附上去随便
+      // 打字。这条路只是不必为发一行字建出一个挂载会话、附控制客户端、再把窗口尺寸
+      // 调成这个浏览器的大小。
+      const keys = url.pathname.match(/^\/api\/sessions\/(.+)\/keys$/);
+      if (keys && req.method === "POST") {
+        let body: { text?: unknown };
+        try {
+          body = await req.json();
+        } catch {
+          return Response.json({ error: "invalid" }, { status: 400 });
+        }
+        if (typeof body.text !== "string") {
+          return Response.json({ error: "invalid" }, { status: 400 });
+        }
+        const sent = await sendText(decodeURIComponent(keys[1]!), body.text);
+        if (sent.ok) return new Response(null, { status: 204 });
+        return Response.json({ error: sent.reason }, { status: sent.reason === "internal" ? 404 : 400 });
       }
 
       const rename = url.pathname.match(/^\/api\/sessions\/(.+)\/rename$/);

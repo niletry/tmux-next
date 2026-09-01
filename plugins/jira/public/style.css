@@ -573,3 +573,30 @@ button.jira-session-status.ask:active { opacity: 0.6; }
 }
 
 .jira-question .md-table tr:last-child td { border-bottom: 0; }
+
+/* 快捷回复。读完它问什么，多半一两句话就能答——这一行就是为那一两句话准备的。 */
+.jira-reply {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.jira-reply-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 发送按钮不该跟输入框抢宽度：它的文字是固定的，输入框的内容不是。 */
+.jira-reply-send {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 10px 16px;
+  font-size: 15px;
+}
+
+.jira-reply-note {
+  margin: 6px 0 0;
+  min-height: 16px;
+  color: var(--dim);
+  font-size: 12px;
+}
