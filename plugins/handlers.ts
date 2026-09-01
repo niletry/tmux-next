@@ -52,7 +52,13 @@ export const ENRICH_TIMEOUT_MS = 300;
 /** 一条 facet 文本的上限，够放一个状态或一个史诗名，不够撑破一张卡片。 */
 const MAX_TEXT = 120;
 
-/** 一张卡片上最多几个 chips。上限在内核这边，不信插件自觉。 */
+/**
+ * 合并后的**插件** facet，每张单最多留几条——只管这一份，不是一张卡片上全部
+ * chips 的上限。内核自己的 facet（src/server.ts 拼进来的 item.* 系列、
+ * src/item-facets.ts 按标签数逐条产出的那些）不经过这里，不受这个数封顶：
+ * 标签是用户自己的数据，条数由用户决定，不是插件能刷爆的东西。这个上限只
+ * 防插件——不管几个插件加起来往一张单上贴多少条，最后都会被这里砍到这个数。
+ */
 export const MAX_FACETS_PER_ITEM = 6;
 
 function trim(value: unknown, max: number): string {
@@ -101,6 +107,11 @@ export async function collectFacets(
             const dim = trim(f?.dim, MAX_TEXT);
             const value = trim(f?.value, MAX_TEXT);
             if (!dim || !value) continue;
+            // `item.*` 是内核自己的命名空间（item.agent 等）——一个坏插件冒充
+            // item.agent 就能在页面上再画一个 Agent chip、把卡片重新分到别的
+            // 组，让页面替内核的事实撒谎。插件的维度名是开放集合，唯独这个
+            // 前缀不让它碰。
+            if (dim.startsWith("item.")) continue;
             const tone =
               f?.tone === "ok" || f?.tone === "warn" || f?.tone === "dim" ? f.tone : undefined;
             facets.push({ dim, value, ...(tone ? { tone } : {}) });

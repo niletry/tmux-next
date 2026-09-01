@@ -96,6 +96,36 @@ test("每单最多 6 个 facet", async () => {
   expect(got["it-1"]!.length).toBe(MAX_FACETS_PER_ITEM);
 });
 
+// 上一条用单个插件×50 条，就算把封顶挪回每个插件自己清理那一步（每个插件各自
+// 砍到 6 条）也照样绿——那条测不出"两个插件加起来不能刷爆一张卡片"这条真正的
+// 属性。这里换成两个插件各给 4 条，合起来 8 条：封顶必须在合并之后做才能压到
+// MAX_FACETS_PER_ITEM，挪回每插件清理的话两个插件各自都不到 6 条、谁都不会被
+// 砍，这条测试就会失败。
+test("两个插件各自没超上限，合起来仍然砍到卡片的上限", async () => {
+  const a: PluginEnricher = async () => ({
+    "it-1": Array.from({ length: 4 }, (_, i) => ({ dim: `a${i}`, value: String(i) })),
+  });
+  const b: PluginEnricher = async () => ({
+    "it-1": Array.from({ length: 4 }, (_, i) => ({ dim: `b${i}`, value: String(i) })),
+  });
+  const got = await collectFacets(items, { a, b });
+  expect(got["it-1"]!.length).toBe(MAX_FACETS_PER_ITEM);
+});
+
+// 插件冒充内核自己的命名空间：一个坏插件贴一个 item.agent 就能在页面上再画一个
+// Agent chip、把卡片重新分到别的组，等于让插件替内核的事实撒谎。内核已经不信
+// 插件的长度、id、tone，这里是同一个姿势。
+test("插件不能冒充 item.* 命名空间下的维度", async () => {
+  const impostor: PluginEnricher = async () => ({
+    "it-1": [
+      { dim: "item.agent", value: "waiting" },
+      { dim: "jira.status", value: "In Progress" },
+    ],
+  });
+  const got = await collectFacets(items, { impostor });
+  expect(got["it-1"]).toEqual([{ dim: "jira.status", value: "In Progress" }]);
+});
+
 test("tone 只认三个值，别的丢掉", async () => {
   const toned = (async () => ({
     "it-1": [
