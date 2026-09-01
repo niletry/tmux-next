@@ -180,7 +180,7 @@ On first startup, if `items.json` does not exist yet, tmux-next migrates any bin
 
 ### Grouping and filtering the work-item list
 
-Each item's card carries a row of chips — `waiting`/`working`/`none`, its session count, its working directory, its tags, and anything a plugin has attached (Jira's status, epic, PRs, checks). Every chip is a `{ dimension, value }` pair, and the home page groups or filters by whichever dimension you pick; the choices on offer are read straight off the current cards, not a hard-coded list, so a new plugin dimension shows up without any change to the page itself. Your grouping and filter choices are remembered per device, not synced. Items with no bound session at all still get a card, in an "unassigned" group — nothing with no facets simply disappears from the list.
+Each item's card carries a row of chips — `waiting`/`working`/`none`, its session count, its working directory, its tags, and anything a plugin has attached (Jira's status, epic, PRs, checks). Every chip is a `{ dimension, value }` pair, and the home page groups or filters by whichever dimension you pick; the choices on offer are read straight off the current cards, not a hard-coded list, so a new plugin dimension shows up without any change to the page itself. Your grouping and filter choices are remembered per device, not synced. An item with no bound sessions still gets an ordinary card — its `item.agent` chip just reads `none`, and it groups and filters like any other. The "unassigned" group at the bottom of the list is the other direction: tmux sessions that aren't bound to any item at all, not items missing a session.
 
 ### Interface language
 
