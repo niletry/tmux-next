@@ -18,6 +18,7 @@ import { url } from "../../root.js";
 import { pickSessionName } from "./session-name.js";
 import { refreshState } from "./refresh-state.js";
 import { matches, options, NO_FILTERS } from "./filter.js";
+import { parseMarkdown } from "./markdown.js";
 
 const mainEl = /** @type {HTMLElement} */ (document.getElementById("issues"));
 
@@ -249,11 +250,64 @@ async function openQuestion(session) {
   try {
     const res = await fetch(url("api/sessions/" + encodeURIComponent(session) + "/message"));
     const got = await res.json();
-    // textContent：这段话来自会话内容，不是我们的模板。
-    body.textContent = got.text || tr("jira.askedNone");
+    if (got.text) {
+      body.replaceChildren(...renderMarkdown(got.text));
+    } else {
+      body.textContent = tr("jira.askedNone");
+    }
   } catch {
     body.textContent = tr("jira.unreachable");
   }
+}
+
+/**
+ * 把行内片段建成节点。
+ *
+ * 文字一律走 `textContent`——解析器交出来的是数据，这里也不把它拼回字符串，
+ * 于是「会话内容变成标记」这条路从形状上就不存在。
+ */
+function renderSpans(parent, spans) {
+  for (const span of spans) {
+    if (span.type === "link") {
+      const a = el("a", "md-link", span.value);
+      a.href = span.href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      parent.append(a);
+    } else if (span.type === "code") {
+      parent.append(el("code", "md-code", span.value));
+    } else if (span.type === "strong") {
+      parent.append(el("strong", null, span.value));
+    } else if (span.type === "em") {
+      parent.append(el("em", null, span.value));
+    } else {
+      parent.append(document.createTextNode(span.value));
+    }
+  }
+  return parent;
+}
+
+/** 一棵解析结果 → 一串节点。这一层很薄，判断都在 markdown.js 里，那边可以无头地测。 */
+function renderMarkdown(text) {
+  return parseMarkdown(text).map((block) => {
+    if (block.type === "code") {
+      const pre = el("pre", "md-pre");
+      pre.append(el("code", null, block.value));
+      return pre;
+    }
+    if (block.type === "hr") return el("hr", "md-hr");
+    if (block.type === "list") {
+      const list = el(block.ordered ? "ol" : "ul", "md-list");
+      for (const item of block.items) list.append(renderSpans(el("li"), item));
+      return list;
+    }
+    if (block.type === "h") {
+      // 标题级别压到 h4/h5：浮层里再大就压过它自己的标题了。
+      return renderSpans(el(block.level <= 2 ? "h4" : "h5", "md-h"), block.spans);
+    }
+    if (block.type === "quote") return renderSpans(el("blockquote", "md-quote"), block.spans);
+    return renderSpans(el("p", "md-p"), block.spans);
+  });
 }
 
 /**
