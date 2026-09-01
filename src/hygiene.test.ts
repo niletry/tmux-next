@@ -124,3 +124,69 @@ test.each(sourceFiles)("%s 里没有写死进开发者主目录、指向某个�
     useInstead: USE_INSTEAD,
   });
 });
+
+/**
+ * 被清洗过的真实名字：公司名、真实会话名、同事名。
+ *
+ * 这条规则跟这个文件开头那句"不列黑名单"是有冲突的，冲突点很实在：**黑名单本身
+ * 就得把要防的名字写进这个公开仓库**。所以名单存的是 SHA-256，不是词本身——扫描
+ * 时把源码里的词做同样的哈希再比对。
+ *
+ * 这是**混淆，不是保密**，别把它当成后者：谁手上已经有候选词，一次哈希就能确认它
+ * 在不在名单里。它买到的东西只有一样，但正是要的那样——名字不再以明文出现在仓库
+ * 里。想读到名单内容的人本来就已经知道名字了。
+ *
+ * 为什么值得加：那个公司名用 filter-branch 从全部历史清过一次、当时验证 0 命中，
+ * 2026-09-01 又在 src/list-page.test.ts 与 src/agents/task.test.ts 的测试夹具里出现
+ * 了 4 处。上面那条规则只咬开发者主目录的绝对路径，咬不到名字，所以没有任何东西
+ * 拦得住第三次。
+ *
+ * 注意这条规则会咬它自己的文档：下面这些注释里因此一个真名字都没有，例子一律用
+ * 占位符。第一次跑它就抓住了本文件——那既是它有效的证明，也是这条约束本身。
+ *
+ * 加一个词：`bun -e 'const h=new Bun.CryptoHasher("sha256");h.update("<小写的词>");
+ * console.log(h.digest("hex"))'`，把输出加进下面这张表。只加**独特**的词——把
+ * `slack` 这种常见词加进去会误伤一片；确实需要防的多词名字，整条带连字符一起加
+ * （下面的分词会同时产出整词与按连字符切开的每一段）。
+ */
+const BANNED_TOKEN_HASHES = new Set([
+  "f9d66d261514e68accc30d53557f1e30d7da496ae7babcb90c0953afa777ec36",
+  "cc754dab9eb6a3f3884a2de4b4985f2eaa85ca686a1ae4a41f022bb6f167282b",
+  "1ec416295ee819bc6b387aa5f35148f809d5244dee02fc5c2beda9cbc8d01f79",
+]);
+
+function sha256(value: string): string {
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(value);
+  return hasher.digest("hex");
+}
+
+/**
+ * 一份源码里出现过的词，小写、去重。
+ *
+ * 整词与按连字符切开的每一段都算：`acme-spec` 同时产出 `acme-spec`、`acme`、
+ * `spec`，于是名单里只存 `acme` 就能咬住 `acme-spec`，不必把每种组合都列一遍。
+ * 去重是为了别把同一个词哈希上百次——整个仓库扫下来是几万次，不是几十万次。
+ */
+function tokensOf(source: string): Set<string> {
+  const out = new Set<string>();
+  for (const match of source.matchAll(/[A-Za-z][A-Za-z0-9-]*/g)) {
+    const whole = match[0].toLowerCase();
+    out.add(whole);
+    if (whole.includes("-")) for (const part of whole.split("-")) if (part) out.add(part);
+  }
+  return out;
+}
+
+/** 命中了也不把词原样打出来：首字母 + 长度，够定位，又不在日志里再抄一遍。 */
+function mask(token: string): string {
+  return `${token[0]}${"*".repeat(Math.max(0, token.length - 1))}(${token.length})`;
+}
+
+test.each(sourceFiles)("%s 里没有被清洗过的真实名字", (file) => {
+  const source = readFileSync(file, "utf8");
+  const hits = [...tokensOf(source)]
+    .filter((token) => BANNED_TOKEN_HASHES.has(sha256(token)))
+    .map(mask);
+  expect({ file, hits }).toEqual({ file, hits: [] });
+});
