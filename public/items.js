@@ -13,10 +13,9 @@ initLang().then(() => {
   render();
 });
 
-/**
- * Looked up on use, not at module load — same reasoning as list.js: the
- * element lives inside the active nav segment, and renderNav creates it.
- */
+// `#items` is a static <main> in index.html, present before this module runs
+// — unlike `#count` below, which renderHeader() creates later — so grabbing
+// it once at module load is safe.
 const root = document.getElementById("items");
 
 function el(tag, className, text) {
@@ -321,6 +320,16 @@ function renderEmpty(message, hint) {
   root.append(box);
 }
 
+/**
+ * 把"等你回答"的数量映到浏览器标签页——跟 list.js 的 setTabWaiting 同一套
+ * 写法，两个页面都可能是首页（start_url 现在指向这里），行为不该分叉。
+ */
+function setTabWaiting(count) {
+  document.title = count ? `(${count}) ${tr("items.title")}` : tr("items.title");
+  const link = document.querySelector('link[rel="icon"]');
+  if (link) link.href = count ? "favicon-alert.svg" : "favicon.svg";
+}
+
 async function render() {
   let body;
   try {
@@ -360,6 +369,13 @@ async function render() {
   // 永远在最后画。
   const loose = sessions.filter((s) => !bound.has(s.name));
 
+  // 等你回答的数量跟卡片同一份数据算——item.agent 是内核已经判好的状态，标题
+  // 不该另算一遍：两处对不上就是页面在说两套话。
+  const waiting = open.filter((i) =>
+    facets[i.id]?.some((f) => f.dim === "item.agent" && f.value === "waiting"),
+  ).length;
+  setTabWaiting(waiting);
+
   if (!open.length && !loose.length) {
     renderEmpty(tr("items.empty"), tr("items.emptyHint"));
     return;
@@ -397,3 +413,24 @@ async function render() {
 
   draw();
 }
+
+/**
+ * 定时/唤醒触发的刷新要重新进 render()，不能只调 draw()——draw() 闭包着上一次
+ * fetch 到的 items/sessions/facets，不重新请求页面就永远吃旧数据（这也是这份单
+ * 是 PWA 的 start_url 却从不刷新的根因：list.js 有轮询和可见性唤醒，这个页面
+ * 曾经两样都没有）。
+ *
+ * 滚动位置单独存一下：render() 内部整体 replaceChildren，任由它发生的话，
+ * 站在半屏内容中间被每 5 秒弹回顶部，比看着一屏旧数据还糟。分组/筛选的选择
+ * 走 localStorage，draw() 每次都会重新读，天然跨这次刷新保留，不用额外处理。
+ */
+async function refresh() {
+  const y = window.scrollY;
+  await render();
+  window.scrollTo(0, y);
+}
+
+setInterval(refresh, 5000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refresh();
+});
