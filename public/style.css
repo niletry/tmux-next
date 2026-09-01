@@ -509,6 +509,17 @@ header .count {
   align-items: flex-end;
   justify-content: center;
   z-index: 10;
+  overscroll-behavior: contain;
+}
+
+/* 浮层开着时锁住页面。
+   `overscroll-behavior` 只挡住「滚到尽头再往下传」，挡不住手指落在遮罩空白处直接
+   拖动背景；把 body 定住才两头都堵上。定住的同时要把原来的滚动位置记下来并补偿，
+   否则关掉浮层会发现自己被扔回了页首。 */
+body.sheet-open {
+  position: fixed;
+  width: 100%;
+  overflow: hidden;
 }
 
 .sheet {
@@ -524,6 +535,9 @@ header .count {
   max-height: calc(100dvh - env(safe-area-inset-top));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /* 滚到尽头之后不要把剩下的滚动传给身后的页面：那会让整页在浮层后面动起来，
+     回头关掉浮层时人已经不在原来的位置了。 */
+  overscroll-behavior: contain;
 }
 
 .sheet h2 { margin: 0 0 4px; font-size: 17px; }

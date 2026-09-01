@@ -404,6 +404,8 @@ a.jira-key:active, a.jira-parent:active { opacity: 0.6; }
   max-height: 50vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /* 滚到尽头就停在这里，不把剩下的滚动交给浮层和页面。 */
+  overscroll-behavior: contain;
 }
 
 .jira-check {
@@ -474,6 +476,8 @@ button.jira-session-status.ask:active { opacity: 0.6; }
   overflow-wrap: anywhere;
   font-size: 14px;
   line-height: 1.55;
+  /* 滚到尽头就停在这里，不把剩下的滚动交给浮层和页面。 */
+  overscroll-behavior: contain;
 }
 
 .jira-question .md-p { margin: 0 0 10px; }
@@ -501,6 +505,8 @@ button.jira-session-status.ask:active { opacity: 0.6; }
   background: var(--bg);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  /* 滚到尽头就停在这里，不把剩下的滚动交给浮层和页面。 */
+  overscroll-behavior: contain;
 }
 .jira-question .md-pre code {
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -541,6 +547,8 @@ button.jira-session-status.ask:active { opacity: 0.6; }
   margin: 0 0 10px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  /* 滚到尽头就停在这里，不把剩下的滚动交给浮层和页面。 */
+  overscroll-behavior: contain;
 }
 
 .jira-question .md-table {

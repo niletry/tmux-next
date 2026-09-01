@@ -123,39 +123,67 @@ function checkTone(state) {
  * 写死了不给看。改成点开的浮层，用的是内核已有的 `.sheet-backdrop` / `.sheet`
  * 那一套，不另造一种对话框。
  */
-function openChecks(pr) {
+/**
+ * 开一个浮层，并在它开着的时候锁住背后的页面。
+ *
+ * 两个弹窗原本各建一遍遮罩、各绑一遍关闭——一样的十行代码写两次，改一处就会漏
+ * 另一处。收成一个之后，滚动锁也只需要在一个地方做对。
+ *
+ * 锁的时候要把当前滚动位置记下来再补偿回去：`position: fixed` 会让页面瞬间回到
+ * 顶部，关掉浮层时人就被扔在了原来位置以外的地方。
+ *
+ * @param {(sheet: HTMLElement, close: () => void) => void} build
+ */
+function openSheet(build) {
   const dialog = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
 
-  sheet.append(el("h2", null, tr("jira.checksTitle")));
-  sheet.append(el("p", "sheet-name", "#" + pr.id));
+  const top = window.scrollY;
+  document.body.classList.add("sheet-open");
+  document.body.style.top = `-${top}px`;
 
-  const list = el("div", "jira-checks");
-  for (const check of pr.checks) {
-    // 有地址的能点进去看那次构建，没有的就是一行字——不给不能用的东西装出可点的样子。
-    const row = el(check.url ? "a" : "div", "jira-check");
-    if (check.url) {
-      row.href = check.url;
-      row.target = "_blank";
-      row.rel = "noopener noreferrer";
-    }
-    row.append(el("span", "jira-check-name", check.name));
-    row.append(el("span", checkTone(check.state), check.state));
-    list.append(row);
-  }
-  sheet.append(list);
+  const close = () => {
+    dialog.remove();
+    document.body.classList.remove("sheet-open");
+    document.body.style.top = "";
+    window.scrollTo(0, top);
+  };
 
-  const actions = el("div", "sheet-actions");
-  const close = el("button", "btn", tr("jira.close"));
-  actions.append(close);
-  sheet.append(actions);
+  dialog.addEventListener("click", (e) => {
+    if (e.target === dialog) close();
+  });
+
+  build(sheet, close);
   dialog.append(sheet);
   document.body.append(dialog);
+  return close;
+}
 
-  const dismiss = () => dialog.remove();
-  close.addEventListener("click", dismiss);
-  dialog.addEventListener("click", (e) => {
-    if (e.target === dialog) dismiss();
+function openChecks(pr) {
+  openSheet((sheet, close) => {
+    sheet.append(el("h2", null, tr("jira.checksTitle")));
+    sheet.append(el("p", "sheet-name", "#" + pr.id));
+
+    const list = el("div", "jira-checks");
+    for (const check of pr.checks) {
+      // 有地址的能点进去看那次构建，没有的就是一行字——不给不能用的东西装出可点的样子。
+      const row = el(check.url ? "a" : "div", "jira-check");
+      if (check.url) {
+        row.href = check.url;
+        row.target = "_blank";
+        row.rel = "noopener noreferrer";
+      }
+      row.append(el("span", "jira-check-name", check.name));
+      row.append(el("span", checkTone(check.state), check.state));
+      list.append(row);
+    }
+    sheet.append(list);
+
+    const actions = el("div", "sheet-actions");
+    const closeBtn = el("button", "btn", tr("jira.close"));
+    closeBtn.addEventListener("click", close);
+    actions.append(closeBtn);
+    sheet.append(actions);
   });
 }
 
@@ -231,27 +259,22 @@ function prRow(pr) {
  * 任何反应好；那种沉默会被读成没点上。
  */
 async function openQuestion(session) {
-  const dialog = el("div", "sheet-backdrop");
-  const sheet = el("div", "sheet");
-  sheet.append(el("h2", null, tr("jira.askedTitle")));
-  sheet.append(el("p", "sheet-name", session));
+  let body;
+  openSheet((sheet, close) => {
+    sheet.append(el("h2", null, tr("jira.askedTitle")));
+    sheet.append(el("p", "sheet-name", session));
 
-  const body = el("p", "jira-question", tr("jira.loadingAsk"));
-  sheet.append(body);
+    body = el("div", "jira-question");
+    body.textContent = tr("jira.loadingAsk");
+    sheet.append(body);
 
-  const actions = el("div", "sheet-actions");
-  const close = el("button", "btn", tr("jira.close"));
-  const open = el("a", "btn primary", tr("jira.open"));
-  open.href = url("terminal.html?target=" + encodeURIComponent(session));
-  actions.append(close, open);
-  sheet.append(actions);
-  dialog.append(sheet);
-  document.body.append(dialog);
-
-  const dismiss = () => dialog.remove();
-  close.addEventListener("click", dismiss);
-  dialog.addEventListener("click", (e) => {
-    if (e.target === dialog) dismiss();
+    const actions = el("div", "sheet-actions");
+    const closeBtn = el("button", "btn", tr("jira.close"));
+    closeBtn.addEventListener("click", close);
+    const open = el("a", "btn primary", tr("jira.open"));
+    open.href = url("terminal.html?target=" + encodeURIComponent(session));
+    actions.append(closeBtn, open);
+    sheet.append(actions);
   });
 
   try {
