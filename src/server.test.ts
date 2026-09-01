@@ -44,6 +44,16 @@ process.env.TMUX_NEXT_THEME_PATH = joinPath(
   tmpdir(),
   `theme-test-${Math.random().toString(36).slice(2, 10)}.json`,
 );
+// GET /api/sessions now reads items/bindings; without this, resolveBindings'
+// rename-detection read-modify-write can hit the user's real bindings.json.
+process.env.TMUX_NEXT_ITEMS_PATH = joinPath(
+  tmpdir(),
+  `items-test-${Math.random().toString(36).slice(2, 10)}.json`,
+);
+process.env.TMUX_NEXT_BINDINGS_PATH = joinPath(
+  tmpdir(),
+  `bindings-test-${Math.random().toString(36).slice(2, 10)}.json`,
+);
 import { mkdtempSync, mkdirSync, writeFileSync, realpathSync, readdirSync } from "node:fs";
 import { startServer, isLoopback } from "./server";
 import { encodeProjectDir } from "./claude-history";
