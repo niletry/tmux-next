@@ -4,6 +4,7 @@ import { fetchDev, type DevResult } from "./dev";
 import { readItems, ensureItemForSource } from "../../src/items";
 import { bindSession, unbindSession, resolveBindings } from "../../src/session-binding";
 import { sessionIdentities } from "../../src/tmux/session-list";
+import type { Facet, ItemRef } from "../types";
 
 /**
  * 工单插件的服务端。
@@ -126,6 +127,75 @@ async function liveFromKernel(): Promise<Array<{ name: string; sessionId: string
   // listSessions() 会为每个会话多起一次 capture-pane 子进程——这台机器上曾经
   // 是 37 个会话、37 次子进程起停，只为了取一对字段。
   return sessionIdentities();
+}
+
+/**
+ * 一张单能从两个缓存里读出哪些维度。纯函数，缓存当参数喂进来，于是能无头地测。
+ *
+ * 只认 source 是 jira 的单——传进来的是**全部**单（内核不按 provider 预筛，那会在
+ * 内核里写死"provider 名就是插件 id"），挑是这边的事。
+ */
+export function facetsFor(
+  item: ItemRef,
+  issues: Map<string, Issue>,
+  dev: Map<string, DevResult>,
+): Facet[] {
+  if (item.source?.provider !== "jira") return [];
+  const issue = issues.get(item.source.ref);
+  if (!issue) return []; // 缓存没命中：少给几个维度，不阻塞、不给陈旧值
+
+  const facets: Facet[] = [
+    {
+      dim: "jira.status",
+      value: issue.status,
+      tone:
+        issue.statusCategory === "done" ? "dim" : issue.statusCategory === "indeterminate" ? "ok" : undefined,
+    },
+  ];
+  // 史诗名走 `parent`，不是一个独立的 epicName 字段：`parent` 同时装着普通工单的
+  // 史诗和子任务的父任务，`hierarchy >= 1` 才是史诗——跟 public/filter.js 的
+  // epicKeyOf 和 public/jira.js 里卡片上的判断保持一致。
+  if (issue.parent && issue.parent.hierarchy >= 1) {
+    facets.push({ dim: "jira.epic", value: issue.parent.summary || issue.parent.key });
+  }
+
+  const got = dev.get(issue.id);
+  if (got?.ok) {
+    facets.push({ dim: "jira.prs", value: String(got.prs.length) });
+    // 只统计问到过检查的 PR：checksKnown 为 false 是"我们没问到"，跟"没有检查"是
+    // 两回事，收成一个数字会让页面往好看的方向撒谎。
+    const known = got.prs.filter((pr) => pr.checksKnown);
+    const all = known.flatMap((pr) => pr.checks);
+    if (known.length && all.length) {
+      const failed = all.filter((c) => c.state === "FAILED").length;
+      facets.push({
+        dim: "jira.checks",
+        value: `${failed}/${all.length}`,
+        tone: failed ? "warn" : "ok",
+      });
+    }
+  }
+  return facets;
+}
+
+/**
+ * 内核每次画首页都会调这里，预算 300ms——**绝不发请求**，只读已有缓存。
+ *
+ * 一次网络往返进不了这个预算，而且按页加载去打 Jira 会把速率限制撞穿。缓存没命中
+ * 就少给几个维度，那是正确的降级。
+ */
+export async function enrich(items: ItemRef[]): Promise<Record<string, Facet[]>> {
+  const issueMap = new Map<string, Issue>(
+    cache?.result.ok ? cache.result.issues.map((i) => [i.key, i]) : [],
+  );
+  const devMap = new Map([...devCache].map(([id, hit]) => [id, hit.result]));
+
+  const out: Record<string, Facet[]> = {};
+  for (const item of items) {
+    const facets = facetsFor(item, issueMap, devMap);
+    if (facets.length) out[item.id] = facets;
+  }
+  return out;
 }
 
 export async function handle(req: Request, url: URL): Promise<Response | null> {

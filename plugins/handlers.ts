@@ -2,7 +2,7 @@ import { PLUGINS } from "./registry.js";
 import type { Facet, ItemRef, Plugin, PluginEnricher, PluginHandler } from "./types";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
-import { handle as jira } from "./jira/server";
+import { handle as jira, enrich as jiraEnrich } from "./jira/server";
 
 /**
  * 插件的服务端那一半。
@@ -22,7 +22,7 @@ export type PluginServer = { handle?: PluginHandler; enrich?: PluginEnricher };
 export const SERVERS: Record<string, PluginServer> = {
   gallery: { handle: gallery },
   notifications: { handle: notifications },
-  jira: { handle: jira },
+  jira: { handle: jira, enrich: jiraEnrich },
 };
 
 /**
