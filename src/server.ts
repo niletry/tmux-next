@@ -5,7 +5,7 @@ import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
-import { HANDLERS, collectAnnotations, enabledPlugins } from "../plugins/handlers";
+import { SERVERS, collectAnnotations, enabledPlugins } from "../plugins/handlers";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
@@ -185,6 +185,40 @@ const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
 
 const PUBLIC_DIR = new URL("../public/", import.meta.url).pathname;
 const PLUGINS_DIR = new URL("../plugins/", import.meta.url).pathname;
+
+/**
+ * 一个插件页面的外壳。
+ *
+ * 这段 HTML 曾经在每个插件里各抄一份，而它们必须一字不差：`crossorigin` 漏掉一次，
+ * 反代要求登录时 PWA 安装就会无声失败；视口少一个 `viewport-fit=cover` 就在刘海屏
+ * 上留白边。复制粘贴维持的一致性没有任何东西在检查，飘了也不会报错。
+ *
+ * 路径一律相对 `../../`：页面在 `/p/<id>/` 下，两层深；写成绝对路径会弄断反代的
+ * 子路径挂载。
+ */
+function pluginShell(id: string, titleKey: string, mainId: string, hasCss: boolean): string {
+  return `<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title data-i18n="${titleKey}"></title>
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <!-- use-credentials: 清单是浏览器自己去取的，反代要求登录时匿名请求会拿到登录页，
+       安装随之失败且没有任何提示。带上会话 cookie 才行。 -->
+  <link rel="manifest" href="../../manifest.webmanifest" crossorigin="use-credentials">
+  <link rel="apple-touch-icon" href="../../icon-192.png">
+  <link rel="stylesheet" href="../../style.css">${hasCss ? '\n  <link rel="stylesheet" href="style.css">' : ""}
+</head>
+<body class="list-page">
+  <header id="header"></header>
+  <main id="${mainId}"><p class="empty" data-i18n="list.loading">加载中…</p></main>
+  <script type="module" src="${id}.js"></script>
+</body>
+</html>
+`;
+}
 const MODULES_DIR = new URL("../", import.meta.url).pathname;
 
 // A build marker so a phone can see at a glance whether it has the latest
@@ -582,7 +616,7 @@ export function startServer(
       // 子路径；返回 null 就继续往下走到 404，而不是被它吞掉。
       for (const p of enabledPlugins()) {
         if (url.pathname === `/api/${p.id}` || url.pathname.startsWith(`/api/${p.id}/`)) {
-          const res = await HANDLERS[p.id]?.(req, url);
+          const res = await SERVERS[p.id]?.handle?.(req, url);
           if (res) return res;
         }
       }
@@ -635,16 +669,19 @@ export function startServer(
         if (await asset.exists()) {
           return new Response(asset, { headers: { "Cache-Control": "no-cache" } });
         }
-        return new Response("not found", { status: 404 });
-      }
 
-      // 搬家前的地址。手机上存了书签、装了 PWA 的人不该撞 404。
-      // 相对的 location，子路径部署下同样成立。
-      if (url.pathname === "/gallery.html") {
-        return new Response(null, { status: 301, headers: { Location: "p/gallery/" } });
-      }
-      if (url.pathname === "/notifications.html") {
-        return new Response(null, { status: 301, headers: { Location: "p/notifications/" } });
+        // 没有自带 index.html 的插件，由清单生成外壳。一个插件因此可以只有
+        // plugin.js + server.ts + 一个脚本，不必抄一份三处必须一字不差的 HTML。
+        if (file === "index.html") {
+          const plugin = enabledPlugins().find((p) => p.id === id);
+          if (plugin?.page) {
+            const hasCss = await Bun.file(`${PLUGINS_DIR}${id}/public/style.css`).exists();
+            return new Response(pluginShell(plugin.id, plugin.titleKey, plugin.page.mainId, hasCss), {
+              headers: { "content-type": "text/html; charset=utf-8", "Cache-Control": "no-cache" },
+            });
+          }
+        }
+        return new Response("not found", { status: 404 });
       }
 
       const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
@@ -655,6 +692,18 @@ export function startServer(
         // for days. `no-cache` means "revalidate before use", not "don't
         // store", so a redeploy is picked up on the next load.
         return new Response(asset, { headers: { "Cache-Control": "no-cache" } });
+      }
+
+      // 插件搬家前占用过的地址。手机上存了书签、装了 PWA 的人不该撞 404。
+      //
+      // 排在静态文件**之后**：真实存在的页面永远优先，所以一个插件声明
+      // `legacyPaths: ["index.html"]` 也劫持不了首页——这是把它做成通用机制之后
+      // 才出现的风险，用顺序堵掉比用校验堵掉更难绕。
+      // 相对的 Location，子路径部署下同样成立。
+      for (const plugin of enabledPlugins()) {
+        if (plugin.legacyPaths?.some((legacy) => url.pathname === `/${legacy}`)) {
+          return new Response(null, { status: 301, headers: { Location: `p/${plugin.id}/` } });
+        }
       }
 
       return new Response("not found", { status: 404 });

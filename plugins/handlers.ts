@@ -10,7 +10,20 @@ import { handle as jira, annotate as jiraAnnotate } from "./jira/server";
  * 跟 registry.js 分开，是因为那张表要被浏览器 import：清单里只要引到一个 .ts，
  * 服务端代码就被打进浏览器包。plugins/registry.test.ts 有一条断言专守这个。
  */
-export const HANDLERS: Record<string, PluginHandler> = { gallery, notifications, jira };
+/**
+ * 一个插件的服务端能力，由它自己声明有哪些。
+ *
+ * 从前这里是两张平行的表（一张 handle、一张 annotate），加一种能力就要再加一张，
+ * 而"某个插件在这张表里、不在那张表里"没有任何东西在检查。合成一张之后，插件能做
+ * 什么写在一处，registry.test.ts 也能检查注册表与它同步。
+ */
+export type PluginServer = { handle?: PluginHandler; annotate?: PluginAnnotator };
+
+export const SERVERS: Record<string, PluginServer> = {
+  gallery: { handle: gallery },
+  notifications: { handle: notifications },
+  jira: { handle: jira, annotate: jiraAnnotate },
+};
 
 /**
  * 启用的插件。env 在这里现读——读 env 是服务端的事，放进同构的 registry.js 等于
@@ -26,8 +39,12 @@ export function enabledPlugins(): Plugin[] {
   return PLUGINS.filter((p) => !off.has(p.id));
 }
 
-/** 插件的标注函数表。没有导出 annotate 的插件不出现在这里。 */
-export const ANNOTATORS: Record<string, PluginAnnotator> = { jira: jiraAnnotate };
+/** 声明了标注能力的插件。从上面那张表推导，不再单独维护一份。 */
+export const ANNOTATORS: Record<string, PluginAnnotator> = Object.fromEntries(
+  Object.entries(SERVERS)
+    .filter(([, s]) => s.annotate)
+    .map(([id, s]) => [id, s.annotate!]),
+);
 
 /** 一个插件最多能占用列表构建的多少时间。 */
 export const ANNOTATE_TIMEOUT_MS = 300;

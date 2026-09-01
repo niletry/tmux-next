@@ -59,6 +59,10 @@ function usedKeys(): Map<string, string[]> {
       /data-i18n(?:-aria|-title|-placeholder)?="([A-Za-z0-9_.]+)"/g,
       // Server side: t("push.waiting", lang)
       /\bt\(\s*"([A-Za-z0-9_.]+)"\s*,/g,
+      // 插件清单里的标题键：titleKey: "jira.title"。它是真实使用点——顶栏和页面
+      // 标题都读它——只是不长成 t()/tr()/data-i18n 的样子。页面外壳改由内核从清单
+      // 生成之后，这就成了这些键唯一的引用处。
+      /\btitleKey:\s*"([A-Za-z0-9_.]+)"/g,
     ];
     for (const re of patterns) {
       for (const m of source.matchAll(re)) {

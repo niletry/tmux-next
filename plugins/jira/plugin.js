@@ -13,11 +13,12 @@ export default {
   icon:
     '<path d="M4 7a2 2 0 0 1 2-2h6l8 8-7 7-8-8V7z"/>' +
     '<circle cx="8.5" cy="9.5" r="1.5"/>',
+  // 页面外壳由内核生成，见 plugins/types.ts 的 page。
+  page: { mainId: "issues" },
   i18n: {
     zh: {
       "jira.title": "工单",
       "jira.count": "{n} 个",
-      "jira.loading": "加载中…",
       "jira.empty": "没有分给你的单",
       "jira.unconfigured": "还没配置 Jira",
       "jira.unconfiguredHint": "把 URL、邮箱、API token 写进 ~/.tmux-next/jira/config.json（权限 0600）",
@@ -40,7 +41,6 @@ export default {
     en: {
       "jira.title": "Issues",
       "jira.count": "{n}",
-      "jira.loading": "Loading…",
       "jira.empty": "No issues assigned to you",
       "jira.unconfigured": "Jira is not configured",
       "jira.unconfiguredHint": "Put the URL, e-mail and API token in ~/.tmux-next/jira/config.json (mode 0600)",

@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 // A browser module, but a `// @ts-check`ed one — its JSDoc types are real.
 import {
   THEMES,
@@ -163,4 +164,75 @@ test.each(names)("%s: xtermTheme covers every field we intend to set", (name) =>
   ];
   expect(Object.keys(theme).sort()).toEqual([...expected].sort());
   for (const v of Object.values(theme)) expect(v).toMatch(HEX);
+});
+
+// --- 颜色字面量 -------------------------------------------------------------
+
+/**
+ * 样式表里不许出现颜色字面量。
+ *
+ * CLAUDE.md 一直写着这条，但在此之前没有任何东西在拦它——规矩只存在于散文里，
+ * 于是 style.css 里攒下了几处。字面量的危害很具体：上面那些对比度断言只看得见
+ * themes.js 里的值，一个写死的颜色对它们是隐形的，四套主题里坏掉三套也不会红。
+ *
+ * 插件的样式表一并扫：样式搬进插件目录之后，只扫内核那份等于给插件开了后门。
+ */
+const styleSheets = (() => {
+  const out = [new URL("../public/style.css", import.meta.url).pathname];
+  const plugins = new URL("../plugins/", import.meta.url).pathname;
+  for (const entry of readdirSync(plugins, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const path = `${plugins}${entry.name}/public/style.css`;
+    if (existsSync(path)) out.push(path);
+  }
+  return out;
+})();
+
+/**
+ * 已经欠下的债，按今天的实际内容生成的一张单子。
+ *
+ * 不是把规则放宽，是把违规变成**有限且可见**的：新写的样式一律拦住，这 22 种什么
+ * 时候还清、什么时候从这里删。之所以不在这次顺手改掉，是它们跟这次重构无关——混
+ * 进来会让"这次到底改了什么"说不清，而这批字面量里有几个（半透明遮罩、iframe 的
+ * 白底）未必真该主题化。
+ *
+ * 单子只会变短，不该变长：加一行到这里之前，先想清楚为什么那个值不能来自主题。
+ */
+const GRANDFATHERED = new Set([
+  "#0c0d10",
+  "#0f1115",
+  "#1b1e25",
+  "#1c2836",
+  "#22262f",
+  "#252932",
+  "#2a2f3a",
+  "#2a3a52",
+  "#39404e",
+  "#3a4050",
+  "#565f70",
+  "#8b919c",
+  "#b3413c",
+  "#e2706b",
+  "#e6e8ec",
+  "#fff",
+  "rgba(0, 0, 0, .45)",
+  "rgba(0, 0, 0, 0.55)",
+  "rgba(0, 0, 0, 0.6)",
+  "rgba(122, 162, 247, 0.16)",
+  "rgba(20, 22, 26, 0.5)",
+  "rgba(20, 22, 26, 0.85)",
+]);
+
+test.each(styleSheets)("%s 里没有新的颜色字面量", (sheet) => {
+  const source = readFileSync(sheet, "utf8");
+  // 调色板兜底块是唯一允许写死的地方——它就是那些值的家。
+  const body = source.replace(/^:root \{[\s\S]*?\n\}/m, "");
+  const found = new Set(
+    [...body.matchAll(/#[0-9a-fA-F]{3,8}\b|\brgba?\([^)]*\)/g)].map((m) => m[0].toLowerCase()),
+  );
+  const offenders = [...found].filter((c) => !GRANDFATHERED.has(c));
+  expect({ sheet: sheet.split("/").slice(-3).join("/"), offenders }).toEqual({
+    sheet: sheet.split("/").slice(-3).join("/"),
+    offenders: [],
+  });
 });

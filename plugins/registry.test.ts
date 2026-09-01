@@ -67,3 +67,36 @@ test("registry.js 的 import 图里没有 .ts", async () => {
   expect(built.logs.map(String)).toEqual([]);
   expect(built.success).toBe(true);
 });
+
+test("旧地址只能是纯文件名，不能带路径", () => {
+  // 它会被拿去跟 url.pathname 比对。允许 `/` 就等于让一个插件声明自己接管
+  // `p/别的插件/` 或任意深路径——即便顺序上静态文件优先，也没有理由留这个口子。
+  for (const p of PLUGINS) {
+    for (const legacy of p.legacyPaths ?? []) {
+      expect({ id: p.id, legacy }).toEqual({ id: p.id, legacy: legacy.replace(/[/\\]/g, "") });
+      expect(legacy.startsWith(".")).toBe(false);
+    }
+  }
+});
+
+test("两个插件不能声明同一个旧地址", () => {
+  // 撞了的话谁接管取决于注册表顺序，那是最难查的一类 bug。
+  const all = PLUGINS.flatMap((p) => p.legacyPaths ?? []);
+  expect(all).toEqual([...new Set(all)]);
+});
+
+test("注册表里的每个插件都在服务端能力表里有对应项", async () => {
+  // 加了清单却忘了接线，表现是这个插件的 tab 出来了、点进去所有 API 都 404——
+  // 一个只有真跑起来才发现的错误。两张表必须分开（registry.js 是同构的，不能引
+  // .ts），所以只能由测试来保证它们同步。
+  const { SERVERS } = await import("./handlers");
+  for (const p of PLUGINS) {
+    expect({ id: p.id, wired: p.id in SERVERS }).toEqual({ id: p.id, wired: true });
+  }
+});
+
+test("能力表里没有注册表之外的孤儿", async () => {
+  const { SERVERS } = await import("./handlers");
+  const ids = new Set(PLUGINS.map((p) => p.id));
+  expect(Object.keys(SERVERS).filter((id) => !ids.has(id))).toEqual([]);
+});
