@@ -23,7 +23,7 @@ test("pi encodes a working directory the way its own source does", () => {
   // the username swapped for a placeholder — the encoding logic doesn't care
   // whose home directory it is).
   expect(piSessionDir("/Users/x/.local")).toBe("--Users-x-.local--");
-  expect(piSessionDir("/Volumes/work/orbit-spec")).toBe("--Volumes-life-orbit-spec--");
+  expect(piSessionDir("/Volumes/work/orbit-spec")).toBe("--Volumes-work-orbit-spec--");
   // A drive colon and a separator are two characters, so they become two
   // dashes — matching pi's own encoding rather than what looks tidier.
   expect(piSessionDir("C:\\work\\proj")).toBe("--C--work-proj--");
