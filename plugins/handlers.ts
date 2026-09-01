@@ -2,7 +2,7 @@ import { PLUGINS } from "./registry.js";
 import type { Annotation, Plugin, PluginAnnotator, PluginHandler } from "./types";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
-import { handle as jira, annotate as jiraAnnotate } from "./jira/server";
+import { handle as jira } from "./jira/server";
 
 /**
  * 插件的服务端那一半。
@@ -22,7 +22,7 @@ export type PluginServer = { handle?: PluginHandler; annotate?: PluginAnnotator 
 export const SERVERS: Record<string, PluginServer> = {
   gallery: { handle: gallery },
   notifications: { handle: notifications },
-  jira: { handle: jira, annotate: jiraAnnotate },
+  jira: { handle: jira },
 };
 
 /**

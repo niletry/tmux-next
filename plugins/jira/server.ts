@@ -1,9 +1,9 @@
 import { readJiraConfig } from "./config";
 import { fetchIssue, fetchIssues, type Issue, type IssuesResult } from "./client";
 import { fetchDev, type DevResult } from "./dev";
-import { liveSessions } from "./sessions";
-import { readBindings, bindSession, unbindSession, resolveBindings } from "./bindings";
-import type { Annotation } from "../types";
+import { readItems, ensureItemForSource } from "../../src/items";
+import { bindSession, unbindSession, resolveBindings } from "../../src/session-binding";
+import { listSessions } from "../../src/tmux/session-list";
 
 /**
  * 工单插件的服务端。
@@ -92,6 +92,40 @@ async function refreshIssue(key: string): Promise<Issue | null> {
   return got.issue;
 }
 
+/**
+ * 内核的绑定，翻译成 Jira 页认得的形状。
+ *
+ * 只挑 source 是 jira 的单——本地单与将来别家来源的单不属于这个视图。翻译放在
+ * 插件这边而不是内核那边，是因为"itemId ↔ 单号"是 Jira 的语言，内核不认识它。
+ */
+export async function jiraBindingsView(
+  live: Array<{ name: string; sessionId: string }>,
+): Promise<Array<{ session: string; key: string; live: boolean }>> {
+  const [items, bindings] = await Promise.all([readItems(), resolveBindings(live)]);
+  const keyOf = new Map(
+    items.filter((i) => i.source?.provider === "jira").map((i) => [i.id, i.source!.ref]),
+  );
+  const out: Array<{ session: string; key: string; live: boolean }> = [];
+  for (const b of bindings) {
+    const key = keyOf.get(b.itemId);
+    if (!key) continue;
+    out.push({ session: b.session, key, live: b.live });
+  }
+  return out;
+}
+
+/** 认领：这个单号还没有单就建一张，然后把会话绑上去。 */
+export async function claimIssue(session: string, key: string, sessionId: string): Promise<void> {
+  const item = await ensureItemForSource("jira", key, key);
+  await bindSession(session, item.id, sessionId);
+}
+
+/** 内核的会话列表，映射成绑定解析要的最小形状。 */
+async function liveFromKernel(): Promise<Array<{ name: string; sessionId: string }>> {
+  const sessions = await listSessions();
+  return sessions.map((s) => ({ name: s.name, sessionId: s.sessionId }));
+}
+
 export async function handle(req: Request, url: URL): Promise<Response | null> {
   if (url.pathname === "/api/jira/config" && req.method === "GET") {
     const config = await readJiraConfig();
@@ -143,7 +177,7 @@ export async function handle(req: Request, url: URL): Promise<Response | null> {
   }
 
   if (url.pathname === "/api/jira/bindings" && req.method === "GET") {
-    return Response.json({ bindings: await resolveBindings(await liveSessions()) });
+    return Response.json({ bindings: await jiraBindingsView(await liveFromKernel()) });
   }
 
   if (url.pathname === "/api/jira/bindings" && req.method === "POST") {
@@ -160,9 +194,9 @@ export async function handle(req: Request, url: URL): Promise<Response | null> {
       // 单号形状收窄：它会进文件名以外的地方展示，也会拼进 Jira 的 URL。
       return new Response("bad key", { status: 400 });
     }
-    const live = await liveSessions();
+    const live = await liveFromKernel();
     const found = live.find((s) => s.name === body.session);
-    await bindSession(body.session, body.key, found?.id ?? "");
+    await claimIssue(body.session, body.key, found?.sessionId ?? "");
     return Response.json({ ok: true });
   }
 
@@ -174,31 +208,4 @@ export async function handle(req: Request, url: URL): Promise<Response | null> {
   }
 
   return null;
-}
-
-/**
- * 会话列表上的标注：这个会话属于哪个单。
- *
- * 只读绑定文件，**不打 Jira**：这个函数在内核构建列表的路径上，有 300ms 的硬
- * 超时，一次网络往返根本来不及；而且列表页每次打开都会调它，拿它去打 Jira 等于
- * 把速率限制往枪口上撞。标题从已缓存的工单里取，取不到就只显示单号。
- */
-export async function annotate(sessions: string[]): Promise<Record<string, Annotation>> {
-  const bindings = await readBindings();
-  const summaries = new Map<string, Issue>(
-    cache?.result.ok ? cache.result.issues.map((i) => [i.key, i]) : [],
-  );
-
-  const out: Record<string, Annotation> = {};
-  for (const session of sessions) {
-    const binding = bindings[session];
-    if (!binding) continue;
-    const issue = summaries.get(binding.key);
-    out[session] = {
-      text: binding.key,
-      ...(issue?.summary ? { detail: issue.summary } : {}),
-      tone: issue?.statusCategory === "done" ? "dim" : "ok",
-    };
-  }
-  return out;
 }
