@@ -6,8 +6,9 @@ import { join } from "node:path";
 const stamp = Math.random().toString(36).slice(2, 10);
 process.env.TMUX_NEXT_ITEMS_PATH = join(tmpdir(), `items-test-${stamp}.json`);
 process.env.TMUX_NEXT_BINDINGS_PATH = join(tmpdir(), `bindings-test-${stamp}.json`);
-// startServer() 启动时会跑一次性的 Jira 绑定迁移；不把它也隔离开的话，本机真实
-// 的 ~/.tmux-next/jira/bindings.json 会被读进来，把这份本该是空表的测试数据填满。
+// 迁移已经搬到 src/index.ts 的 CLI 入口去跑了，startServer() 不再触发它——但这
+// 份隔离仍然值得留着：本文件驱动的正是读写 items/bindings 两张表的路由，纵深
+// 防御地绝不能让它们指到用户真实的存档上，与迁移是否跑无关。
 process.env.TMUX_NEXT_JIRA_DIR = join(tmpdir(), `items-test-jira-${stamp}`);
 
 import { rm } from "node:fs/promises";

@@ -1,10 +1,20 @@
 import { test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateJiraBindings } from "./migrate-items";
 import { readItems } from "./items";
 import { readBindings } from "./session-binding";
+
+// 迁移故意搬出了 startServer()，落到 CLI 入口 src/index.ts：测试文件会直接调
+// startServer() 起服务，如果迁移还挂在里面，"items.json 已存在就跳过"这条幂等
+// 判据会在真实用户机器上被一次测试跑污染——见 items-api.test.ts 顶上的隔离说明。
+// 这条测试钉住落点，防的是"顺手把它搬回 server.ts"这种看起来无害、却会让全套
+// 测试照样绿、只在真实机器上出问题的重构。
+test("迁移不挂在 server.ts 里——它只能从 CLI 入口触发一次", async () => {
+  const source = await readFile(new URL("./server.ts", import.meta.url), "utf8");
+  expect(source).not.toContain("migrate-items");
+});
 
 let root: string;
 const saved: Record<string, string | undefined> = {};
