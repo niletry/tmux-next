@@ -70,6 +70,13 @@ let devAt = {};
 /** 会话名 -> 内核给的那份会话摘要。用来给绑定的会话标状态。 */
 let sessionInfo = {};
 /**
+ * 会话状态到底拉过没有。
+ *
+ * 「还没拉到」和「拉到了但这个会话没状态」必须分得开：前者该显示加载中，后者该
+ * 什么都不显示。用 sessionInfo 是不是空对象来判断会把两者混成一种。
+ */
+let sessionsLoaded = false;
+/**
  * 正在刷新的单，以及上次刷新失败的单。
  *
  * 按钮的状态必须从这里推导，不能靠往 DOM 节点上挂 class：renderIssues() 是整体
@@ -352,7 +359,12 @@ function sessionRow(binding) {
   if (!binding.live) {
     row.append(el("span", "jira-dead", tr("jira.dead")));
   } else {
-    const status = sessionStatus(sessionInfo[binding.session]);
+    if (!sessionsLoaded) {
+      // 还没拉到状态：占住这个位置，而不是让它先空着再突然冒出来——那种跳变会
+      // 被读成「刚才那行是不是变了」。
+      row.append(el("span", "jira-session-loading"));
+    }
+    const status = sessionsLoaded ? sessionStatus(sessionInfo[binding.session]) : null;
     if (status) {
       if (status.waiting) row.append(el("span", "jira-session-dot"));
       if (status.waiting) {
@@ -668,6 +680,9 @@ async function loadSessions() {
   } catch {
     // 状态是附加信息，取不到就不标——不该让整页失败。
     sessionInfo = {};
+  } finally {
+    // 失败也算「拉过了」：一直转下去比老实说「没有状态」更糟。
+    sessionsLoaded = true;
   }
 }
 
@@ -770,6 +785,9 @@ async function loadIssues(refresh) {
   // supplementary by its own design. The same sentence that justifies swallowing
   // its failures applies to its latency: extra detail must not make the main
   // thing wait for it.
+  // 会话状态与 PR 各自去拉、各自回来就重画：前者是一次本地请求（毫秒级），
+  // 后者要走两跳外部接口（十几秒）。串起来等于让快的陪着慢的一起晚。
+  loadSessions().then(renderIssues);
   loadDev(refresh).then(renderIssues);
 }
 

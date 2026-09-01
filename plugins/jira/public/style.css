@@ -516,3 +516,21 @@ button.jira-session-status.ask:active { opacity: 0.6; }
 
 .jira-question .md-hr { margin: 12px 0; border: 0; border-top: 1px solid var(--bg); }
 .jira-question .md-link { color: var(--accent); }
+
+/* 状态还没拉到时占住那个位置。
+   一条呼吸的灰条，而不是转圈：它替代的是一行文字，形状该像文字。 */
+.jira-session-loading {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 9px;
+  border-radius: 5px;
+  background: var(--bg);
+  animation: jira-breathe 1.2s ease-in-out infinite;
+}
+
+@keyframes jira-breathe { 50% { opacity: 0.35; } }
+
+/* 一条永远在呼吸的占位对一部分人是负担，而它本来也只活几百毫秒。 */
+@media (prefers-reduced-motion: reduce) {
+  .jira-session-loading { animation: none; }
+}
