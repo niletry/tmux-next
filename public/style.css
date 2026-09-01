@@ -768,29 +768,13 @@ header .new:active { opacity: 0.7; }
   user-select: text;
 }
 
-/* ---- gallery ---- */
+/* ---- header chrome ---- */
 
+/* The back link on the create page. */
 header .back { color: var(--accent); text-decoration: none; font-size: 15px; font-weight: 400; }
 header .back:active { opacity: 0.7; }
 
-/* Entry point on the list header, sitting left of the ＋ button. */
-header .ghead {
-  margin-left: auto;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: #2a2f3a;
-  color: var(--fg);
-  align-self: center;
-  text-decoration: none;
-}
-header .ghead:active { opacity: 0.7; }
-header .ghead svg { width: 18px; height: 18px; }
-
-/* The notification bell, in the right-hand cluster after the gallery icon. */
+/* The notification bell, in the right-hand cluster of the header. */
 header .hbell {
   width: 34px;
   height: 34px;
