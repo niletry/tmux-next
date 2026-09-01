@@ -186,16 +186,27 @@
    failed check would be this page tidying itself at the cost of being true. */
 .jira-prs { border-top: 1px solid var(--bg); }
 
+/* 整行不再是一个链接：检查汇总是个按钮，按钮嵌在 <a> 里不合法、点击也会打架。
+   左半边通往 Bitbucket，右边的检查是另一个目标。 */
 .jira-pr {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 0 8px 0 14px;
+}
+.jira-pr + .jira-pr { border-top: 1px solid var(--bg); }
+
+.jira-pr-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
   color: inherit;
   text-decoration: none;
 }
-.jira-pr + .jira-pr { border-top: 1px solid var(--bg); }
-.jira-pr:active { background: var(--bg); }
+.jira-pr-main:active { opacity: 0.6; }
 
 .jira-pr-id {
   flex: 0 0 auto;
@@ -227,14 +238,20 @@
   white-space: nowrap;
 }
 
+/* 一个按钮，所以要有按钮该有的触摸目标；同时不能长得像表单按钮，它在一行文字中间。 */
 .jira-ci {
   flex: 0 0 auto;
   display: flex;
   gap: 6px;
   margin-left: auto;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+button.jira-ci:active { background: var(--bg); }
 .jira-ci.unknown, .jira-ci.none { color: var(--dim); }
 .jira-ci-ok { color: var(--idle); }
 .jira-ci-run { color: var(--accent); }
@@ -377,3 +394,44 @@ a.jira-key:active, a.jira-parent:active { opacity: 0.6; }
   font-variant-numeric: tabular-nums;
   opacity: 0.7;
 }
+
+/* 点开的检查明细。有地址的能进去看那次构建，没有的就是一行字——不给不能用的
+   东西装出可点的样子。 */
+.jira-checks {
+  display: flex;
+  flex-direction: column;
+  margin: 8px 0 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.jira-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  color: inherit;
+  text-decoration: none;
+}
+.jira-check + .jira-check { border-top: 1px solid var(--bg); }
+a.jira-check:active { opacity: 0.6; }
+
+.jira-check-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jira-check-state {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.jira-check-state.ok { color: var(--idle); }
+.jira-check-state.run { color: var(--accent); }
+.jira-check-state.bad { color: var(--term-red); }

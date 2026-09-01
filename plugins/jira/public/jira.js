@@ -99,6 +99,56 @@ function renderEmpty(message, hint) {
  * "Not asked" stays distinct from "none" for the same reason — one is a fact
  * about the PR, the other is a fact about us.
  */
+/** 一项检查的颜色，跟汇总里的计数同一套。 */
+function checkTone(state) {
+  if (state === "FAILED" || state === "STOPPED") return "jira-check-state bad";
+  if (state === "INPROGRESS") return "jira-check-state run";
+  return "jira-check-state ok";
+}
+
+/**
+ * 逐项列出这个 PR 的检查。
+ *
+ * 这些明细本来挂在汇总的 `title` 上——而这个项目瞄准的是手机，那里没有悬停，等于
+ * 写死了不给看。改成点开的浮层，用的是内核已有的 `.sheet-backdrop` / `.sheet`
+ * 那一套，不另造一种对话框。
+ */
+function openChecks(pr) {
+  const dialog = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet");
+
+  sheet.append(el("h2", null, tr("jira.checksTitle")));
+  sheet.append(el("p", "sheet-name", "#" + pr.id));
+
+  const list = el("div", "jira-checks");
+  for (const check of pr.checks) {
+    // 有地址的能点进去看那次构建，没有的就是一行字——不给不能用的东西装出可点的样子。
+    const row = el(check.url ? "a" : "div", "jira-check");
+    if (check.url) {
+      row.href = check.url;
+      row.target = "_blank";
+      row.rel = "noopener noreferrer";
+    }
+    row.append(el("span", "jira-check-name", check.name));
+    row.append(el("span", checkTone(check.state), check.state));
+    list.append(row);
+  }
+  sheet.append(list);
+
+  const actions = el("div", "sheet-actions");
+  const close = el("button", "btn", tr("jira.close"));
+  actions.append(close);
+  sheet.append(actions);
+  dialog.append(sheet);
+  document.body.append(dialog);
+
+  const dismiss = () => dialog.remove();
+  close.addEventListener("click", dismiss);
+  dialog.addEventListener("click", (e) => {
+    if (e.target === dialog) dismiss();
+  });
+}
+
 function checksSummary(pr) {
   if (!pr.checksKnown) return el("span", "jira-ci unknown", "\u2014");
   if (!pr.checks.length) return el("span", "jira-ci none", tr("jira.ciNone"));
@@ -107,13 +157,19 @@ function checksSummary(pr) {
   const running = pr.checks.filter((c) => c.state === "INPROGRESS").length;
   const good = pr.checks.length - bad - running;
 
-  const wrap = el("span", "jira-ci");
+  // 一个按钮，不是一段带 title 的文字：明细只有点得开才算存在。
+  const wrap = el("button", "jira-ci");
+  wrap.type = "button";
+  wrap.setAttribute("aria-label", tr("jira.checksTitle"));
   if (good) wrap.append(el("span", "jira-ci-ok", "\u2713" + good));
   if (running) wrap.append(el("span", "jira-ci-run", "\u25cf" + running));
   if (bad) wrap.append(el("span", "jira-ci-bad", "\u2717" + bad));
-  // Per-check detail has to live somewhere reachable; a title costs the layout
-  // nothing, and the counts already carry the part you read at a glance.
-  wrap.title = pr.checks.map((c) => c.name + ": " + c.state).join("\n");
+  wrap.addEventListener("click", (e) => {
+    // 这一行整体是通往 Bitbucket 的链接；点检查是另一件事。
+    e.preventDefault();
+    e.stopPropagation();
+    openChecks(pr);
+  });
   return wrap;
 }
 
@@ -125,14 +181,24 @@ function prTone(status) {
 }
 
 /** One PR, linking out to Bitbucket. Status words come from Jira as they are. */
+/**
+ * 一个 PR。
+ *
+ * 整行不再是一个 `<a>`：检查汇总现在是个按钮，而按钮嵌在链接里既不合法、点击行为
+ * 也会打架。左半边是通往 Bitbucket 的链接，右边的检查是另一个目标。
+ */
 function prRow(pr) {
-  const row = el("a", "jira-pr");
-  row.href = pr.url;
-  row.target = "_blank";
-  row.rel = "noopener noreferrer";
-  row.append(el("span", "jira-pr-id", "#" + pr.id));
-  if (pr.status) row.append(el("span", prTone(pr.status), pr.status));
-  if (pr.branch) row.append(el("span", "jira-pr-branch", pr.branch));
+  const row = el("div", "jira-pr");
+
+  const main = el("a", "jira-pr-main");
+  main.href = pr.url;
+  main.target = "_blank";
+  main.rel = "noopener noreferrer";
+  main.append(el("span", "jira-pr-id", "#" + pr.id));
+  if (pr.status) main.append(el("span", prTone(pr.status), pr.status));
+  if (pr.branch) main.append(el("span", "jira-pr-branch", pr.branch));
+  row.append(main);
+
   row.append(checksSummary(pr));
   return row;
 }
