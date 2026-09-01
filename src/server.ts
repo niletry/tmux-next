@@ -27,6 +27,7 @@ import {
   listSessions,
   recentDirectories,
   renameSession,
+  sessionIdentities,
   sessionNames,
 } from "./tmux/session-list";
 import { reapOrphanWebSessions } from "./tmux/session-manager";
@@ -281,10 +282,10 @@ export function startServer(
       }
 
       if (url.pathname === "/api/items" && req.method === "GET") {
-        const [items, live] = await Promise.all([readItems(), listSessions()]);
-        const bindings = await resolveBindings(
-          live.map((s) => ({ name: s.name, sessionId: s.sessionId })),
-        );
+        // sessionIdentities() 而非 listSessions()：这里只要 name/sessionId 对，
+        // 不需要 listSessions() 那一整套 capture-pane + transcript 读取。
+        const [items, live] = await Promise.all([readItems(), sessionIdentities()]);
+        const bindings = await resolveBindings(live);
         return Response.json({ items, bindings });
       }
 
@@ -335,8 +336,10 @@ export function startServer(
         const id = decodeURIComponent(itemBind[1]!);
         const items = await readItems();
         if (!items.some((i) => i.id === id)) return new Response("no such item", { status: 404 });
-        // 会话必须真的在，否则绑定会指向一个从没存在过的名字。
-        const live = await listSessions();
+        // 会话必须真的在，否则绑定会指向一个从没存在过的名字。sessionIdentities()
+        // 而非 listSessions()：这里只用得到 name/sessionId，但 sessionId 必须是
+        // 真的——丢了它，这条绑定就再也扛不住改名。
+        const live = await sessionIdentities();
         const found = live.find((s) => s.name === session);
         if (!found) return new Response("no such session", { status: 404 });
         await bindSession(session, id, found.sessionId);

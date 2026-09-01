@@ -3,7 +3,7 @@ import { fetchIssue, fetchIssues, type Issue, type IssuesResult } from "./client
 import { fetchDev, type DevResult } from "./dev";
 import { readItems, ensureItemForSource } from "../../src/items";
 import { bindSession, unbindSession, resolveBindings } from "../../src/session-binding";
-import { listSessions } from "../../src/tmux/session-list";
+import { sessionIdentities } from "../../src/tmux/session-list";
 
 /**
  * 工单插件的服务端。
@@ -122,8 +122,10 @@ export async function claimIssue(session: string, key: string, sessionId: string
 
 /** 内核的会话列表，映射成绑定解析要的最小形状。 */
 async function liveFromKernel(): Promise<Array<{ name: string; sessionId: string }>> {
-  const sessions = await listSessions();
-  return sessions.map((s) => ({ name: s.name, sessionId: s.sessionId }));
+  // sessionIdentities() 而非 listSessions()：这里只要 name/sessionId 对，
+  // listSessions() 会为每个会话多起一次 capture-pane 子进程——这台机器上曾经
+  // 是 37 个会话、37 次子进程起停，只为了取一对字段。
+  return sessionIdentities();
 }
 
 export async function handle(req: Request, url: URL): Promise<Response | null> {

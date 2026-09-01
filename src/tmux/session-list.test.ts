@@ -19,6 +19,7 @@ import {
   LIST_FORMAT,
   parseSessionRow,
   rankDirectories,
+  sessionIdentities,
   sessionNames,
   unescapeFormat,
 } from "./session-list";
@@ -407,4 +408,22 @@ test("解析出 sessionId，名字里的竖线不受影响", () => {
   expect(parsed?.sessionId).toBe("$7");
   expect(parsed?.name).toBe("叫 a|b 的会话");
   expect(parsed?.path).toBe("/tmp/x");
+});
+
+test("sessionIdentities：一次 list-sessions 拿到 name/sessionId 对，名字里的竖线不受影响", async () => {
+  const marker = `probe-pipe-a|b-${crypto.randomUUID().slice(0, 8)}`;
+  await tmux(["new-session", "-d", "-s", marker, "sleep 30"]);
+  try {
+    const identities = await sessionIdentities();
+    const found = identities.find((s) => s.name === marker);
+    expect(found).toBeDefined();
+    expect(found?.sessionId).toMatch(/^\$\d+$/);
+  } finally {
+    await tmux(["kill-session", "-t", `=${marker}`]);
+  }
+});
+
+test("sessionIdentities：排除本应用自己的 web- 挂载会话", async () => {
+  const identities = await sessionIdentities();
+  expect(identities.every((s) => !s.name.startsWith("web-"))).toBe(true);
 });

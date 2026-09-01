@@ -504,3 +504,32 @@ export async function sessionNames(): Promise<string[]> {
   if (!listed.ok) return [];
   return listed.stdout.split("\n").filter(Boolean);
 }
+
+/**
+ * Every live session's name and tmux id, web sessions excluded.
+ *
+ * For callers that only need `{name, sessionId}` pairs — the Jira page and
+ * `/api/items` — and not the rest of `listSessions()`'s per-session
+ * `capture-pane` + transcript reads. One `list-sessions` call instead of one
+ * `capture-pane` per session: on a machine with dozens of live sessions that is
+ * the difference between one subprocess and dozens.
+ *
+ * session_id first because it cannot contain the `|` separator; the name stays
+ * last and greedy because it can — same reasoning as `LIST_FORMAT` above.
+ */
+export async function sessionIdentities(): Promise<Array<{ name: string; sessionId: string }>> {
+  const listed = await tmux(["list-sessions", "-F", "#{session_id}|#{session_name}"]);
+  if (!listed.ok) return [];
+  return listed.stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((row) => {
+      const sep = row.indexOf(FIELD_SEP);
+      if (sep < 0) return null;
+      const sessionId = row.slice(0, sep);
+      const name = row.slice(sep + 1);
+      return { name, sessionId };
+    })
+    .filter((s): s is { name: string; sessionId: string } => s !== null)
+    .filter((s) => !s.name.startsWith(WEB_SESSION_PREFIX));
+}
