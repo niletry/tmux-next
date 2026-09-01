@@ -367,6 +367,71 @@ header .count {
 
 /* ---- work items (home page) ---- */
 
+/* 分组/筛选工具条：横向滚动而不是换行——手机上让它占两行会把第一张卡片挤到
+   折叠线以下，而选项数量是数据决定的，不能靠 wrap 兜底。 */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.group-by-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.toolbar-label {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#group-by {
+  background: var(--card);
+  color: var(--fg);
+  border: none;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: none;
+  background: var(--card);
+  color: var(--dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.filter-chip .f-dim { opacity: 0.75; }
+
+/* 选中态要一眼能看出来——跟 .chip.on 同一套配色，都是主题的 accent 变量。 */
+.filter-chip.selected {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.filter-chip.selected .f-dim { opacity: 0.85; }
+
 .item-card {
   background: var(--card);
   border-radius: 12px;

@@ -2,6 +2,7 @@ import { initTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
 import { renderHeader } from "./nav.js";
 import { url } from "./root.js";
+import { dimensionsOf, valuesOf, groupItems, filterItems } from "./facet-view.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
@@ -150,6 +151,161 @@ function itemCard(item, sessions, facets) {
   return card;
 }
 
+/**
+ * 分组/筛选的选择存在哪块屏幕上，是设备的事——跟字号同类，不是"这台机器"的事
+ * （主题才是）。两把键各管一半状态，互不影响对方的降级路径。
+ */
+const GROUP_KEY = "tmux-next.items.groupBy";
+const FILTER_KEY = "tmux-next.items.filter";
+
+// 手机上第一眼要回答的是"该我动了吗"，所以默认分组维度是 agent 状态而不是随便
+// 一个维度或不分组。
+const DEFAULT_GROUP_DIM = "item.agent";
+
+/**
+ * 读存下来的分组维度。
+ *
+ * 隐私窗口里碰 localStorage 本身就可能抛，读写都要包 try/catch。存的维度在当前
+ * 数据里已经不存在了（插件卸载、这批单恰好没打那个标签）就退回默认，而不是把
+ * 一个查无此维度的选择原样交给 groupItems——那样只会画出一个空页，用户看不出
+ * 是"没数据"还是"选错了"。`""` 是「不分组」的合法值，不受这条限制。
+ * @param {string[]} dims
+ */
+function loadGroupBy(dims) {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(GROUP_KEY);
+  } catch {
+    stored = null;
+  }
+  if (stored === null) return DEFAULT_GROUP_DIM;
+  if (stored === "" || dims.includes(stored)) return stored;
+  return DEFAULT_GROUP_DIM;
+}
+
+function saveGroupBy(dim) {
+  try {
+    localStorage.setItem(GROUP_KEY, dim);
+  } catch {
+    // 隐私窗口：记不住就记不住，不是页面能崩的理由。
+  }
+}
+
+/**
+ * 读存下来的筛选选择。JSON 坏了（手改、旧版本写的形状不同）当作没有筛选，
+ * 不是当作"什么都不匹配"——前者是安全的默认，后者会让页面看起来像坏了。
+ */
+function loadFilter() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(FILTER_KEY);
+  } catch {
+    raw = null;
+  }
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveFilter(selected) {
+  try {
+    localStorage.setItem(FILTER_KEY, JSON.stringify(selected));
+  } catch {
+    // 同上。
+  }
+}
+
+/** 维度显示名：内核维度走字面量表，插件维度走通用字典查找，理由同 facetChip。 */
+function dimLabel(dim) {
+  return ITEM_DIM_LABEL[dim]?.() ?? tr(dim);
+}
+
+/**
+ * 分组标题：item.agent 的取值是内部词，走字典；别的维度是数据本身，原样显示；
+ * 没有这个维度的那组（`value === ""`）标题是"不分组"意义上的"没有取值"，跟
+ * 未归单是两回事——它仍然参与分组，只是分到了空桶里。
+ */
+function groupLabel(dim, value) {
+  if (value === "") return tr("items.groupNone");
+  if (dim === "item.agent") return AGENT_VALUE[value]?.() ?? value;
+  return value;
+}
+
+/** 一个筛选开关：某维度的某个取值，点一下切换选中态。 */
+function filterChip(dim, value, active, onToggle) {
+  const label = dimLabel(dim);
+  const display = dim === "item.agent" ? (AGENT_VALUE[value]?.() ?? value) : value;
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = active ? "filter-chip selected" : "filter-chip";
+  chip.append(el("span", "f-dim", label));
+  chip.append(el("span", "f-value", display));
+  chip.title = `${label}: ${display}`;
+  chip.addEventListener("click", onToggle);
+  return chip;
+}
+
+/**
+ * 工具条：分组选择器 + 每个维度的筛选 chips。选项都是从当前数据现算的
+ * （dimensionsOf/valuesOf），不是写死的表——加一个插件维度不该要求改这个文件。
+ * @param {string[]} dims
+ * @param {Record<string, Array<{dim: string, value: string}>>} facets
+ * @param {string} groupBy
+ * @param {Record<string, string[]>} selected
+ * @param {() => void} onChange
+ */
+function buildToolbar(dims, facets, groupBy, selected, onChange) {
+  const bar = el("div", "toolbar");
+
+  const groupWrap = el("label", "group-by-wrap");
+  groupWrap.append(el("span", "toolbar-label", tr("items.groupBy")));
+  const select = document.createElement("select");
+  select.id = "group-by";
+  const noneOpt = document.createElement("option");
+  noneOpt.value = "";
+  noneOpt.textContent = tr("items.groupNone");
+  select.append(noneOpt);
+  for (const dim of dims) {
+    const opt = document.createElement("option");
+    opt.value = dim;
+    opt.textContent = dimLabel(dim);
+    select.append(opt);
+  }
+  select.value = groupBy;
+  select.addEventListener("change", () => {
+    saveGroupBy(select.value);
+    onChange();
+  });
+  groupWrap.append(select);
+  bar.append(groupWrap);
+
+  if (dims.length) {
+    const filterRow = el("div", "filter-row");
+    filterRow.append(el("span", "toolbar-label", tr("items.filter")));
+    for (const dim of dims) {
+      for (const value of valuesOf(facets, dim)) {
+        const active = (selected[dim] ?? []).includes(value);
+        filterRow.append(filterChip(dim, value, active, () => {
+          const next = { ...selected };
+          const cur = new Set(next[dim] ?? []);
+          if (cur.has(value)) cur.delete(value);
+          else cur.add(value);
+          next[dim] = [...cur];
+          saveFilter(next);
+          onChange();
+        }));
+      }
+    }
+    bar.append(filterRow);
+  }
+
+  return bar;
+}
+
 /** 没有绑定的会话。不变成假单、也不藏起来——一个明确的待归类区。 */
 function unassignedGroup(sessions) {
   const group = el("section", "unassigned");
@@ -200,13 +356,44 @@ async function render() {
   }
 
   const open = items.filter((i) => !i.closedAt);
+  // 未归单——不是某个维度的取值，是待归类区：不参与分组也不参与筛选，
+  // 永远在最后画。
   const loose = sessions.filter((s) => !bound.has(s.name));
 
-  root.replaceChildren();
   if (!open.length && !loose.length) {
     renderEmpty(tr("items.empty"), tr("items.emptyHint"));
     return;
   }
-  for (const item of open) root.append(itemCard(item, mine.get(item.id) ?? [], facets[item.id]));
-  if (loose.length) root.append(unassignedGroup(loose));
+
+  const dims = dimensionsOf(facets);
+
+  // 重画不重新请求：分组/筛选是本地状态的切换，不该每点一下 chip 就再打一次
+  // /api/items。open/loose/facets 在这个闭包里是常量。
+  function draw() {
+    const groupBy = loadGroupBy(dims);
+    const selected = loadFilter();
+    const filtered = filterItems(open, facets, selected);
+
+    root.replaceChildren();
+    root.append(buildToolbar(dims, facets, groupBy, selected, draw));
+
+    if (!filtered.length) {
+      // 跟"压根没有单"是两件不同的事——这里是筛出来的空，得说清楚，不能看着
+      // 像页面坏了。
+      root.append(el("p", "empty", tr("items.noneMatch")));
+    } else if (groupBy) {
+      for (const group of groupItems(filtered, facets, groupBy)) {
+        const section = el("section");
+        section.append(el("h2", "group-name", groupLabel(groupBy, group.value)));
+        for (const item of group.items) section.append(itemCard(item, mine.get(item.id) ?? [], facets[item.id]));
+        root.append(section);
+      }
+    } else {
+      for (const item of filtered) root.append(itemCard(item, mine.get(item.id) ?? [], facets[item.id]));
+    }
+
+    if (loose.length) root.append(unassignedGroup(loose));
+  }
+
+  draw();
 }

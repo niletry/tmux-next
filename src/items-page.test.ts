@@ -1,5 +1,10 @@
 import { test, expect, afterEach } from "bun:test";
 import { Window } from "happy-dom";
+import { t } from "../public/i18n.js";
+
+// mount() 的 fetch shim 把 api/language 答成 "en"，所以断言里的翻译也固定在
+// "en"——跟页面实际渲染用的是同一份字典、同一种语言，不是巧合对上。
+const tr = (key: string) => t(key, "en");
 
 /**
  * The work-item list, driven in a real DOM.
@@ -91,7 +96,7 @@ function patch(shims: Record<string, unknown>) {
   }
 }
 
-async function mount(body: unknown) {
+async function mount(body: unknown, store: Record<string, string> = {}) {
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
   const doc = win.document;
   doc.body.innerHTML = '<header id="header"></header><main id="items"></main>';
@@ -102,7 +107,10 @@ async function mount(body: unknown) {
     location: win.location,
     history: win.history,
     URLSearchParams: win.URLSearchParams,
-    localStorage: { getItem: () => null, setItem: () => {} },
+    localStorage: {
+      getItem: (k: string) => (k in store ? store[k] : null),
+      setItem: (k: string, v: string) => { store[k] = v; },
+    },
     fetch: (async (u: unknown) => {
       const href = String(u);
       if (href.includes("api/items")) return new Response(JSON.stringify(body));
@@ -282,4 +290,71 @@ test("没有 facet 的单不画 chips 区，也不抛", async () => {
   const root = await mount(payload({ items: [item()], facets: {} }));
   expect(root.querySelectorAll(".facet").length).toBe(0);
   expect(root.querySelector(".item-title")?.textContent).toBe("修登录页");
+});
+
+// ---- 分组与筛选（Task 8）----
+
+test("默认按 agent 状态分组，等你回答的排在最前", async () => {
+  const root = await mount(payload({
+    items: [item({ id: "it-1", title: "闲的" }), item({ id: "it-2", title: "等你的" })],
+    facets: {
+      "it-1": [{ dim: "item.agent", value: "idle" }],
+      "it-2": [{ dim: "item.agent", value: "waiting" }],
+    },
+  }));
+  const headers = [...root.querySelectorAll(".group-name")].map((n) => n.textContent);
+  expect(headers[0]).toBe(tr("items.agent.waiting"));
+});
+
+test("分组选择器的选项从数据里现算", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "item.agent", value: "idle" }, { dim: "jira.status", value: "In Progress" }] },
+  }));
+  const options = [...root.querySelectorAll("#group-by option")].map((o) => o.getAttribute("value"));
+  expect(options).toContain("jira.status");
+});
+
+test("存下来的分组选择在下次打开时生效", async () => {
+  const store = { "tmux-next.items.groupBy": "jira.status" };
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "jira.status", value: "In Progress" }] },
+  }), store);
+  expect(root.querySelector(".group-name")?.textContent).toBe("In Progress");
+});
+
+test("存的是一个数据里已经没有的维度时退回默认，不是空页", async () => {
+  const store = { "tmux-next.items.groupBy": "gone.dim" };
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "item.agent", value: "idle" }] },
+  }), store);
+  expect(root.querySelectorAll(".item-card").length).toBe(1);
+});
+
+test("筛到没有单时说清楚，而不是空白", async () => {
+  const store = { "tmux-next.items.filter": JSON.stringify({ "item.agent": ["nope"] }) };
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "item.agent", value: "idle" }] },
+  }), store);
+  expect(root.querySelector(".empty")?.textContent).toContain(tr("items.noneMatch"));
+});
+
+test("localStorage 里是坏 JSON 时当作没有筛选", async () => {
+  const store = { "tmux-next.items.filter": "{ not json" };
+  const root = await mount(payload({ items: [item()] }), store);
+  expect(root.querySelectorAll(".item-card").length).toBe(1);
+});
+
+// 未归单永远在最后，不参与分组也不被筛掉——它是待归类区，不是一个维度取值。
+test("未归单不受分组与筛选影响", async () => {
+  const store = { "tmux-next.items.filter": JSON.stringify({ "item.agent": ["nope"] }) };
+  const root = await mount(payload({
+    items: [item()],
+    sessions: [session({ name: "随手开的" })],
+    facets: { "it-1": [{ dim: "item.agent", value: "idle" }] },
+  }), store);
+  expect(root.querySelector(".unassigned")?.textContent).toContain("随手开的");
 });

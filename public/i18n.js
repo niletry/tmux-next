@@ -61,6 +61,10 @@ const zh = {
   "items.agent.waiting": "等你回答",
   "items.agent.working": "工作中",
   "items.agent.none": "无会话",
+  "items.groupBy": "分组",
+  "items.groupNone": "不分组",
+  "items.filter": "筛选",
+  "items.noneMatch": "没有符合筛选的单",
 
   // 内核维度的字面量映射——跟 list.js:52 附近同一招：facet.dim 是动态查的，
   // src/i18n.test.ts 的死键扫描只认字符串字面量，拼出来的键名它看不见，会把这
@@ -263,6 +267,10 @@ const en = {
   "items.agent.waiting": "Waiting on you",
   "items.agent.working": "Working",
   "items.agent.none": "No session",
+  "items.groupBy": "Group by",
+  "items.groupNone": "None",
+  "items.filter": "Filter",
+  "items.noneMatch": "No items match the filter",
 
   "item.agent": "Agent",
   "item.sessions": "Sessions",
