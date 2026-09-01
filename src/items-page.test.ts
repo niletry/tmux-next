@@ -198,12 +198,27 @@ test("没有未归单的会话时不画那个分组", async () => {
   expect(root.querySelector(".unassigned")).toBeNull();
 });
 
-test("来源是 jira 的单，标题链到工单页", async () => {
+// 链接只从 source.url 来——内核不知道任何插件的路由规则，猜一条 URL 出来
+// （比如按 provider 名字拼 p/<id>/？key=）就是在编那份规则，而且这条规则
+// 编错过一次：没有任何插件页面真的读 ?key=。
+test("单的来源带 url 时，标题链到那个地址", async () => {
+  const root = await mount(payload({
+    items: [item({
+      source: { provider: "jira", ref: "EXAMPLE-1", url: "https://example.atlassian.net/browse/EXAMPLE-1" },
+    })],
+  }));
+  const link = root.querySelector("a.item-title");
+  expect(link?.getAttribute("href")).toBe("https://example.atlassian.net/browse/EXAMPLE-1");
+});
+
+// 有来源、但那条来源没带 url——标题不该被拿去瞎拼一个地址，退回纯文本；
+// ref 徽标仍然画，因为它是有用的信息，跟"有没有地方可点"是两件事。
+test("单的来源没有 url 时，标题不是链接，但 ref 徽标还在", async () => {
   const root = await mount(payload({
     items: [item({ source: { provider: "jira", ref: "EXAMPLE-1" } })],
   }));
-  const link = root.querySelector("a.item-title");
-  expect(link?.getAttribute("href")).toContain("EXAMPLE-1");
+  expect(root.querySelector("a.item-title")).toBeNull();
+  expect(root.querySelector(".item-source")?.textContent).toBe("EXAMPLE-1");
 });
 
 test("没有来源的单，标题不是链接", async () => {

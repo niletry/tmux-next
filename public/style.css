@@ -400,7 +400,6 @@ header .count {
 a.item-title { color: var(--accent); }
 
 .item-source,
-.item-state,
 .item-count {
   flex: 0 0 auto;
   padding: 1px 7px;

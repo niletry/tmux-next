@@ -43,28 +43,15 @@ function stateOf(session) {
 
 /**
  * 字面量映射而不是拼接键名：src/i18n.test.ts 的死键扫描只认字符串字面量调用，
- * 模板字符串拼出来的键名它看不见，会把这三个键全判成没人用。
+ * 模板字符串拼出来的键名它看不见，会把这两个键判成没人用。
  */
 const AGENT_LABEL = {
   waiting: () => tr("items.agent.waiting"),
   working: () => tr("items.agent.working"),
-  none: () => tr("items.agent.none"),
 };
 
 function sessionState(session) {
   return AGENT_LABEL[stateOf(session)]();
-}
-
-/**
- * 一张单头部的整体状态：等你 › 在跑 › 没有会话。
- *
- * 跟 src/item-facets.ts 的 agentState 同一套判断——只要有一个会话在等你，整张单
- * 就算等你，手机上第一眼要答的是"该我动了吗"；一个会话都没有才是 none，这是三个
- * 状态里唯一一个不看 stateOf 的分支，所以专门判在最前面。
- */
-function itemAgentState(sessions) {
-  if (!sessions.length) return "none";
-  return sessions.some((s) => stateOf(s) === "waiting") ? "waiting" : "working";
 }
 
 /** 一张单下的一行会话：它现在什么状态，点进去。别的动作在会话页上。 */
@@ -86,17 +73,19 @@ function itemCard(item, sessions) {
   const card = el("article", "item-card");
 
   const head = el("div", "item-head");
-  // 内核不认识具体插件——链接目标由 source.provider 现拼，不写死哪一个插件的
-  // 名字。任何带 provider 的来源都落在同一条 `p/<provider>/?key=<ref>` 规则下。
-  if (item.source) {
+  // 链接只从 source.url 来，且只在它存在时才画成链接：url 是那个外部系统自己的
+  // 路由，只有产生这个 source 的一方才知道怎么拼——内核不该替它猜（尤其不该假定
+  // "provider 名字就是插件 id、插件页都在 p/<id>/ 下接受 ?key="，那是两回事，也没
+  // 有任何插件的页面真的读 ?key=）。source.ref 的徽标不管有没有 url 都画，它本身
+  // 就是有用的信息。
+  if (item.source?.url) {
     const link = el("a", "item-title", item.title);
-    link.href = url(`p/${item.source.provider}/?key=${encodeURIComponent(item.source.ref)}`);
+    link.href = item.source.url;
     head.append(link);
-    head.append(el("span", "item-source", item.source.ref));
   } else {
     head.append(el("h2", "item-title", item.title));
   }
-  head.append(el("span", "item-state", AGENT_LABEL[itemAgentState(sessions)]()));
+  if (item.source) head.append(el("span", "item-source", item.source.ref));
   if (sessions.length) head.append(el("span", "item-count", tr("items.sessions", { n: sessions.length })));
   card.append(head);
 

@@ -60,7 +60,6 @@ const zh = {
   "items.unassigned": "未归单",
   "items.agent.waiting": "等你回答",
   "items.agent.working": "工作中",
-  "items.agent.none": "没有会话",
 
   "term.copied": "已复制",
   "term.copyNeedsHttps": "复制失败：需要 HTTPS",
@@ -252,7 +251,6 @@ const en = {
   "items.unassigned": "No work item",
   "items.agent.waiting": "Waiting on you",
   "items.agent.working": "Working",
-  "items.agent.none": "No sessions",
 
   "term.copied": "Copied",
   "term.copyNeedsHttps": "Copy failed: needs HTTPS",
