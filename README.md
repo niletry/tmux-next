@@ -171,6 +171,12 @@ The text comes from the `last-prompt` record Claude Code keeps in its transcript
 
 This needs the hook (`bunx tmux-next hook`), which is what ties a tmux session to its conversation id.
 
+### Work items and session bindings
+
+A work item is the unit of work — a session is just a means to it, and a single item can have several. `~/.tmux-next/items.json` holds them; `~/.tmux-next/bindings.json` holds which tmux session (by name and by its stable `#{session_id}`, so a rename doesn't lose the link) belongs to which item. An item can stand alone or carry a `source` such as a claimed Jira issue — a plain item and a Jira-backed one are the same kind of row.
+
+On first startup, if `items.json` does not exist yet, tmux-next migrates any bindings already made through the Jira plugin's old private store into these two files — a one-time, idempotent move that leaves the old file in place rather than deleting it.
+
 ### Interface language
 
 English and Chinese. On a machine that has never chosen one, the first request guesses from the browser's `Accept-Language` and stores that — so arriving from npm gives you a first screen you can read, without touching a setting. Change it under the gear icon; the choice is stored per machine (`~/.tmux-next/language.json`) so phone and desktop agree.

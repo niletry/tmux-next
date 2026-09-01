@@ -167,6 +167,12 @@ bunx tmux-next hook       # 或从克隆的仓库：bun run src/index.ts hook
 
 这个功能依赖 hook（`bunx tmux-next hook`）——是它把 tmux 会话和对话 id 绑在一起的。
 
+### 单与会话绑定
+
+单是工作的单位，会话只是达成它的手段之一——同一张单可以挂着不止一个会话。`~/.tmux-next/items.json` 存这些单；`~/.tmux-next/bindings.json` 存哪个 tmux 会话（按名字，也按它不随改名变化的 `#{session_id}`，这样改名不会丢掉关联）挂在哪张单下面。一张单可以是本地的，也可以挂着来源——比如一个认领了的 Jira 工单；本地单和挂了工单的单是同一种行，没有区别对待。
+
+首次启动时，如果 `items.json` 还不存在，tmux-next 会把之前通过 Jira 插件私有存储做的那些绑定迁移进这两个文件——一次性、幂等，且不会删掉旧文件。
+
 ### 界面语言
 
 中文和英文。从没选过的机器上，第一次请求会按浏览器的 `Accept-Language` 猜一次并存下来——从 npm 装完打开就是能读的语言，不用先去翻设置。之后在齿轮里改，选择按机器存（`~/.tmux-next/language.json`），手机和桌面一致。

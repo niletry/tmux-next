@@ -14,7 +14,7 @@ import { Window } from "happy-dom";
  * a browser does and look at what it drew.
  */
 
-const PAGE = "/Users/lau/projects/tmux-next/public/new.js";
+const PAGE = new URL("../public/new.js", import.meta.url).pathname;
 
 const DIRS = {
   ok: true,
