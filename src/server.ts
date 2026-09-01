@@ -30,6 +30,9 @@ import {
   sessionNames,
 } from "./tmux/session-list";
 import { reapOrphanWebSessions } from "./tmux/session-manager";
+import { createItem, readItems, updateItem } from "./items";
+import { bindSession, resolveBindings, unbindSession } from "./session-binding";
+import { migrateJiraBindings } from "./migrate-items";
 
 type WsData = { session: PaneSession | null };
 
@@ -260,13 +263,106 @@ export function startServer(
 
       if (url.pathname === "/api/sessions" && req.method === "GET") {
         const sessions = await listSessions();
+        const [items, bindings] = await Promise.all([
+          readItems(),
+          resolveBindings(sessions.map((s) => ({ name: s.name, sessionId: s.sessionId }))),
+        ]);
+        const itemOf = new Map(bindings.map((b) => [b.session, b.itemId]));
         // 插件贴的只读标注。拿不到就没有，列表照常出——失败语义只有这一种。
         const annotations = await collectAnnotations(sessions.map((s) => s.name));
-        return Response.json({ sessions, annotations });
+        return Response.json({
+          sessions: sessions.map((s) => ({ ...s, itemId: itemOf.get(s.name) ?? null })),
+          items,
+          annotations,
+        });
       }
 
       if (url.pathname === "/api/sessions" && req.method === "POST") {
         return createSessionResponse(req);
+      }
+
+      if (url.pathname === "/api/items" && req.method === "GET") {
+        const [items, live] = await Promise.all([readItems(), listSessions()]);
+        const bindings = await resolveBindings(
+          live.map((s) => ({ name: s.name, sessionId: s.sessionId })),
+        );
+        return Response.json({ items, bindings });
+      }
+
+      if (url.pathname === "/api/items" && req.method === "POST") {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return new Response("bad json", { status: 400 });
+        }
+        const b = body as Record<string, unknown>;
+        const title = typeof b?.title === "string" ? b.title.trim() : "";
+        if (!title) return new Response("missing title", { status: 400 });
+        const item = await createItem({
+          title: title.slice(0, 200),
+          cwd: typeof b.cwd === "string" ? b.cwd : null,
+          source:
+            typeof (b.source as any)?.provider === "string" &&
+            typeof (b.source as any)?.ref === "string"
+              ? { provider: (b.source as any).provider, ref: (b.source as any).ref }
+              : null,
+        });
+        return Response.json(item, { status: 201 });
+      }
+
+      // 这条 DELETE 必须排在下面的 PATCH（^/api/items/([^/]+)$）之前，否则
+      // "bind" 会被那条正则当成一个 item id 吞掉。方法不同实际不会撞，但顺序
+      // 写对，省掉一次将来的踩坑。
+      if (url.pathname === "/api/items/bind" && req.method === "DELETE") {
+        const session = url.searchParams.get("session");
+        if (!session) return new Response("missing session", { status: 400 });
+        await unbindSession(session);
+        return Response.json({ ok: true });
+      }
+
+      const itemBind = url.pathname.match(/^\/api\/items\/([^/]+)\/bind$/);
+      if (itemBind && req.method === "POST") {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return new Response("bad json", { status: 400 });
+        }
+        const session = (body as Record<string, unknown>)?.session;
+        if (typeof session !== "string" || !session) {
+          return new Response("missing session", { status: 400 });
+        }
+        const id = decodeURIComponent(itemBind[1]!);
+        const items = await readItems();
+        if (!items.some((i) => i.id === id)) return new Response("no such item", { status: 404 });
+        // 会话必须真的在，否则绑定会指向一个从没存在过的名字。
+        const live = await listSessions();
+        const found = live.find((s) => s.name === session);
+        if (!found) return new Response("no such session", { status: 404 });
+        await bindSession(session, id, found.sessionId);
+        return Response.json({ ok: true });
+      }
+
+      // PATCH /api/items/:id：只挑允许改的字段，绝不把请求体整个 Object.assign
+      // 进去——id 与 createdAt 必须挡住，不然请求体就能伪造出一张假单。
+      const itemPatch = url.pathname.match(/^\/api\/items\/([^/]+)$/);
+      if (itemPatch && req.method === "PATCH") {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return new Response("bad json", { status: 400 });
+        }
+        const b = body as Record<string, unknown>;
+        const patch: Parameters<typeof updateItem>[1] = {};
+        if (typeof b.title === "string" && b.title.trim()) patch.title = b.title.trim().slice(0, 200);
+        if (typeof b.cwd === "string" || b.cwd === null) patch.cwd = (b.cwd as string) ?? null;
+        if (Array.isArray(b.tags)) patch.tags = b.tags.filter((t): t is string => typeof t === "string");
+        if (typeof b.closedAt === "number" || b.closedAt === null) patch.closedAt = b.closedAt as number | null;
+        const next = await updateItem(decodeURIComponent(itemPatch[1]!), patch);
+        if (!next) return new Response("no such item", { status: 404 });
+        return Response.json(next);
       }
 
       // An image the browser is handing off so the tool in the session can see
@@ -816,6 +912,12 @@ export function startServer(
   const reaper = setInterval(() => {
     void reapOrphanWebSessions();
   }, REAP_INTERVAL_MS);
+
+  // 一次性把老的 Jira 绑定搬进单/绑定这两张表。失败绝不能挡住服务器起来——
+  // 迁移失败就是"这次没迁"，不是"服务器起不来"。
+  void migrateJiraBindings().catch((e) => {
+    console.error("migrateJiraBindings failed", e);
+  });
 
   // Bun types `port` as optional because a unix-socket server has none. This
   // one always binds TCP, and callers rely on the value — passing port 0 and
