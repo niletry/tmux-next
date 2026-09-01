@@ -24,8 +24,36 @@ import { transcriptPath } from "../claude-activity";
 
 export type TurnState = "waiting" | "working";
 
+/**
+ * 尾部扫描的结果：轮次状态，以及它最后说的那段话。
+ *
+ * 两者一次扫描得出，不分成两个函数各扫一遍——分开写就有可能一个说"在等你"、另一个
+ * 取到的却是更早那轮的话。
+ */
+export type Turn = { state: TurnState | null; text: string | null };
+
 /** 一条 transcript 记录里我们关心的部分。其余字段一律不看。 */
-type Entry = { type?: unknown; message?: { stop_reason?: unknown } };
+type Entry = {
+  type?: unknown;
+  message?: { stop_reason?: unknown; content?: unknown };
+};
+
+/**
+ * 一条 assistant 消息里说出来的话。
+ *
+ * 只取 `text` 块：`thinking` 块是它自己想的，不是对你说的，摆进"它问了你什么"的
+ * 弹窗里既没用又容易误导。
+ */
+function textOf(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((b): b is { type: string; text: string } =>
+      typeof b === "object" && b !== null && (b as any).type === "text" && typeof (b as any).text === "string",
+    )
+    .map((b) => b.text)
+    .join("\n\n")
+    .trim();
+}
 
 /**
  * 一段 transcript 尾部里，最后一次轮次交接的结果。
@@ -35,23 +63,26 @@ type Entry = { type?: unknown; message?: { stop_reason?: unknown } };
  * 类型（`system`、`attachment`、以及这个实例里出现的 `atis-latch`、`bridge-session`
  * 之类）全部忽略——它们不表示轮次归属。
  */
-export function turnStateFrom(chunk: string): TurnState | null {
+export function turnFrom(chunk: string): Turn {
   let state: TurnState | null = null;
+  let text: string | null = null;
 
   for (const line of chunk.split("\n")) {
-    const text = line.trim();
-    if (!text.startsWith("{")) continue;
+    const raw = line.trim();
+    if (!raw.startsWith("{")) continue;
 
     let entry: Entry;
     try {
-      entry = JSON.parse(text) as Entry;
+      entry = JSON.parse(raw) as Entry;
     } catch {
       continue;
     }
 
     if (entry.type === "user") {
-      // 你刚说完话，那么无论上一条是什么，现在球都在它那边。
+      // 你刚说完话，那么无论上一条是什么，现在球都在它那边——它上一轮说的话也就
+      // 不再是"正在等你回答的那句"了。
       state = "working";
+      text = null;
       continue;
     }
 
@@ -60,10 +91,21 @@ export function turnStateFrom(chunk: string): TurnState | null {
     if (typeof stop !== "string") continue;
 
     // end_turn / stop_sequence 都表示"这一轮到此为止"；tool_use 表示还要继续。
-    state = stop === "tool_use" ? "working" : "waiting";
+    if (stop === "tool_use") {
+      state = "working";
+      text = null;
+    } else {
+      state = "waiting";
+      text = textOf(entry.message?.content) || null;
+    }
   }
 
-  return state;
+  return { state, text };
+}
+
+/** 只要状态。 */
+export function turnStateFrom(chunk: string): TurnState | null {
+  return turnFrom(chunk).state;
 }
 
 /**
@@ -75,4 +117,17 @@ export function turnStateFrom(chunk: string): TurnState | null {
 export async function readTurnState(cwd: string, id: string): Promise<TurnState | null> {
   const chunk = await readTailOf(transcriptPath(cwd, id));
   return chunk === null ? null : turnStateFrom(chunk);
+}
+
+/**
+ * 它最后对你说的那段话，只在轮次停在"等你"时才有。
+ *
+ * 单独一个读取函数、按需调用：这段文字实测 34 到 1700 多字，塞进会话列表意味着
+ * 每个会话都为一段你多半不会展开的文字付流量，而这个应用的目标设备是手机。
+ */
+export async function readTurnMessage(cwd: string, id: string): Promise<string | null> {
+  const chunk = await readTailOf(transcriptPath(cwd, id));
+  if (chunk === null) return null;
+  const turn = turnFrom(chunk);
+  return turn.state === "waiting" ? turn.text : null;
 }

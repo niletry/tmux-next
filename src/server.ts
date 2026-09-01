@@ -8,7 +8,7 @@ import { recordUsage, readUsage } from "./key-usage";
 import { SERVERS, collectAnnotations, enabledPlugins } from "../plugins/handlers";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
-import { readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
+import { dedupeBySession, readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { createDirectory, listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
 import { createSession, launchCommand, resumeCommand } from "./tmux/session-create";
@@ -18,7 +18,7 @@ import { readTheme, writeTheme } from "./theme";
 import { themeOf } from "../public/themes.js";
 import { readAsrConfig, transcribe } from "./asr";
 import { resolveLanguage, writeLanguage } from "./language";
-import { AGENT_IDS, AGENTS, isKnownAgent } from "./agents";
+import { AGENT_IDS, AGENTS, agentOf, isKnownAgent } from "./agents";
 import { agentAvailability } from "./agents/availability";
 import pkg from "../package.json" with { type: "json" };
 import {
@@ -531,6 +531,22 @@ export function startServer(
         const result = await createDirectory(body.parent, body.name);
         if (result.ok) return Response.json({ path: result.path }, { status: 201 });
         return Response.json({ error: result.reason }, { status: MKDIR_STATUS[result.reason] ?? 400 });
+      }
+
+      // 这个会话最后对你说的那段话，只在它停在"等你回答"时有。
+      //
+      // 单开一条按需的路由，而不是挂在会话列表上：这段文字能到一千多字，列出三十
+      // 个会话就是白付几十 KB，而你一次只会展开一个。
+      const message = url.pathname.match(/^\/api\/sessions\/(.+)\/message$/);
+      if (message && req.method === "GET") {
+        const name = decodeURIComponent(message[1]!);
+        const record = dedupeBySession(await readSessionRecords()).find((r) => r.session === name);
+        const agent = agentOf(record?.agent);
+        const text =
+          record?.cwd !== undefined && agent.readTurnMessage
+            ? await agent.readTurnMessage(record.cwd, record.id)
+            : null;
+        return Response.json({ text });
       }
 
       const rename = url.pathname.match(/^\/api\/sessions\/(.+)\/rename$/);

@@ -452,3 +452,27 @@ a.jira-check:active { opacity: 0.6; }
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* 「等待你的回复」是个可点的入口，但不能长得像按钮——它坐在一行文字中间。 */
+button.jira-session-status.ask {
+  border: 0;
+  background: transparent;
+  padding: 6px 4px;
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+button.jira-session-status.ask:active { opacity: 0.6; }
+
+/* 它最后说的那段话。原样换行，长了自己滚动——把问题截断，等于没显示。 */
+.jira-question {
+  margin: 10px 0 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.5;
+}

@@ -24,7 +24,7 @@ import { readPiTask } from "./pi";
 import { readOpencodeTask } from "./opencode";
 import { readLastPrompt, transcriptPath } from "../claude-activity";
 import { readLastAction, type LastAction } from "./last-action";
-import { readTurnState, type TurnState } from "./turn-state";
+import { readTurnMessage, readTurnState, type TurnState } from "./turn-state";
 
 /**
  * Per-agent session id shapes.
@@ -66,6 +66,13 @@ export type Agent = {
    * 根本不是 agent）只有屏幕这一个信息源。
    */
   readTurnState?: (cwd: string, id: string) => Promise<TurnState | null>;
+  /**
+   * 它最后对你说的那段话，只在轮次停在"等你"时才有。
+   *
+   * 单独一个能力、按需调用：这段文字实测能到一千七百多字，塞进会话列表就是每个
+   * 会话都为一段多半不会展开的文字付流量，而这个应用面向的是手机。
+   */
+  readTurnMessage?: (cwd: string, id: string) => Promise<string | null>;
 
   /**
    * Whether this agent has a "run without asking" mode.
@@ -106,6 +113,7 @@ const claude: Agent = {
   readTask: (cwd, id) => readLastPrompt(transcriptPath(cwd, id)),
   readLastAction,
   readTurnState,
+  readTurnMessage,
   launch: ({ skipPermissions }) =>
     skipPermissions
       ? 'exec "$SHELL" -lc "claude --dangerously-skip-permissions"'

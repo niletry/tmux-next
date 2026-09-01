@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { turnStateFrom } from "./turn-state";
+import { turnFrom, turnStateFrom } from "./turn-state";
 
 /**
  * 轮次状态的判定。
@@ -65,4 +65,39 @@ test("没有 stop_reason 的 assistant 不参与判断", () => {
 test("一条轮次记录都没有就是 null，由调用方退回屏幕判断", () => {
   expect(turnStateFrom("")).toBeNull();
   expect(turnStateFrom([line({ type: "system" }), "not json"].join("\n"))).toBeNull();
+});
+
+// ---- 它最后说的那段话 --------------------------------------------------------
+
+
+const said = (stop: string, ...blocks: unknown[]) =>
+  JSON.stringify({ type: "assistant", message: { stop_reason: stop, content: blocks } });
+const text = (t: string) => ({ type: "text", text: t });
+const thinking = (t: string) => ({ type: "thinking", thinking: t });
+
+test("等你回答时，带回它最后说的那段话", () => {
+  expect(turnFrom(said("end_turn", text("要我继续吗？"))).text).toBe("要我继续吗？");
+});
+
+test("thinking 块不算它对你说的话", () => {
+  // 那是它自己想的，摆进"它问了你什么"的弹窗里既没用又容易误导。
+  expect(turnFrom(said("end_turn", thinking("盘算一下"), text("选 A 还是 B？"))).text).toBe("选 A 还是 B？");
+});
+
+test("多个 text 块拼起来", () => {
+  expect(turnFrom(said("end_turn", text("第一段"), text("第二段"))).text).toBe("第一段\n\n第二段");
+});
+
+test("在跑的时候没有待回答的话", () => {
+  expect(turnFrom(said("tool_use", text("我去看看"))).text).toBeNull();
+});
+
+test("你回过话之后，它上一轮说的就不再是待回答的了", () => {
+  // 只看最后一个 assistant 会把已经被回答过的问题又端出来。
+  const chunk = [said("end_turn", text("要我继续吗？")), JSON.stringify({ type: "user" })].join("\n");
+  expect(turnFrom(chunk)).toEqual({ state: "working", text: null });
+});
+
+test("只有 thinking 没有 text 时，状态仍在等你，但没有可展示的话", () => {
+  expect(turnFrom(said("end_turn", thinking("嗯")))).toEqual({ state: "waiting", text: null });
 });

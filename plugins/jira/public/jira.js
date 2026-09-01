@@ -214,6 +214,49 @@ function prRow(pr) {
  * 36px target as the list page's `.more`.
  */
 /**
+ * 它最后对你说的那段话。
+ *
+ * 按需去取，不随会话列表一起下发：这段文字实测能到一千七百多字，三十个会话就是白
+ * 付几十 KB，而你一次只展开一个。
+ *
+ * 先把浮层开出来再取，因为这一跳有延迟——先给一个"读取中"，比点下去几百毫秒没有
+ * 任何反应好；那种沉默会被读成没点上。
+ */
+async function openQuestion(session) {
+  const dialog = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet");
+  sheet.append(el("h2", null, tr("jira.askedTitle")));
+  sheet.append(el("p", "sheet-name", session));
+
+  const body = el("p", "jira-question", tr("jira.loadingAsk"));
+  sheet.append(body);
+
+  const actions = el("div", "sheet-actions");
+  const close = el("button", "btn", tr("jira.close"));
+  const open = el("a", "btn primary", tr("jira.open"));
+  open.href = url("terminal.html?target=" + encodeURIComponent(session));
+  actions.append(close, open);
+  sheet.append(actions);
+  dialog.append(sheet);
+  document.body.append(dialog);
+
+  const dismiss = () => dialog.remove();
+  close.addEventListener("click", dismiss);
+  dialog.addEventListener("click", (e) => {
+    if (e.target === dialog) dismiss();
+  });
+
+  try {
+    const res = await fetch(url("api/sessions/" + encodeURIComponent(session) + "/message"));
+    const got = await res.json();
+    // textContent：这段话来自会话内容，不是我们的模板。
+    body.textContent = got.text || tr("jira.askedNone");
+  } catch {
+    body.textContent = tr("jira.unreachable");
+  }
+}
+
+/**
  * 一个会话此刻在做什么，用会话列表页一模一样的三句话。
  *
  * 文案键直接借内核的（`list.waitingDot` / `list.working` / `list.pendingInput`），
@@ -258,7 +301,15 @@ function sessionRow(binding) {
     const status = sessionStatus(sessionInfo[binding.session]);
     if (status) {
       if (status.waiting) row.append(el("span", "jira-session-dot"));
-      row.append(el("span", "jira-session-status", status.text));
+      if (status.waiting) {
+        // 等你回答时，状态本身就是入口：点开看它到底问了什么，不必先进终端翻屏幕。
+        const ask = el("button", "jira-session-status ask", status.text);
+        ask.type = "button";
+        ask.addEventListener("click", () => openQuestion(binding.session));
+        row.append(ask);
+      } else {
+        row.append(el("span", "jira-session-status", status.text));
+      }
     }
   }
 
