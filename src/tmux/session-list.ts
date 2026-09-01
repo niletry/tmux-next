@@ -11,6 +11,7 @@ import {
 import { nextStamp, type ActivityEntry } from "./activity-stamp";
 import { agentOf, DEFAULT_AGENT } from "../agents";
 import type { LastAction } from "../agents/last-action";
+import type { TurnState } from "../agents/turn-state";
 import { agentVersion, versionFromCommand } from "../agents/version";
 
 export type SessionSummary = {
@@ -40,6 +41,17 @@ export type SessionSummary = {
   // below repaints constantly while a turn runs, so it reads "just now" for
   // every working session and only means anything for an idle one.
   lastAction: LastAction | null;
+  /**
+   * 从 transcript 读出来的轮次状态，读不出来是 null。
+   *
+   * **过渡字段。** 它跟同一行上那个由屏幕推出来的 `idle` 可能给出不同说法：`idle`
+   * 认的是 TUI 上的空闲标记，会随 agent 改版失效；这个读的是 `stop_reason`，是记录
+   * 格式的一部分。现在两者并存，是为了让新读法先在工单页上跑一段而不动会话列表。
+   *
+   * 必须收敛：要么列表页改用它（`idle` 退为没有 transcript 时的兜底），要么删掉。
+   * 长期并存会变成同一个会话在两个页面上说法不一致。
+   */
+  turn: TurnState | null;
   // The agent the binding record names, and its display label. A record that
   // predates multi-agent support is Claude Code's — its hook wrote it without
   // an agent field — so it resolves to the default. Only sessions with no
@@ -341,6 +353,13 @@ export async function listSessions(): Promise<SessionSummary[]> {
           ? await agent.readLastAction(record.cwd, record.id)
           : null;
 
+      // 同一份 transcript 尾部，第三次读——三处各读一次是为了各自独立可测；文件
+      // 已在页缓存里，代价可以忽略。
+      const turn =
+        record?.cwd !== undefined && agent.readTurnState
+          ? await agent.readTurnState(record.cwd, record.id)
+          : null;
+
       // Precise build: Claude's pane command is its versioned binary, and
       // opencode / pi answer --version (cached per process). Anything else
       // stays null — the client shows the plain label then.
@@ -360,6 +379,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
         task,
         path,
         lastAction,
+        turn,
         // Expose the record's agent so the list can mark it; null keeps an
         // unmarked card for sessions with no record at all.
         agent: agentId,

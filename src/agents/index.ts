@@ -24,6 +24,7 @@ import { readPiTask } from "./pi";
 import { readOpencodeTask } from "./opencode";
 import { readLastPrompt, transcriptPath } from "../claude-activity";
 import { readLastAction, type LastAction } from "./last-action";
+import { readTurnState, type TurnState } from "./turn-state";
 
 /**
  * Per-agent session id shapes.
@@ -57,6 +58,14 @@ export type Agent = {
    * which is what every session had before.
    */
   readLastAction?: (cwd: string, id: string) => Promise<LastAction | null>;
+  /**
+   * 这个会话是在跑还是在等你，从 transcript 的结构里读，而不是认屏幕。
+   *
+   * 只有 Claude 有：opencode / pi 的记录格式不同。没有这一项的 agent 继续走屏幕
+   * 启发式，那条路不会被删——没有 transcript 的会话（早于绑定记录、或者里面跑的
+   * 根本不是 agent）只有屏幕这一个信息源。
+   */
+  readTurnState?: (cwd: string, id: string) => Promise<TurnState | null>;
 
   /**
    * Whether this agent has a "run without asking" mode.
@@ -96,6 +105,7 @@ const claude: Agent = {
   supportsSkipPermissions: true,
   readTask: (cwd, id) => readLastPrompt(transcriptPath(cwd, id)),
   readLastAction,
+  readTurnState,
   launch: ({ skipPermissions }) =>
     skipPermissions
       ? 'exec "$SHELL" -lc "claude --dangerously-skip-permissions"'
