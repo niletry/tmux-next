@@ -303,6 +303,36 @@ function renderMarkdown(text) {
       return pre;
     }
     if (block.type === "hr") return el("hr", "md-hr");
+    if (block.type === "table") {
+      // 表格套在自己的滚动容器里：宽内容横向滚动，绝不让它把浮层撑破——这是这个
+      // 仓库里对宽内容的一贯做法（代码块也是这么处理的）。
+      const wrap = el("div", "md-tablewrap");
+      const table = el("table", "md-table");
+
+      const thead = el("thead");
+      const hr = el("tr");
+      block.head.forEach((cell, n) => {
+        const th = renderSpans(el("th"), cell);
+        th.style.textAlign = block.align[n] ?? "left";
+        hr.append(th);
+      });
+      thead.append(hr);
+      table.append(thead);
+
+      const tbody = el("tbody");
+      for (const row of block.rows) {
+        const tr = el("tr");
+        row.forEach((cell, n) => {
+          const td = renderSpans(el("td"), cell);
+          td.style.textAlign = block.align[n] ?? "left";
+          tr.append(td);
+        });
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      wrap.append(table);
+      return wrap;
+    }
     if (block.type === "list") {
       const list = el(block.ordered ? "ol" : "ul", "md-list");
       for (const item of block.items) list.append(renderSpans(el("li"), item));

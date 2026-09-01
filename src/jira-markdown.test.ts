@@ -111,3 +111,56 @@ test("输出是数据不是标记：标签原样留在 text 里，等着经 text
     { type: "text", value: "<img src=x onerror=alert(1)>" },
   ]);
 });
+
+// ---- 表格 --------------------------------------------------------------------
+
+test("表格：表头、对齐、数据行", () => {
+  const md = ["| 名字 | 值 |", "|:---|---:|", "| 甲 | 1 |", "| 乙 | 2 |"].join("\n");
+  expect(parseMarkdown(md)).toEqual([
+    {
+      type: "table",
+      head: [[{ type: "text", value: "名字" }], [{ type: "text", value: "值" }]],
+      align: ["left", "right"],
+      rows: [
+        [[{ type: "text", value: "甲" }], [{ type: "text", value: "1" }]],
+        [[{ type: "text", value: "乙" }], [{ type: "text", value: "2" }]],
+      ],
+    },
+  ]);
+});
+
+test("居中对齐认两边的冒号", () => {
+  const md = ["| a |", "|:-:|", "| x |"].join("\n");
+  const t = parseMarkdown(md)[0]!;
+  expect(t.type === "table" && t.align).toEqual(["center"]);
+});
+
+test("首尾竖线可有可无", () => {
+  const md = ["a | b", "--- | ---", "1 | 2"].join("\n");
+  const t = parseMarkdown(md)[0]!;
+  expect(t.type === "table" && t.head.length).toBe(2);
+});
+
+test("少一格的行补齐到表头宽度，不让整张表错位", () => {
+  const md = ["| a | b |", "|---|---|", "| 只有一格 |"].join("\n");
+  const t = parseMarkdown(md)[0]!;
+  expect(t.type === "table" && t.rows[0]!.length).toBe(2);
+});
+
+test("正文里带竖线的句子不会被当成表格", () => {
+  // 认的是下一行那条分隔线，不是「这行有竖线」——后者在正文里太常见。
+  const blocks = parseMarkdown("命令是 a | b 这样写");
+  expect(blocks.map((b) => b.type)).toEqual(["p"]);
+});
+
+test("单元格里的行内标记照常解析", () => {
+  const md = ["| x |", "|---|", "| **粗** |"].join("\n");
+  const t = parseMarkdown(md)[0]!;
+  expect(t.type === "table" && t.rows[0]![0]).toEqual([{ type: "strong", value: "粗" }]);
+});
+
+test("光秃秃一行横杠不会把上一行变成表头", () => {
+  // 分隔行必须自己带竖线，否则任何带竖线的句子后面跟一行 `-` 都会被误认成表格。
+  const blocks = parseMarkdown("命令 a | b\n-");
+  expect(blocks.every((b) => b.type !== "table")).toBe(true);
+});

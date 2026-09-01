@@ -10,8 +10,7 @@
  * 解析器的输出是数据，不是标记，所以注入这条路从形状上就不存在。
  *
  * 覆盖的是 Claude 实际会写的那些：标题、粗体、斜体、行内代码、围栏代码块、有序与
- * 无序列表、引用、链接、水平线。**表格没做**——它在手机那个宽度上本来也排不下，
- * 真需要时再加，而不是现在假设需要。
+ * 无序列表、引用、链接、水平线、表格。
  */
 
 /**
@@ -21,7 +20,9 @@
  *   | { type: "h", level: number, spans: Span[] }
  *   | { type: "code", value: string, lang: string }
  *   | { type: "list", ordered: boolean, items: Span[][] }
+ *   | { type: "table", head: Span[][], rows: Span[][][], align: Align[] }
  *   | { type: "hr" }} Block
+ * @typedef {"left" | "center" | "right"} Align
  */
 
 /** 只放行 http/https：`javascript:` 之类不该因为一段会话内容就变成可点的东西。 */
@@ -70,6 +71,40 @@ export function parseInline(/** @type {string} */ text) {
 
 const BULLET = /^\s*[-*+]\s+(.*)$/;
 const NUMBER = /^\s*\d+[.)]\s+(.*)$/;
+
+/**
+ * `|---|:--:|---:|` 这一行——它才是「上一行是表头」的凭据。
+ *
+ * 一个横杠就算数（`|:-:|` 是合法的），但整行必须含竖线：否则光秃秃一行 `-` 跟在
+ * 任何带竖线的句子后面，都会被误认成表格。
+ */
+const TABLE_RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+
+function isTableRule(/** @type {string} */ line) {
+  return line.includes("|") && TABLE_RULE.test(line);
+}
+
+/**
+ * 一行 `| a | b |` 切成单元格。
+ *
+ * 首尾的竖线是可选的，所以切完要把两端的空壳去掉——但只去一个，不然 `| | b |`
+ * 里那个真的空单元格也会被吃掉。
+ */
+function cellsOf(/** @type {string} */ line) {
+  const parts = line.split("|");
+  if (parts[0]?.trim() === "") parts.shift();
+  if (parts.length && parts[parts.length - 1]?.trim() === "") parts.pop();
+  return parts.map((c) => c.trim());
+}
+
+/** 分隔行里的冒号决定对齐。 */
+function alignOf(/** @type {string} */ line) {
+  return cellsOf(line).map((c) => {
+    const left = c.startsWith(":");
+    const right = c.endsWith(":");
+    return left && right ? "center" : right ? "right" : "left";
+  });
+}
 
 /**
  * 一段 Markdown 的块结构。
@@ -133,6 +168,26 @@ export function parseMarkdown(text) {
     if (quote) {
       flushPara();
       blocks.push({ type: "quote", spans: parseInline(quote[1] ?? "") });
+      continue;
+    }
+
+    // 表格：靠下一行那条分隔线认，不靠「这行有竖线」——正文里带竖线的句子太常见了。
+    if (line.includes("|") && isTableRule(lines[i + 1] ?? "")) {
+      flushPara();
+      const head = cellsOf(line).map(parseInline);
+      const align = alignOf(lines[i + 1] ?? "");
+      /** @type {Span[][][]} */
+      const rows = [];
+      i += 2;
+      while (i < lines.length && (lines[i] ?? "").includes("|")) {
+        const cells = cellsOf(lines[i] ?? "");
+        // 补齐到表头宽度：少一格的行如果原样画出来，整张表会错位。
+        while (cells.length < head.length) cells.push("");
+        rows.push(cells.slice(0, head.length).map(parseInline));
+        i++;
+      }
+      i--;
+      blocks.push({ type: "table", head, rows, align });
       continue;
     }
 
