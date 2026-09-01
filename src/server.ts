@@ -32,7 +32,6 @@ import {
 import { reapOrphanWebSessions } from "./tmux/session-manager";
 import { createItem, readItems, updateItem } from "./items";
 import { bindSession, resolveBindings, unbindSession } from "./session-binding";
-import { migrateJiraBindings } from "./migrate-items";
 
 type WsData = { session: PaneSession | null };
 
@@ -912,12 +911,6 @@ export function startServer(
   const reaper = setInterval(() => {
     void reapOrphanWebSessions();
   }, REAP_INTERVAL_MS);
-
-  // 一次性把老的 Jira 绑定搬进单/绑定这两张表。失败绝不能挡住服务器起来——
-  // 迁移失败就是"这次没迁"，不是"服务器起不来"。
-  void migrateJiraBindings().catch((e) => {
-    console.error("migrateJiraBindings failed", e);
-  });
 
   // Bun types `port` as optional because a unix-socket server has none. This
   // one always binds TCP, and callers rely on the value — passing port 0 and

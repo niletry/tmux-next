@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { HELP, MIN_TMUX, meetsMinimum, parseArgs, parseTmuxVersion } from "./cli";
 import { startServer } from "./server";
+import { migrateJiraBindings } from "./migrate-items";
 // Read from package.json so `--version` can never drift from the published one.
 import pkg from "../package.json" with { type: "json" };
 
@@ -72,6 +73,17 @@ const problem = await checkTmux();
 if (problem) {
   console.error(`tmux-next: ${problem}`);
   process.exit(1);
+}
+
+// 迁移不放进 startServer：好几个测试文件直接调用 startServer 而不设
+// TMUX_NEXT_ITEMS_PATH/TMUX_NEXT_JIRA_DIR，而 migrateJiraBindings 靠
+// items.json 是否已存在来判断"是否迁过"——测试跑一次意外建出这个文件，
+// 就会让用户机器上的真实迁移永久失效，绑定看起来白白丢了却没有任何
+// 线索。放在这里，只有真正的 CLI 启动会触发，且失败绝不能挡住服务器起来。
+try {
+  await migrateJiraBindings();
+} catch (e) {
+  console.error("migrateJiraBindings failed", e);
 }
 
 const server = startServer(parsed.port, parsed.host);
