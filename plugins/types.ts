@@ -39,16 +39,25 @@ export type Plugin = {
 export type PluginHandler = (req: Request, url: URL) => Promise<Response | null>;
 
 /**
- * 插件贴在会话列表某一行上的一小段只读展示数据。
+ * 插件贴在一张单上的一个维度。
  *
- * 只读、只展示：插件不能改列表行为、不能加动作、不能排序。这条边界是这个口子
- * 得以存在的前提——当初砍掉"跨页面挂钩"是因为没有消费者，现在有了，但能力面
- * 仍然按需要开，不按能想到的开。
+ * `dim` 是 **i18n 键**，不是显示文本（`jira.status`、`jira.epic`）。插件的字典本
+ * 来就合并进内核字典，所以 `tr(dim)` 直接查得到，查不到就退回显示 dim 本身。
+ *
+ * 这条是整个设计能不违反"内核绝不点名插件"的关键：**内核里因此没有任何"哪个插件
+ * 有哪些维度"的表**——维度是数据，跟着 facet 一起来。
  */
-export type Annotation = { text: string; detail?: string; tone?: "ok" | "warn" | "dim" };
+export type Facet = { dim: string; value: string; tone?: "ok" | "warn" | "dim" };
 
 /**
- * 插件可选导出的标注函数。拿到的是会话名，返回会话名到标注的映射；不认识的会话
- * 不必出现在返回值里。
+ * 问插件时给它看的单。
+ *
+ * 传**全部**单给每个插件，不按 `source.provider === 插件 id` 预筛——预筛会在内核里
+ * 写死"provider 名就是插件 id"这个等式，而那正是要守的那条线。让插件自己看 source
+ * 挑，成本可以忽略（几十条），还顺带允许一个不绑定任何来源的插件（比如读 git 分支
+ * 的）也贡献维度。
  */
-export type PluginAnnotator = (sessions: string[]) => Promise<Record<string, Annotation>>;
+export type ItemRef = { id: string; source: { provider: string; ref: string } | null };
+
+/** 插件可选导出的维度函数。不认识的单不必出现在返回值里。 */
+export type PluginEnricher = (items: ItemRef[]) => Promise<Record<string, Facet[]>>;

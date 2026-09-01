@@ -16,8 +16,7 @@ import { Window } from "happy-dom";
 // whatever checkout happens to sit at that path rather than this one — proven
 // by editing public/list.js in this worktree into a syntax error and watching
 // every test in this file still pass, because it was importing the main
-// checkout's copy instead. `list-annotations.test.ts` already resolves this
-// way; this file just hadn't been touched since before worktrees were in use.
+// checkout's copy instead.
 const PAGE = new URL("../public/list.js", import.meta.url).pathname;
 
 const NOW = Math.floor(Date.now() / 1000);
@@ -55,10 +54,10 @@ function stubFetch(sessions: unknown[], restorable: unknown[] = [], items: unkno
       posted.push({ url, body: String(init.body ?? "") });
       if (url.includes("api/restore")) return new Response(JSON.stringify({ restored: 1 }));
     }
-    // 新形状：{ sessions, items, annotations }。裸数组那条兼容分支留在 list.js 里，
-    // 因为装成 PWA 的旧页面会打到新服务器，反过来也会。
+    // 新形状：{ sessions, items }。裸数组那条兼容分支留在 list.js 里，因为装成 PWA
+    // 的旧页面会打到新服务器，反过来也会。
     if (url.includes("api/sessions"))
-      return new Response(JSON.stringify({ sessions, items, annotations: {} }));
+      return new Response(JSON.stringify({ sessions, items }));
     if (url.includes("api/restorable")) return new Response(JSON.stringify(restorable));
     if (url.includes("api/language")) return new Response(JSON.stringify({ lang: "en" }));
     if (url.includes("api/version"))
@@ -70,8 +69,18 @@ function stubFetch(sessions: unknown[], restorable: unknown[] = [], items: unkno
 const PATCHED = ["window", "document", "location", "history", "URLSearchParams",
   "localStorage", "fetch", "setInterval"] as const;
 const saved = new Map<string, unknown>();
+// Only the tests that call mount() touch globalThis at all — the source-only
+// test at the bottom of this file (list.js 不出现插件 id) never does. Without
+// this flag, afterEach would still run its restore loop for that test, find
+// `saved` empty (nothing was patched this round) and — since every PATCHED key
+// not in `saved` is treated as "didn't exist before, delete it" — delete real
+// globals like `fetch` and `URLSearchParams` that were never touched, breaking
+// every other test file sharing this process.
+let patched = false;
 
 afterEach(() => {
+  // 覆盖全局却不还原，曾经一次弄红了别的文件里 38 个测试——Bun 一个进程跑全部。
+  if (!patched) return;
   for (const key of PATCHED) {
     if (saved.has(key)) {
       Object.defineProperty(globalThis, key, {
@@ -82,6 +91,7 @@ afterEach(() => {
     }
   }
   saved.clear();
+  patched = false;
 });
 
 async function mount(
@@ -112,6 +122,7 @@ async function mount(
     // and keep the process from exiting.
     setInterval: () => 0,
   };
+  patched = true;
   for (const key of PATCHED) {
     if (key in globalThis) saved.set(key, (globalThis as Record<string, unknown>)[key]);
     Object.defineProperty(globalThis, key, {
@@ -419,4 +430,13 @@ test("itemId 指向一张不在 items 里的单时，当作没绑", async () => 
   const root = await mount([session({ name: "orbit", itemId: "it-gone" })], {}, [], [ITEM]);
   expect(root.querySelector(".name")?.textContent).toBe("orbit");
   expect(root.querySelector(".item-chip")).toBeNull();
+});
+
+// 内核不认识具体插件——这是接缝的方向，值得由测试守着而不是靠自觉。原先这条断言
+// 挂在 list-annotations.test.ts（连同标注渲染一起），标注那条路径整条被 facet 接缝
+// 取代后搬到这里：list.js 的源码里不能出现任何具体插件的 id。
+test("list.js 的源码里不出现任何具体插件的 id", async () => {
+  const source = await Bun.file(new URL("../public/list.js", import.meta.url).pathname).text();
+  expect(source).not.toContain("jira");
+  expect(source).not.toContain("gallery");
 });

@@ -943,12 +943,3 @@ test("插件清单能被浏览器取到，别的 plugins 路径取不到", async
   }
 });
 
-test("会话列表带上插件标注这一格，即使没有插件标注任何东西", async () => {
-  const res = await fetch(`http://127.0.0.1:${server.port}/api/sessions`);
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { sessions: unknown; annotations: unknown };
-  expect(Array.isArray(body.sessions)).toBe(true);
-  // 形状永远在，前端就不必到处判 undefined。
-  expect(typeof body.annotations).toBe("object");
-  expect(body.annotations).not.toBeNull();
-});

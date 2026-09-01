@@ -1,5 +1,5 @@
 import { PLUGINS } from "./registry.js";
-import type { Annotation, Plugin, PluginAnnotator, PluginHandler } from "./types";
+import type { Facet, ItemRef, Plugin, PluginEnricher, PluginHandler } from "./types";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
 import { handle as jira } from "./jira/server";
@@ -17,7 +17,7 @@ import { handle as jira } from "./jira/server";
  * 而"某个插件在这张表里、不在那张表里"没有任何东西在检查。合成一张之后，插件能做
  * 什么写在一处，registry.test.ts 也能检查注册表与它同步。
  */
-export type PluginServer = { handle?: PluginHandler; annotate?: PluginAnnotator };
+export type PluginServer = { handle?: PluginHandler; enrich?: PluginEnricher };
 
 export const SERVERS: Record<string, PluginServer> = {
   gallery: { handle: gallery },
@@ -39,67 +39,89 @@ export function enabledPlugins(): Plugin[] {
   return PLUGINS.filter((p) => !off.has(p.id));
 }
 
-/** 声明了标注能力的插件。从上面那张表推导，不再单独维护一份。 */
-export const ANNOTATORS: Record<string, PluginAnnotator> = Object.fromEntries(
+/** 声明了维度能力的插件。从上面那张表推导，不再单独维护一份。 */
+export const ENRICHERS: Record<string, PluginEnricher> = Object.fromEntries(
   Object.entries(SERVERS)
-    .filter(([, s]) => s.annotate)
-    .map(([id, s]) => [id, s.annotate!]),
+    .filter(([, s]) => s.enrich)
+    .map(([id, s]) => [id, s.enrich!]),
 );
 
 /** 一个插件最多能占用列表构建的多少时间。 */
-export const ANNOTATE_TIMEOUT_MS = 300;
+export const ENRICH_TIMEOUT_MS = 300;
 
-/** 一条标注文本的上限，够放一个单号加一句标题，不够撑破一行。 */
+/** 一条 facet 文本的上限，够放一个状态或一个史诗名，不够撑破一张卡片。 */
 const MAX_TEXT = 120;
+
+/** 一张卡片上最多几个 chips。上限在内核这边，不信插件自觉。 */
+export const MAX_FACETS_PER_ITEM = 6;
 
 function trim(value: unknown, max: number): string {
   return typeof value === "string" ? value.slice(0, max) : "";
 }
 
 /**
- * 向每个有标注函数的插件要一次标注。
+ * 向每个声明了维度能力的插件要一次 facet，合并成 item id → facet 数组。
  *
  * 失败语义只有一种：**拿不到就当没有**。插件抛了、超时了、返回了不是对象的东西，
- * 都只是这个插件这一轮没有标注，会话列表照常渲染。内核的页面不能因为一个插件而
- * 出不来——这是开这个口子的唯一安全阀，也是它可以被接受的原因。
+ * 都只是这个插件这一轮没有维度，首页照常渲染。内核的页面不能因为一个插件而出不
+ * 来——这是开这个口子的唯一安全阀，也是它可以被接受的原因。
  *
- * annotators 是参数而不是直接用 ANNOTATORS，好让内核侧的测试能塞进一个会抛、一个
- * 会卡住的假插件——注册表是编译期写死的，没有这个参数就没法测这条安全阀。
+ * 不按插件分层返回：首页要画的是一行 chips，谁贴的不重要。分层只会让调用方再拍平
+ * 一次，还得决定插件之间的顺序。
+ *
+ * enrichers 是参数而不是直接用 ENRICHERS，好让内核侧的测试能塞进一个会抛、一个会
+ * 卡住的假插件——注册表是编译期写死的，没有这个参数就没法测这条安全阀。
  */
-export async function collectAnnotations(
-  sessions: string[],
-  annotators: Record<string, PluginAnnotator> = ANNOTATORS,
-): Promise<Record<string, Record<string, Annotation>>> {
+export async function collectFacets(
+  items: ItemRef[],
+  enrichers: Record<string, PluginEnricher> = ENRICHERS,
+): Promise<Record<string, Facet[]>> {
   const enabled = new Set(enabledPlugins().map((p) => p.id));
   // 真实插件按启用状态过滤；测试注进来的假插件不在注册表里，一律放行。
-  const entries = Object.entries(annotators).filter(
+  const entries = Object.entries(enrichers).filter(
     ([id]) => !PLUGINS.some((p) => p.id === id) || enabled.has(id),
   );
+  const asked = new Set(items.map((i) => i.id));
 
   const results = await Promise.all(
-    entries.map(async ([id, annotate]) => {
+    entries.map(async ([, enrich]) => {
       try {
         const timeout = new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), ANNOTATE_TIMEOUT_MS),
+          setTimeout(() => resolve(null), ENRICH_TIMEOUT_MS),
         );
-        const got = await Promise.race([annotate(sessions), timeout]);
+        const got = await Promise.race([enrich(items), timeout]);
         if (!got || typeof got !== "object" || Array.isArray(got)) return null;
-        const clean: Record<string, Annotation> = {};
-        for (const [session, raw] of Object.entries(got)) {
-          if (!sessions.includes(session)) continue; // 插件只能标注被问到的会话，不能塞进没要求的键
-          const a = raw as Record<string, unknown>;
-          const text = trim(a?.text, MAX_TEXT);
-          if (!text) continue;
-          const detail = trim(a?.detail, MAX_TEXT);
-          const tone = a?.tone === "ok" || a?.tone === "warn" || a?.tone === "dim" ? a.tone : undefined;
-          clean[session] = { text, ...(detail ? { detail } : {}), ...(tone ? { tone } : {}) };
+        const clean: Record<string, Facet[]> = {};
+        for (const [id, raw] of Object.entries(got)) {
+          if (!asked.has(id)) continue; // 插件只能标注被问到的单
+          if (!Array.isArray(raw)) continue;
+          const facets: Facet[] = [];
+          for (const one of raw) {
+            const f = one as Record<string, unknown>;
+            const dim = trim(f?.dim, MAX_TEXT);
+            const value = trim(f?.value, MAX_TEXT);
+            if (!dim || !value) continue;
+            const tone =
+              f?.tone === "ok" || f?.tone === "warn" || f?.tone === "dim" ? f.tone : undefined;
+            facets.push({ dim, value, ...(tone ? { tone } : {}) });
+          }
+          if (facets.length) clean[id] = facets;
         }
-        return [id, clean] as const;
+        return clean;
       } catch {
         return null;
       }
     }),
   );
 
-  return Object.fromEntries(results.filter(Boolean) as Array<readonly [string, Record<string, Annotation>]>);
+  // 合并各插件，再按单封顶——上限是"一张卡片上最多几个"，不是"每个插件最多几个"。
+  const merged: Record<string, Facet[]> = {};
+  for (const one of results) {
+    if (!one) continue;
+    for (const [id, facets] of Object.entries(one)) {
+      (merged[id] ??= []).push(...facets);
+    }
+  }
+  for (const id of Object.keys(merged)) merged[id] = merged[id]!.slice(0, MAX_FACETS_PER_ITEM);
+  return merged;
 }

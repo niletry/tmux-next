@@ -207,32 +207,7 @@ function openActions(session) {
   });
 }
 
-/**
- * 插件贴在这一行上的标注。
- *
- * 遍历插件 id，不认识其中任何一个——认识了，接缝就白划了：内核只知道"有插件想
- * 在这行上说句话"，不知道说的是工单还是别的什么。
- *
- * 一律 textContent：标注来自插件，插件不该能往内核的列表里塞标记。
- */
-function renderAnnotations(row, name, annotations) {
-  const notes = [];
-  for (const bySession of Object.values(annotations ?? {})) {
-    const note = bySession?.[name];
-    if (note?.text) notes.push(note);
-  }
-  if (!notes.length) return;
-  const wrap = el("div", "session-notes");
-  for (const note of notes) {
-    const chip = el("span", `note note-${note.tone ?? "dim"}`);
-    chip.textContent = note.text;
-    if (note.detail) chip.title = note.detail;
-    wrap.append(chip);
-  }
-  row.append(wrap);
-}
-
-function card(session, annotations, itemsById) {
+function card(session, itemsById) {
   const wrapper = el("div", "card");
   const link = el("a", "card-main");
   link.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
@@ -311,8 +286,6 @@ function card(session, annotations, itemsById) {
     pending.append(el("b", null, tr("list.pendingInput")));
     link.append(pending);
   }
-
-  renderAnnotations(link, session.name, annotations);
 
   const more = el("button", "more", "⋯");
   more.setAttribute("aria-label", tr("list.actionsFor", { name: session.name }));
@@ -403,11 +376,11 @@ function groupHeader(label, path, key, count, collapsed) {
   return head;
 }
 
-function groupOf(label, path, key, sessions, collapsed, annotations, itemsById) {
+function groupOf(label, path, key, sessions, collapsed, itemsById) {
   const group = el("section", "group" + (collapsed ? " collapsed" : ""));
   group.append(groupHeader(label, path, key, sessions.length, collapsed));
   if (!collapsed)
-    for (const session of sessions) group.append(card(session, annotations, itemsById));
+    for (const session of sessions) group.append(card(session, itemsById));
   return group;
 }
 
@@ -422,7 +395,7 @@ function groupOf(label, path, key, sessions, collapsed, annotations, itemsById) 
  * Groups are ordered by their most recent member, so the project being worked
  * on rises to the top on its own.
  */
-function sections(sessions, annotations, itemsById) {
+function sections(sessions, itemsById) {
   const out = [];
   const collapsed = collapsedSet();
 
@@ -433,7 +406,7 @@ function sections(sessions, annotations, itemsById) {
     out.push(
       groupOf(
         tr("list.pinnedGroup"), null, "\u0000pinned", pinned,
-        collapsed.has("\u0000pinned"), annotations, itemsById,
+        collapsed.has("\u0000pinned"), itemsById,
       ),
     );
   }
@@ -453,7 +426,7 @@ function sections(sessions, annotations, itemsById) {
     // A session whose directory tmux could not report still needs a home; it
     // gets its own heading rather than silently joining someone else's.
     const label = path ? path.replace(/\/+$/, "").split("/").pop() || path : tr("list.noProject");
-    out.push(groupOf(label, path, path, members, collapsed.has(path), annotations, itemsById));
+    out.push(groupOf(label, path, path, members, collapsed.has(path), itemsById));
   }
   return out;
 }
@@ -598,13 +571,11 @@ async function render() {
       fetchRestorable(),
     ]);
     // Older servers (and a phone holding a cached page against a newer one)
-    // return a bare array; a fresh server wraps it with plugin annotations and
-    // the work items sessions may be bound to. Keep tolerating the bare-array
-    // shape either way — an old page can hit a new server just as easily as
-    // the reverse — so `items` simply falls back to empty.
-    const { sessions, annotations, items } = Array.isArray(body)
-      ? { sessions: body, annotations: {}, items: [] }
-      : body;
+    // return a bare array; a fresh server wraps it with the work items
+    // sessions may be bound to. Keep tolerating the bare-array shape either
+    // way — an old page can hit a new server just as easily as the reverse —
+    // so `items` simply falls back to empty.
+    const { sessions, items } = Array.isArray(body) ? { sessions: body, items: [] } : body;
     const itemsById = new Map((items ?? []).map((item) => [item.id, item]));
     setCount(sessions.length ? tr("list.count", { n: sessions.length }) : "");
     setTabWaiting(sessions.filter((s) => s.idle).length);
@@ -613,7 +584,7 @@ async function render() {
     if (restorable.length) children.push(restoreBanner(restorable));
     children.push(
       ...(sessions.length
-        ? sections(sessions, annotations ?? {}, itemsById)
+        ? sections(sessions, itemsById)
         : [el("p", "empty", tr("list.noSessions"))]),
     );
     listEl.replaceChildren(...children);

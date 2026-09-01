@@ -5,7 +5,7 @@ import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
-import { SERVERS, collectAnnotations, enabledPlugins } from "../plugins/handlers";
+import { SERVERS, enabledPlugins } from "../plugins/handlers";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { sendText } from "./tmux/send-text";
@@ -268,12 +268,9 @@ export function startServer(
           resolveBindings(sessions.map((s) => ({ name: s.name, sessionId: s.sessionId }))),
         ]);
         const itemOf = new Map(bindings.map((b) => [b.session, b.itemId]));
-        // 插件贴的只读标注。拿不到就没有，列表照常出——失败语义只有这一种。
-        const annotations = await collectAnnotations(sessions.map((s) => s.name));
         return Response.json({
           sessions: sessions.map((s) => ({ ...s, itemId: itemOf.get(s.name) ?? null })),
           items,
-          annotations,
         });
       }
 
