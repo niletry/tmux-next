@@ -66,6 +66,8 @@ let instanceUrl = "";
  * 单单刷新，等全量落地时会把刚刷到的新数据整个盖回旧的——正是"刷新完了没更新"。
  */
 let devAt = {};
+/** 会话名 -> 内核给的那份会话摘要。用来给绑定的会话标状态。 */
+let sessionInfo = {};
 /**
  * 正在刷新的单，以及上次刷新失败的单。
  *
@@ -211,6 +213,23 @@ function prRow(pr) {
  * card with three sessions into a wall of buttons. Same reasoning and the same
  * 36px target as the list page's `.more`.
  */
+/**
+ * 一个会话此刻在做什么，用会话列表页一模一样的三句话。
+ *
+ * 文案键直接借内核的（`list.waitingDot` / `list.working` / `list.pendingInput`），
+ * 不在插件字典里另起一套——同一个状态在两个页面上叫不同名字，是最没必要的困惑。
+ *
+ * `turn` 优先于 `idle`：前者读的是 transcript 里的 stop_reason，后者认的是 TUI 上
+ * 的空闲标记。实测 32 个会话里两者有 4 处不一致，其中至少一处（正在干活的那个）是
+ * 屏幕判断错了。没有 transcript 的会话读不出 `turn`，那时 `idle` 是唯一的信息源。
+ */
+function sessionStatus(info) {
+  if (!info) return null;
+  if (info.pendingInput) return { text: tr("list.pendingInput"), waiting: false };
+  const waiting = info.turn ? info.turn === "waiting" : !!info.idle;
+  return { text: waiting ? tr("list.waitingDot") : tr("list.working"), waiting };
+}
+
 function sessionRow(binding) {
   const row = el("div", binding.live ? "jira-session" : "jira-session stopped");
 
@@ -233,7 +252,15 @@ function sessionRow(binding) {
   link.title = tr("jira.open");
   row.append(link);
 
-  if (!binding.live) row.append(el("span", "jira-dead", tr("jira.dead")));
+  if (!binding.live) {
+    row.append(el("span", "jira-dead", tr("jira.dead")));
+  } else {
+    const status = sessionStatus(sessionInfo[binding.session]);
+    if (status) {
+      if (status.waiting) row.append(el("span", "jira-session-dot"));
+      row.append(el("span", "jira-session-status", status.text));
+    }
+  }
 
   const unbind = el("button", "jira-unbind", "\u00d7");
   unbind.type = "button";
@@ -520,6 +547,25 @@ function renderIssues() {
   mainEl.replaceChildren(...bars.filter(Boolean), ...shown.map(issueGroup));
 }
 
+/**
+ * 内核的会话列表，用来给这一页上的会话标状态。
+ *
+ * 直接用内核这个公开接口，而不是让插件自己去算：那 32KB 尾部读的长度、按 agent
+ * 分的屏幕标记、时间戳该取哪个——全是内核积累的判断，插件重算一遍必然得出不一样
+ * 的结论，而同一个会话在两个页面上说法不同，比没有状态更糟。
+ */
+async function loadSessions() {
+  try {
+    const res = await fetch(url("api/sessions"));
+    const body = await res.json();
+    const list = Array.isArray(body) ? body : (body.sessions ?? []);
+    sessionInfo = Object.fromEntries(list.map((s) => [s.name, s]));
+  } catch {
+    // 状态是附加信息，取不到就不标——不该让整页失败。
+    sessionInfo = {};
+  }
+}
+
 /** Every issue's PRs. Cheap when not refreshing — the server caches it. */
 async function loadDev(refresh) {
   const started = Date.now();
@@ -715,6 +761,7 @@ initLang().then(async () => {
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState !== "visible" || !issues.length) return;
     await reloadBindings();
+    await loadSessions();
     renderIssues();
   });
 });

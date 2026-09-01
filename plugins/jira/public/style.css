@@ -435,3 +435,20 @@ a.jira-check:active { opacity: 0.6; }
 .jira-check-state.ok { color: var(--idle); }
 .jira-check-state.run { color: var(--accent); }
 .jira-check-state.bad { color: var(--term-red); }
+
+/* 会话此刻在做什么。绿点与措辞都跟会话列表页一致——同一个状态在两个页面上长得
+   不一样，是最没必要的困惑。 */
+.jira-session-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+
+.jira-session-status {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
