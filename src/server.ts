@@ -5,7 +5,8 @@ import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
-import { SERVERS, enabledPlugins } from "../plugins/handlers";
+import { SERVERS, enabledPlugins, collectFacets } from "../plugins/handlers";
+import type { Facet } from "../plugins/types";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { sendText } from "./tmux/send-text";
@@ -33,6 +34,7 @@ import {
 import { reapOrphanWebSessions } from "./tmux/session-manager";
 import { createItem, readItems, updateItem } from "./items";
 import { bindSession, resolveBindings, unbindSession } from "./session-binding";
+import { kernelFacets } from "./item-facets";
 
 type WsData = { session: PaneSession | null };
 
@@ -279,11 +281,27 @@ export function startServer(
       }
 
       if (url.pathname === "/api/items" && req.method === "GET") {
-        // sessionIdentities() 而非 listSessions()：这里只要 name/sessionId 对，
-        // 不需要 listSessions() 那一整套 capture-pane + transcript 读取。
-        const [items, live] = await Promise.all([readItems(), sessionIdentities()]);
-        const bindings = await resolveBindings(live);
-        return Response.json({ items, bindings });
+        // 这里改回 listSessions()：首页要在同一次请求里画出每张卡片下的会话行，
+        // 那些字段（状态、最后动作……）只有完整摘要里有，sessionIdentities() 的
+        // {name, sessionId} 不够。再打一次 /api/sessions 会让"几个会话"和下面
+        // 列出的行来自两个时刻。
+        const [items, live] = await Promise.all([readItems(), listSessions()]);
+        const bindings = await resolveBindings(
+          live.map((s) => ({ name: s.name, sessionId: s.sessionId })),
+        );
+        // 内核的维度和插件的合并成一张表：视图层不该知道一个维度是谁产的。
+        const mine = kernelFacets(items, live, bindings);
+        const theirs = await collectFacets(
+          items.map((i) => ({
+            id: i.id,
+            source: i.source ? { provider: i.source.provider, ref: i.source.ref } : null,
+          })),
+        );
+        const facets: Record<string, Facet[]> = {};
+        for (const item of items) {
+          facets[item.id] = [...(mine[item.id] ?? []), ...(theirs[item.id] ?? [])];
+        }
+        return Response.json({ items, bindings, sessions: live, facets });
       }
 
       if (url.pathname === "/api/items" && req.method === "POST") {

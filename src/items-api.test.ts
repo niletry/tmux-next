@@ -48,7 +48,47 @@ afterEach(async () => {
 test("空的时候给空表", async () => {
   const res = await fetch(at("/api/items"));
   expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ items: [], bindings: [] });
+  const body = (await res.json()) as Record<string, unknown>;
+  // sessions 不能做整体深比较：这台机器跑着真实 tmux 服务器，里面活跃 Claude
+  // 会话的 capture-pane 内容（spinner 之类）在两次异步调用之间就可能变化，深
+  // 比较必然偶发失败。断言的重点是"响应恰好是这几个键、不多不少"——用键集合
+  // 加逐字段校验来兑现，而不是假装这台机器没有会话。
+  expect(Object.keys(body).sort()).toEqual(["bindings", "facets", "items", "sessions"]);
+  expect(body.items).toEqual([]);
+  expect(body.bindings).toEqual([]);
+  expect(body.facets).toEqual({});
+  expect(Array.isArray(body.sessions)).toBe(true);
+});
+
+test("列表带上 facets，没有单时是空表", async () => {
+  const body = (await (await fetch(at("/api/items"))).json()) as { facets: Record<string, unknown> };
+  expect(body.facets).toEqual({});
+});
+
+test("一张没有会话的单，内核给出 agent=none 与 sessions=0", async () => {
+  const created = await makeItem("孤零零的单");
+  const body = (await (await fetch(at("/api/items"))).json()) as {
+    facets: Record<string, Array<{ dim: string; value: string }>>;
+  };
+  const dims = Object.fromEntries((body.facets[created.id] ?? []).map((f) => [f.dim, f.value]));
+  expect(dims["item.agent"]).toBe("none");
+  expect(dims["item.sessions"]).toBe("0");
+});
+
+test("带 cwd 的单给出目录维度", async () => {
+  const created = await makeItem("有目录的单", { cwd: "/tmp/orbit" });
+  const body = (await (await fetch(at("/api/items"))).json()) as {
+    facets: Record<string, Array<{ dim: string; value: string }>>;
+  };
+  const dims = Object.fromEntries((body.facets[created.id] ?? []).map((f) => [f.dim, f.value]));
+  expect(dims["item.cwd"]).toBe("orbit");
+});
+
+// 首页要在一次请求里拿齐画卡片需要的东西：单、绑定、会话摘要、维度。
+// 分两次请求会让同一张卡片上的「几个会话」和下面列出的会话来自两个时刻。
+test("列表同时带上会话摘要", async () => {
+  const body = (await (await fetch(at("/api/items"))).json()) as { sessions: unknown };
+  expect(Array.isArray(body.sessions)).toBe(true);
 });
 
 test("建单返回 201 与建出来的单", async () => {
