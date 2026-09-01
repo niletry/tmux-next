@@ -21,7 +21,7 @@ A self-hosted web client for tmux. List every session on the machine, see the la
 │    billing-ci        1 hr │      ├──────────────────────────┤
 │    ✓ 12 passed            │      │ Esc Tab ⇧Tab Ctrl ⌨ ↑↓←→ │
 └──────────────────────────┘      └──────────────────────────┘
-         session list                       terminal
+  session list (sessions.html)              terminal
 ```
 
 That `●` on the left means "it's waiting on you" — Claude Code prints `✻ Cogitated for …` when a turn ends, and the list uses that to float the sessions waiting on you to the top.
