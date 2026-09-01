@@ -83,9 +83,19 @@ test("按 agent 分组时用固定顺序，不按出现顺序", () => {
   expect(AGENT_ORDER).toEqual(["waiting", "working", "none"]);
 });
 
-test("空的分组不出现", () => {
+// "空的分组不出现" 原来断言的是 groups.some(g => g.items.length === 0) 恒为
+// false——但 groupItems 的实现只从数据里实际出现的取值建组（byValue 的 key
+// 本身就不会是空列表），missing 桶也只在非空时才 push，代码里根本没有能产出
+// 空组的分支，这条断言测不出任何东西会被打破。
+//
+// 真正会被打破的地方是 AGENT_ORDER 那条白名单过滤：它把"固定顺序里有、但这批
+// 数据里没人取这个值"的取值滤掉（`known = AGENT_ORDER.filter(v => byValue.has(v))`），
+// 不然 "none" 会作为一个没有单的空组占位。这里换成测这条真正的属性。
+test("AGENT_ORDER 里的取值没人用时不占出一个空组", () => {
+  // fixture 里没有任何单是 item.agent === "none"，只有 waiting/working。
   const groups = groupItems(items, facets, "item.agent");
-  expect(groups.some((g) => g.items.length === 0)).toBe(false);
+  expect(groups.map((g) => g.value)).not.toContain("none");
+  expect(groups.every((g) => g.items.length > 0)).toBe(true);
 });
 
 // AGENT_ORDER 是个白名单，不是过滤器——排完已知值之后，没见过的值也该按出现顺序

@@ -137,7 +137,14 @@ test("checksKnown 为 false 时不产检查维度", () => {
   const dev: DevResult = {
     ok: true,
     hidden: 0,
-    prs: [{ id: "1", title: "a", url: "u", branch: "b", updated: 0, status: "OPEN", checks: [], checksKnown: false }],
+    prs: [{
+      id: "1", title: "a", url: "u", branch: "b", updated: 0, status: "OPEN", checksKnown: false,
+      // 非空 checks 是关键：checksKnown:false 配空数组时，「没问到」和
+      // 「问到了、答案是零个检查」在计数上分不出来，这条测试就测不出丢过滤
+      // 条件的回归。这里给两条真实的 checks，只有真的按 checksKnown 过滤才
+      // 会不产出 jira.checks。
+      checks: [{ name: "ci", state: "SUCCESSFUL", url: "u" }, { name: "lint", state: "FAILED", url: "u" }],
+    }],
   };
   const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
   expect(dims(got)["jira.checks"]).toBeUndefined();
