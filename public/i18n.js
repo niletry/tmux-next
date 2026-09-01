@@ -151,6 +151,7 @@ const zh = {
   "create.failed": "创建失败，请重试",
 
   "nav.backToSessions": "会话列表",
+  "nav.backTo": "返回{name}",
   "nav.label": "主导航",
   "term.renameTitle": "重命名会话",
   "term.endTitle": "结束会话",
@@ -326,6 +327,7 @@ const en = {
   "create.failed": "Could not create the session, try again",
 
   "nav.backToSessions": "Sessions",
+  "nav.backTo": "Back to {name}",
   "nav.label": "Main navigation",
   "term.renameTitle": "Rename session",
   "term.endTitle": "End session",

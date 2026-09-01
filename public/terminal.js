@@ -12,6 +12,9 @@ import { initTheme, cachedTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
 import { readLayout } from "./key-layout.js";
 import { connClass } from "./conn-state.js";
+import { backTarget } from "./back-target.js";
+import { PLUGINS } from "../plugins/registry.js";
+import { url } from "./root.js";
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
@@ -43,7 +46,37 @@ term.open(termEl);
 // Captured before initTheme() runs: that call updates the cache as a side
 // effect, so comparing against cachedTheme() afterwards would always match and
 // a changed theme would never reach the terminal.
-initLang();
+/**
+ * 返回箭头指回你的来路，而不是一律指回会话列表。
+ *
+ * 表由插件清单推出来，跟顶栏的标签同源——内核这边没有一张按插件名写的映射，
+ * 也不该有。第一项是缺省：链接上没有标记、标记认不出来（比如那个插件后来被
+ * 关掉了），都落回会话列表，也就是这个箭头一直以来的行为。
+ */
+const backPages = [
+  { id: "sessions", path: "./", titleKey: "nav.backToSessions" },
+  ...PLUGINS.map((p) => ({ id: p.id, path: `p/${p.id}/`, titleKey: p.titleKey })),
+];
+const back = backTarget(location.search, backPages);
+
+/**
+ * 缺省那一项的说明文字留给 data-i18n-title，别的来路在这里写。
+ *
+ * 顺序是有讲究的：applyLang() 会把 data-i18n-title 重刷回"会话列表"，所以语言
+ * 落定之后必须再写一次，否则从工单页进来的返回键会指着工单页、却说自己是列表。
+ */
+function applyBack() {
+  const el = document.querySelector(".term-back");
+  if (!el) return;
+  el.href = url(back.path);
+  if (back.id === backPages[0].id) return;
+  const label = tr("nav.backTo", { name: tr(back.titleKey) });
+  el.title = label;
+  el.setAttribute("aria-label", label);
+}
+
+applyBack();
+initLang().then(applyBack);
 
 initTheme().then((name) => {
   if (name !== initialTheme) term.options.theme = xtermTheme(name);

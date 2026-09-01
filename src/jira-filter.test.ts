@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { matches, options, epicOf, NO_FILTERS } from "../plugins/jira/public/filter.js";
+import { matches, options, epicOf, NO_FILTERS, filtersFromSearch, searchOfFilters } from "../plugins/jira/public/filter.js";
 
 /**
  * 工单列表的筛选。
@@ -70,4 +70,15 @@ test("一维的计数在另一维筛过之后算——点下去会剩几条就�
 
 test("没有史诗的工单不出现在史诗选项里", () => {
   expect(options([issue(), issue()], NO_FILTERS).epics).toEqual([]);
+});
+
+test("筛选在地址栏和状态之间往返", () => {
+  expect(filtersFromSearch("?epic=ABC-1&status=In+Progress")).toEqual({ epic: "ABC-1", status: "In Progress" });
+  expect(filtersFromSearch("")).toEqual(NO_FILTERS);
+  expect(filtersFromSearch("?target=x")).toEqual(NO_FILTERS);
+  expect(searchOfFilters(NO_FILTERS)).toBe("");
+  expect(searchOfFilters({ epic: "ABC-1", status: "In Progress" })).toBe("epic=ABC-1&status=In+Progress");
+  // 往返：空格、中文和 & 都得原样回来，不然分享出去的链接筛的是别的东西。
+  const filters = { epic: "&x=1", status: "待办 / 进行中" };
+  expect(filtersFromSearch("?" + searchOfFilters(filters))).toEqual(filters);
 });

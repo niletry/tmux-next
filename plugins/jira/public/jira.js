@@ -17,7 +17,7 @@ import { renderHeader } from "../../nav.js";
 import { url } from "../../root.js";
 import { pickSessionName } from "./session-name.js";
 import { refreshState } from "./refresh-state.js";
-import { matches, options, NO_FILTERS } from "./filter.js";
+import { matches, options, filtersFromSearch, searchOfFilters } from "./filter.js";
 import { parseMarkdown } from "./markdown.js";
 
 const mainEl = /** @type {HTMLElement} */ (document.getElementById("issues"));
@@ -86,8 +86,39 @@ let sessionsLoaded = false;
 const refreshing = new Set();
 const refreshFailed = new Set();
 
-/** 当前筛选。空字符串表示这一维不筛。 */
-let filters = { ...NO_FILTERS };
+/**
+ * 当前筛选。空字符串表示这一维不筛。
+ *
+ * 权威在地址栏：从那里读进来，每次改动写回去。放在模块变量里的时候，刷新一下或
+ * 者点进一个会话再返回，看到的都是没筛过的全量列表，而返回的人多半正是为了回到
+ * 刚才那一屏。
+ */
+let filters = filtersFromSearch(location.search);
+
+/**
+ * 把当前筛选写进地址栏，不新增历史条目。
+ *
+ * replaceState 而不是 pushState：连点四个筛选项之后，返回键该回到你来的地方，而
+ * 不是把这四步一步步倒回去。
+ */
+function saveFilters() {
+  if (typeof history?.replaceState !== "function") return;
+  const query = searchOfFilters(filters);
+  history.replaceState({}, "", query ? `?${query}` : location.pathname);
+}
+
+/**
+ * 开会话的链接：带上来路，以及来路这一页此刻的视图。
+ *
+ * 终端页的返回箭头据此回到这里——回到筛过的这一屏，而不是回到全量列表。
+ */
+function terminalHref(session) {
+  const query = searchOfFilters(filters);
+  return url(
+    "terminal.html?target=" + encodeURIComponent(session) + "&from=jira" +
+      (query ? "&fq=" + encodeURIComponent(query) : ""),
+  );
+}
 
 function bindingsFor(key) {
   return bindings.filter((b) => b.key === key);
@@ -319,7 +350,7 @@ async function openQuestion(session) {
     closeBtn.type = "button";
     closeBtn.addEventListener("click", close);
     const open = el("a", "btn primary", tr("jira.open"));
-    open.href = url("terminal.html?target=" + encodeURIComponent(session));
+    open.href = terminalHref(session);
     actions.append(closeBtn, open);
     sheet.append(actions);
 
@@ -455,7 +486,7 @@ function sessionRow(binding) {
   row.append(icon);
 
   const link = el("a", "jira-session-link", binding.session);
-  link.href = url("terminal.html?target=" + encodeURIComponent(binding.session));
+  link.href = terminalHref(binding.session);
   link.title = tr("jira.open");
   row.append(link);
 
@@ -717,6 +748,7 @@ function filterRow(label, dim, entries) {
     chip.append(el("span", null, value), el("span", "jira-filter-n", String(n)));
     chip.addEventListener("click", () => {
       filters = { ...filters, [dim]: on ? "" : value };
+      saveFilters();
       renderIssues();
     });
     row.append(chip);
@@ -948,7 +980,7 @@ async function finishReturn(bind, created) {
   } catch {
     // deliberately ignored — see above
   }
-  location.replace(url("terminal.html?target=" + encodeURIComponent(created)));
+  location.replace(terminalHref(created));
 }
 
 // --- page entry --------------------------------------------------------------

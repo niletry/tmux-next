@@ -68,3 +68,41 @@ export function options(issues, filters) {
     statuses: count("status", (i) => i.status),
   };
 }
+
+/**
+ * 筛选写进地址栏，也从地址栏读回来。
+ *
+ * 筛选原来只活在模块变量里，所以刷新一下、或者点进一个会话再返回，看到的都是没
+ * 筛过的全量列表——而返回的人多半正是为了回到刚才那一屏。放进 URL 之后它跟着这
+ * 一页的历史条目走，顺带让一个筛过的视图可以被刷新和分享。
+ *
+ * 只认这两个维度，值原样带走：值是 Jira 那边的状态名和史诗号，这里不去猜它们长
+ * 什么样，认不出来的维度在 matches() 里本来就筛不掉任何东西。
+ */
+
+/**
+ * @param {string} search
+ * @returns {Filters}
+ */
+export function filtersFromSearch(search) {
+  const params = new URLSearchParams(search);
+  return {
+    epic: params.get("epic") ?? "",
+    status: params.get("status") ?? "",
+  };
+}
+
+/**
+ * 一段 query，不带问号；没筛任何东西就是空字符串。
+ *
+ * @param {Filters} filters
+ * @returns {string}
+ */
+export function searchOfFilters(filters) {
+  const params = new URLSearchParams();
+  for (const dim of ["epic", "status"]) {
+    const value = filters[/** @type {keyof Filters} */ (dim)];
+    if (value) params.set(dim, value);
+  }
+  return params.toString();
+}

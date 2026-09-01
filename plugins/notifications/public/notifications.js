@@ -60,7 +60,7 @@ async function load() {
     ...notifications.map((n) => {
       const card = el("div", "card");
       const link = el("a", "card-main");
-      link.href = url(`terminal.html?target=${encodeURIComponent(n.session)}`);
+      link.href = url(`terminal.html?target=${encodeURIComponent(n.session)}&from=notifications`);
       const row = el("div", "row");
       row.append(el("span", "name", n.session));
       row.append(el("span", "time", relativeTime(n.ts)));
