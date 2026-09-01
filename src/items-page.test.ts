@@ -298,7 +298,7 @@ test("默认按 agent 状态分组，等你回答的排在最前", async () => {
   const root = await mount(payload({
     items: [item({ id: "it-1", title: "闲的" }), item({ id: "it-2", title: "等你的" })],
     facets: {
-      "it-1": [{ dim: "item.agent", value: "idle" }],
+      "it-1": [{ dim: "item.agent", value: "working" }],
       "it-2": [{ dim: "item.agent", value: "waiting" }],
     },
   }));
@@ -309,7 +309,7 @@ test("默认按 agent 状态分组，等你回答的排在最前", async () => {
 test("分组选择器的选项从数据里现算", async () => {
   const root = await mount(payload({
     items: [item()],
-    facets: { "it-1": [{ dim: "item.agent", value: "idle" }, { dim: "jira.status", value: "In Progress" }] },
+    facets: { "it-1": [{ dim: "item.agent", value: "working" }, { dim: "jira.status", value: "In Progress" }] },
   }));
   const options = [...root.querySelectorAll("#group-by option")].map((o) => o.getAttribute("value"));
   expect(options).toContain("jira.status");
@@ -328,7 +328,7 @@ test("存的是一个数据里已经没有的维度时退回默认，不是空�
   const store = { "tmux-next.items.groupBy": "gone.dim" };
   const root = await mount(payload({
     items: [item()],
-    facets: { "it-1": [{ dim: "item.agent", value: "idle" }] },
+    facets: { "it-1": [{ dim: "item.agent", value: "working" }] },
   }), store);
   expect(root.querySelectorAll(".item-card").length).toBe(1);
 });
@@ -337,7 +337,7 @@ test("筛到没有单时说清楚，而不是空白", async () => {
   const store = { "tmux-next.items.filter": JSON.stringify({ "item.agent": ["nope"] }) };
   const root = await mount(payload({
     items: [item()],
-    facets: { "it-1": [{ dim: "item.agent", value: "idle" }] },
+    facets: { "it-1": [{ dim: "item.agent", value: "working" }] },
   }), store);
   expect(root.querySelector(".empty")?.textContent).toContain(tr("items.noneMatch"));
 });
@@ -354,7 +354,7 @@ test("未归单不受分组与筛选影响", async () => {
   const root = await mount(payload({
     items: [item()],
     sessions: [session({ name: "随手开的" })],
-    facets: { "it-1": [{ dim: "item.agent", value: "idle" }] },
+    facets: { "it-1": [{ dim: "item.agent", value: "working" }] },
   }), store);
   expect(root.querySelector(".unassigned")?.textContent).toContain("随手开的");
 });
