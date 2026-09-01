@@ -413,6 +413,42 @@ a.item-title { color: var(--accent); }
   max-width: 100%;
 }
 
+/* 维度 chips 一行、可换行——不能挤破卡片宽度，标签数量是数据决定的，没有上限。 */
+.facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.facet {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--dim);
+  font-size: 11px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.facet .f-dim,
+.facet .f-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.facet .f-dim { opacity: 0.75; }
+
+/* 颜色只从主题变量派生，跟 .note-ok/.note-warn/.note-dim 同一套——
+   src/themes.test.ts 要查的就是这条。 */
+.facet.ok { color: var(--idle); }
+.facet.warn { color: var(--term-red); }
+.facet.dim { color: var(--dim); }
+
 .item-session {
   display: flex;
   align-items: center;

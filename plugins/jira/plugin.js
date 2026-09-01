@@ -15,6 +15,10 @@ export default {
     '<circle cx="8.5" cy="9.5" r="1.5"/>',
   // 页面外壳由内核生成，见 plugins/types.ts 的 page。
   page: { mainId: "issues" },
+  // 单卡片上的维度 chips：内核没有"哪个插件有哪些维度"的表，dim 就是 i18n 键，
+  // 跟着数据一起来。src/i18n.test.ts 单独认这个数组字面量，只把这四个键当成
+  // 有真实使用点（跟 titleKey 一样，它也不长成 t()/tr()/data-i18n 的样子）。
+  facetDims: ["jira.status", "jira.epic", "jira.prs", "jira.checks"],
   i18n: {
     zh: {
       "jira.title": "工单",
@@ -46,6 +50,10 @@ export default {
       "jira.dead": "已停止",
       "jira.unbind": "解除绑定",
       "jira.open": "进入",
+      "jira.status": "状态",
+      "jira.epic": "史诗",
+      "jira.prs": "PR",
+      "jira.checks": "检查",
     },
     en: {
       "jira.title": "Issues",
@@ -77,6 +85,10 @@ export default {
       "jira.dead": "Stopped",
       "jira.unbind": "Unbind",
       "jira.open": "Open",
+      "jira.status": "Status",
+      "jira.epic": "Epic",
+      "jira.prs": "PRs",
+      "jira.checks": "Checks",
     },
   },
 };

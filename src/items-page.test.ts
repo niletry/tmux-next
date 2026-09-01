@@ -244,3 +244,42 @@ test("items.js 的源码里不出现任何具体插件的 id", async () => {
   expect(source).not.toContain("jira");
   expect(source).not.toContain("gallery");
 });
+
+// ---- facet chips ----
+
+const facets = { "it-1": [
+  { dim: "item.agent", value: "waiting", tone: "warn" },
+  { dim: "jira.status", value: "In Progress", tone: "ok" },
+] };
+
+test("卡片画出 facet chips", async () => {
+  const root = await mount(payload({ items: [item()], facets }));
+  expect(root.querySelectorAll(".facet").length).toBe(2);
+});
+
+// dim 是 i18n 键：内核里没有"哪个插件有哪些维度"的表，维度名跟着数据来。
+test("维度名走字典，查不到就显示 dim 本身", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "some.unknown.dim", value: "x" }] },
+  }));
+  expect(root.querySelector(".facet")?.textContent).toContain("some.unknown.dim");
+});
+
+test("agent 维度的取值走字典而不是显示英文", async () => {
+  const root = await mount(payload({ items: [item()], facets }));
+  const chip = [...root.querySelectorAll(".facet")].find((n) => n.textContent.includes("waiting"));
+  expect(chip).toBeUndefined();
+});
+
+test("tone 变成 class，没有 tone 就没有那个 class", async () => {
+  const root = await mount(payload({ items: [item()], facets }));
+  expect(root.querySelector(".facet.warn")).not.toBeNull();
+  expect(root.querySelector(".facet.ok")).not.toBeNull();
+});
+
+test("没有 facet 的单不画 chips 区，也不抛", async () => {
+  const root = await mount(payload({ items: [item()], facets: {} }));
+  expect(root.querySelectorAll(".facet").length).toBe(0);
+  expect(root.querySelector(".item-title")?.textContent).toBe("修登录页");
+});

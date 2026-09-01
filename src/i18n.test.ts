@@ -72,6 +72,16 @@ function usedKeys(): Map<string, string[]> {
         }
       }
     }
+    // 插件清单里的 facetDims: [...]——单卡片 chip 的维度名，dim 本身就是
+    // i18n 键。跟 titleKey 一条道理：真实使用点，只是不长成 t()/tr()/
+    // data-i18n 的样子。只认数组字面量里的字符串，不是整个文件的每个键都
+    // 值得豁免，所以先抠出方括号内容再单独扫。
+    const facetDimsMatch = source.match(/\bfacetDims:\s*\[([^\]]*)\]/);
+    if (facetDimsMatch) {
+      for (const m of facetDimsMatch[1].matchAll(/"([A-Za-z0-9_.]+)"/g)) {
+        found.set(m[1], [...(found.get(m[1]) ?? []), file]);
+      }
+    }
   }
   return found;
 }

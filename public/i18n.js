@@ -60,6 +60,17 @@ const zh = {
   "items.unassigned": "未归单",
   "items.agent.waiting": "等你回答",
   "items.agent.working": "工作中",
+  "items.agent.none": "无会话",
+
+  // 内核维度的字面量映射——跟 list.js:52 附近同一招：facet.dim 是动态查的，
+  // src/i18n.test.ts 的死键扫描只认字符串字面量，拼出来的键名它看不见，会把这
+  // 几个键判成没人用。内核只知道这五个维度（agent/sessions/cwd/source/tag），
+  // 插件维度走 facetDims 的另一条路（见 plugins/jira/plugin.js）。
+  "item.agent": "Agent",
+  "item.sessions": "会话",
+  "item.cwd": "目录",
+  "item.source": "来源",
+  "item.tag": "标签",
 
   "term.copied": "已复制",
   "term.copyNeedsHttps": "复制失败：需要 HTTPS",
@@ -251,6 +262,13 @@ const en = {
   "items.unassigned": "No work item",
   "items.agent.waiting": "Waiting on you",
   "items.agent.working": "Working",
+  "items.agent.none": "No session",
+
+  "item.agent": "Agent",
+  "item.sessions": "Sessions",
+  "item.cwd": "Directory",
+  "item.source": "Source",
+  "item.tag": "Tag",
 
   "term.copied": "Copied",
   "term.copyNeedsHttps": "Copy failed: needs HTTPS",

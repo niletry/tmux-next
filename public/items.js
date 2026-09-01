@@ -54,6 +54,51 @@ function sessionState(session) {
   return AGENT_LABEL[stateOf(session)]();
 }
 
+/**
+ * item.agent 的取值也是内部词（waiting/working/none），字面量映射，理由同
+ * AGENT_LABEL 和 list.js:52——死键扫描只认字符串字面量。waiting/working 已经
+ * 给 AGENT_LABEL 用过，这里加的是 none：一张单没有会话时那个 chip 该说什么。
+ */
+const AGENT_VALUE = {
+  waiting: () => tr("items.agent.waiting"),
+  working: () => tr("items.agent.working"),
+  none: () => tr("items.agent.none"),
+};
+
+/**
+ * 内核维度的字面量映射表：内核只认识这五个维度，写成表而不是拼 `item.${dim}`，
+ * 理由同上——死键扫描看不见拼出来的键名。插件维度不在这张表里，它们的显示名
+ * 走 tr(facet.dim) 的通用查找，查不到就退回 dim 本身（下面 facetChip 里）。
+ */
+const ITEM_DIM_LABEL = {
+  "item.agent": () => tr("item.agent"),
+  "item.sessions": () => tr("item.sessions"),
+  "item.cwd": () => tr("item.cwd"),
+  "item.source": () => tr("item.source"),
+  "item.tag": () => tr("item.tag"),
+};
+
+/**
+ * 一个维度 chip。
+ *
+ * `dim` 是 i18n 键不是显示文本，查不到就退回显示 dim 本身——内核里没有"哪个插件
+ * 有哪些维度"的表，维度名跟着数据一起来，这条是这套设计不违反插件界线的关键。
+ *
+ * `item.agent` 的取值也走字典（waiting/working/none 是内部词，不该给人看）；
+ * 别的维度的取值是数据（工单状态、史诗名），原样显示。
+ */
+function facetChip(facet) {
+  // tr() 本身查不到键就退回键名，插件维度（开放集合）和真正没配置的 dim 都
+  // 落到这条路；内核的五个维度走上面的字面量表，只是为了不被死键扫描误判。
+  const label = ITEM_DIM_LABEL[facet.dim]?.() ?? tr(facet.dim);
+  const value = facet.dim === "item.agent" ? (AGENT_VALUE[facet.value]?.() ?? facet.value) : facet.value;
+  const chip = el("span", facet.tone ? `facet ${facet.tone}` : "facet");
+  chip.append(el("span", "f-dim", label));
+  chip.append(el("span", "f-value", value));
+  chip.title = `${label}: ${value}`;
+  return chip;
+}
+
 /** 一张单下的一行会话：它现在什么状态，点进去。别的动作在会话页上。 */
 function sessionRow(session) {
   const row = el("a", "item-session");
@@ -69,7 +114,7 @@ function sessionRow(session) {
  *
  * 「再开一个会话」永远在，不是「打开」——一张单多个会话是常态，不是边角情况。
  */
-function itemCard(item, sessions) {
+function itemCard(item, sessions, facets) {
   const card = el("article", "item-card");
 
   const head = el("div", "item-head");
@@ -88,6 +133,14 @@ function itemCard(item, sessions) {
   if (item.source) head.append(el("span", "item-source", item.source.ref));
   if (sessions.length) head.append(el("span", "item-count", tr("items.sessions", { n: sessions.length })));
   card.append(head);
+
+  // facets 可能是 undefined（老后端没这个字段）或空数组——两种都不画这行容器，
+  // 不抛。
+  if (facets && facets.length) {
+    const row = el("div", "facets");
+    for (const facet of facets) row.append(facetChip(facet));
+    card.append(row);
+  }
 
   for (const session of sessions) card.append(sessionRow(session));
 
@@ -127,6 +180,9 @@ async function render() {
   const items = Array.isArray(body?.items) ? body.items : [];
   const sessions = Array.isArray(body?.sessions) ? body.sessions : [];
   const bindings = Array.isArray(body?.bindings) ? body.bindings : [];
+  // { itemId: Facet[] }，老后端没有这个字段就当空——跟 items/sessions/bindings
+  // 同一套半新半旧兜底。
+  const facets = body?.facets && typeof body.facets === "object" ? body.facets : {};
 
   setCount(tr("items.count", { n: items.length }));
 
@@ -151,6 +207,6 @@ async function render() {
     renderEmpty(tr("items.empty"), tr("items.emptyHint"));
     return;
   }
-  for (const item of open) root.append(itemCard(item, mine.get(item.id) ?? []));
+  for (const item of open) root.append(itemCard(item, mine.get(item.id) ?? [], facets[item.id]));
   if (loose.length) root.append(unassignedGroup(loose));
 }

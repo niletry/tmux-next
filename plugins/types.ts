@@ -11,6 +11,15 @@ export type Plugin = {
   icon: string;
   i18n: { zh: Record<string, string>; en: Record<string, string> };
   /**
+   * 这个插件贴的 Facet.dim 会用到的 i18n 键，例如 `["jira.status", "jira.epic"]`。
+   *
+   * 纯粹是给 src/i18n.test.ts 的死键扫描看的：`tr(facet.dim)` 是动态查找，扫描器
+   * 只认字符串字面量，看不见跟着数据来的键名，会把这些键误判成没人用。列在这里
+   * 的键因此被扫描器当成真实使用点（跟 titleKey 同一个道理），不写也完全不影响
+   * 运行时——chip 渲染走的是 tr(dim) 本身的回退，不读这个数组。
+   */
+  facetDims?: string[];
+  /**
    * 这个插件搬家前占用过的地址，例如 `gallery.html`。
    *
    * 内核据此发 301 到 `p/<id>/`，所以手机上存了书签、装了 PWA 的人不会撞 404。
