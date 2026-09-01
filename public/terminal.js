@@ -54,7 +54,7 @@ term.open(termEl);
  * 关掉了），都落回会话列表，也就是这个箭头一直以来的行为。
  */
 const backPages = [
-  { id: "sessions", path: "./", titleKey: "nav.backToSessions" },
+  { id: "sessions", path: "sessions.html", titleKey: "nav.backToSessions" },
   ...PLUGINS.map((p) => ({ id: p.id, path: `p/${p.id}/`, titleKey: p.titleKey })),
 ];
 const back = backTarget(location.search, backPages);
@@ -334,8 +334,9 @@ killBtn.addEventListener("click", async () => {
     const res = await fetch(`api/sessions/${encodeURIComponent(target)}`, { method: "DELETE" });
     if (res.ok || res.status === 404) {
       // 404 means it was already gone; either way there is nothing to return to
-      // but the list.
-      location.href = "./";
+      // but the session list — the session that just ended is gone from a work
+      // item's card the same instant, so there is no card left to send you back to.
+      location.href = url("sessions.html");
       return;
     }
     throw new Error(String(res.status));

@@ -20,7 +20,10 @@ afterEach(() => {
   globalThis.document = saved.document;
 });
 
-async function mount(/** 让 /api/plugins 返回什么，null = 让它失败 */ ids: string[] | null) {
+async function mount(
+  /** 让 /api/plugins 返回什么，null = 让它失败 */ ids: string[] | null,
+  current = "sessions",
+) {
   const window = new Window({ url: "http://localhost/" });
   const doc = window.document;
   doc.body.innerHTML = '<header id="header"></header>';
@@ -38,25 +41,29 @@ async function mount(/** 让 /api/plugins 返回什么，null = 让它失败 */ 
   }) as typeof fetch;
 
   const { renderNav } = await import(NAV + `?t=${Math.random()}`);
-  await renderNav(doc.getElementById("header"), "sessions");
+  await renderNav(doc.getElementById("header"), current);
   return doc;
 }
 
-test("顶栏画出会话页加每个启用的插件", async () => {
-  const doc = await mount(["gallery", "notifications"]);
+test("顶栏画出单加会话页加每个启用的插件", async () => {
+  // current 不落在任何一个 tab 上：让四个都当链接画出来，好断言各自的 href。
+  const doc = await mount(["gallery", "notifications"], "other");
   const items = [...doc.querySelectorAll(".hseg-item")];
-  expect(items.length).toBe(3);
-  // 会话页在最左，插件按注册表顺序跟在后面。
+  // 单是首页，排最前；会话页跟着；插件按注册表顺序跟在后面。
+  expect(items.length).toBe(4);
   // href 走 url()：绝对 URL 才在反代子路径下不破，所以拿 url() 的产出算期望值，
   // 而不是写死一个相对路径字面量（那样的字面量永远不会等于 url() 的返回值）。
-  expect(items[1]!.getAttribute("href")).toBe(url("p/gallery/"));
-  expect(items[1]!.getAttribute("aria-label")).toBe("Artifacts");
-  expect(items[2]!.getAttribute("href")).toBe(url("p/notifications/"));
+  expect(items[0]!.getAttribute("href")).toBe(url("./"));
+  expect(items[1]!.getAttribute("href")).toBe(url("sessions.html"));
+  expect(items[2]!.getAttribute("href")).toBe(url("p/gallery/"));
+  expect(items[2]!.getAttribute("aria-label")).toBe("Artifacts");
+  expect(items[3]!.getAttribute("href")).toBe(url("p/notifications/"));
 });
 
 test("被禁用的插件不出现在顶栏", async () => {
   const doc = await mount([]);
-  expect([...doc.querySelectorAll(".hseg-item")].length).toBe(1);
+  // 单和会话页永远在，插件都关掉时只剩这两个。
+  expect([...doc.querySelectorAll(".hseg-item")].length).toBe(2);
 });
 
 test("问不到启用列表就当全开——离线不该把功能藏起来", async () => {
@@ -71,4 +78,12 @@ test("当前页是 span 不是链接，且带上计数元素", async () => {
   expect(active.tagName).toBe("SPAN");
   expect(active.getAttribute("aria-current")).toBe("page");
   expect(doc.getElementById("count")).not.toBeNull();
+});
+
+test("aria-current 落在传入的当前页上，不是永远第一个", async () => {
+  const doc = await mount([], "items");
+  const items = [...doc.querySelectorAll(".hseg-item")];
+  expect(items[0]!.tagName).toBe("SPAN");
+  expect(items[0]!.getAttribute("aria-current")).toBe("page");
+  expect(items[1]!.tagName).toBe("A");
 });

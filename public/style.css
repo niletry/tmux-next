@@ -363,6 +363,113 @@ header .count {
 .note-dim { color: var(--dim); }
 
 .empty { padding: 24px; color: var(--dim); text-align: center; }
+.empty .hint { display: block; margin-top: 8px; font-size: 13px; color: var(--dim); }
+
+/* ---- work items (home page) ---- */
+
+.item-card {
+  background: var(--card);
+  border-radius: 12px;
+  margin: 0 12px 12px;
+  padding: 14px;
+}
+
+.item-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* Shared by both the link and the plain-text form, so a long title truncates
+   the same way whichever element it lands on. */
+.item-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-weight: 600;
+  font-size: 16px;
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.item-title { color: var(--accent); }
+
+.item-source,
+.item-state,
+.item-count {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.item-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  text-decoration: none;
+  color: inherit;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.s-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.s-state {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.s-open {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.item-new {
+  display: block;
+  margin-top: 10px;
+  text-align: center;
+  padding: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.unassigned {
+  margin: 0 12px 12px;
+}
+
+.unassigned .item-session {
+  padding: 8px 12px;
+  background: var(--card);
+  border-radius: 8px;
+  border-top: none;
+  margin-top: 6px;
+}
 
 /* ---- terminal page ---- */
 

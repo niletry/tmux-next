@@ -15,7 +15,7 @@ import { tr } from "./i18n-apply.js";
 import { PLUGINS } from "../plugins/registry.js";
 import { url } from "./root.js";
 
-/** @typedef {string} Page "sessions"，或某个插件 id（见 plugins/registry.js）。 */
+/** @typedef {string} Page "items"、"sessions"，或某个插件 id（见 plugins/registry.js）。 */
 
 const ICONS = {
   bell:
@@ -33,6 +33,12 @@ const ICONS = {
     '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>' +
     '<line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.2"/>' +
     '<circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/>',
+  // A box with a checkmark — deliberately distinct from the sessions icon's
+  // three lines, so the two leading tabs don't read as the same shape at a
+  // glance.
+  items:
+    '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/>' +
+    '<path d="M8 12.5l2.5 2.5 5.5-5.5"/>',
 };
 
 function svg(/** @type {string} */ paths) {
@@ -85,7 +91,8 @@ async function enabledIds() {
 export async function renderNav(header, current) {
   const on = new Set(await enabledIds());
   const tabs = [
-    { page: "sessions", href: url("./"), key: "list.title", icon: ICONS.sessions },
+    { page: "items", href: url("./"), key: "items.title", icon: ICONS.items },
+    { page: "sessions", href: url("sessions.html"), key: "list.title", icon: ICONS.sessions },
     ...PLUGINS.filter((p) => on.has(p.id)).map((p) => ({
       page: p.id,
       href: url(`p/${p.id}/`),
