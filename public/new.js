@@ -179,6 +179,14 @@ export function renderNewSession(root) {
     return raw;
   }
 
+  /**
+   * The work item this session was started from, if the caller is a card on
+   * the home page (items.js links here as `new.html?item=<id>`). Read once at
+   * module scope like `wantName` below — it never changes over the life of
+   * this page, only the directory being browsed does.
+   */
+  const itemId = new URLSearchParams(location.search).get("item");
+
   function syncUrl(push) {
     // Guarded: history is unavailable in some embedded webviews, and browsers
     // rate-limit these calls. Neither is worth breaking the page over.
@@ -404,6 +412,27 @@ export function renderNewSession(root) {
         return;
       }
       const body = await res.json();
+
+      // Bind before navigating away, but never let a failed bind strand the
+      // user on this form — the session already exists and is what they
+      // asked for. Uses the name the server actually gave it (it
+      // de-duplicates), not whatever was typed into the name field.
+      if (itemId) {
+        try {
+          const bindRes = await fetch(`api/items/${encodeURIComponent(itemId)}/bind`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ session: body.name }),
+          });
+          if (!bindRes.ok) {
+            // 单不存在、会话没起来——两种都只是没绑上，会话本身照常可用，
+            // 静默退化成"建了但没归单"，不拦导航。
+          }
+        } catch {
+          // 离线/网络抖动同上：不拦导航。
+        }
+      }
+
       const back = safeReturn();
       if (back) {
         // The caller gets the created name appended to whatever it asked for,

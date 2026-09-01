@@ -70,8 +70,8 @@ afterEach(() => {
 });
 
 /** Loads the page module against a fresh DOM and returns its root element. */
-async function mount(fetchImpl = stubFetch()) {
-  const win = new Window({ url: "http://127.0.0.1:7682/new.html" });
+async function mount(fetchImpl = stubFetch(), path = "/new.html") {
+  const win = new Window({ url: `http://127.0.0.1:7682${path}` });
   const doc = win.document;
   doc.body.innerHTML = '<header id="header"></header><main id="new"></main>';
 
@@ -128,4 +128,73 @@ test("the create button and agent picker are present", async () => {
   const root = await mount();
   expect(root.querySelector(".btn.primary")).toBeTruthy();
   expect(root.querySelector(".agent-row")).toBeTruthy();
+});
+
+// ---- binding to a work item (Ruling 11) ------------------------------------
+//
+// items.js links here as `new.html?item=<id>`; the card that started the
+// session should end up owning it. Without this wiring the session comes
+// back unbound and lands in 未归单 while the card still invites "开一个会话".
+
+test("创建成功且带 item 参数时，用服务端返回的名字去绑定这个单", async () => {
+  const calls: Array<{ url: string; method?: string; body?: string }> = [];
+  const fetchImpl = (async (u: unknown, init?: RequestInit) => {
+    const url = String(u);
+    calls.push({ url, method: init?.method, body: init?.body as string | undefined });
+    if (url.includes("api/sessions") && init?.method === "POST") {
+      // The server de-duplicates; the returned name differs from the typed one
+      // on purpose, so the test fails if the bind used the form value instead.
+      return new Response(JSON.stringify({ name: "myproj-2" }), { status: 201 });
+    }
+    if (url.includes("/bind")) return new Response(JSON.stringify({ ok: true }));
+    return stubFetch()(u as string);
+  }) as typeof fetch;
+
+  const root = await mount(fetchImpl, "/new.html?item=it-42");
+  const nameField = [...root.querySelectorAll(".field")][1] as HTMLInputElement | undefined;
+  if (nameField) nameField.value = "myproj";
+  (root.querySelector(".btn.primary") as unknown as HTMLElement).click();
+  await new Promise((r) => setTimeout(r, 100));
+
+  const bindCall = calls.find((c) => c.url.includes("/bind"));
+  expect(bindCall?.url).toContain("api/items/it-42/bind");
+  expect(bindCall?.method).toBe("POST");
+  expect(JSON.parse(bindCall?.body ?? "{}")).toEqual({ session: "myproj-2" });
+});
+
+test("绑定失败时仍然导航到新会话，而不是拦在表单上", async () => {
+  const fetchImpl = (async (u: unknown, init?: RequestInit) => {
+    const url = String(u);
+    if (url.includes("api/sessions") && init?.method === "POST") {
+      return new Response(JSON.stringify({ name: "myproj-2" }), { status: 201 });
+    }
+    if (url.includes("/bind")) return new Response("no such item", { status: 404 });
+    return stubFetch()(u as string);
+  }) as typeof fetch;
+
+  await mount(fetchImpl, "/new.html?item=gone");
+  (document.querySelector(".btn.primary") as unknown as HTMLElement).click();
+  await new Promise((r) => setTimeout(r, 100));
+
+  expect(String((globalThis as { location: Location }).location.href)).toContain(
+    "terminal.html?target=myproj-2",
+  );
+});
+
+test("没有 item 参数时，创建成功不会尝试绑定", async () => {
+  const calls: string[] = [];
+  const fetchImpl = (async (u: unknown, init?: RequestInit) => {
+    const url = String(u);
+    calls.push(url);
+    if (url.includes("api/sessions") && init?.method === "POST") {
+      return new Response(JSON.stringify({ name: "myproj-2" }), { status: 201 });
+    }
+    return stubFetch()(u as string);
+  }) as typeof fetch;
+
+  await mount(fetchImpl, "/new.html");
+  (document.querySelector(".btn.primary") as unknown as HTMLElement).click();
+  await new Promise((r) => setTimeout(r, 100));
+
+  expect(calls.some((u) => u.includes("/bind"))).toBe(false);
 });
