@@ -13,7 +13,15 @@ process.env.TMUX_NEXT_SESSIONS_DIR = join(
   tmpdir(),
   `sessions-sl-test-${Math.random().toString(36).slice(2, 10)}`,
 );
-import { extractPreview, listSessions, rankDirectories, sessionNames, unescapeFormat } from "./session-list";
+import {
+  extractPreview,
+  listSessions,
+  LIST_FORMAT,
+  parseSessionRow,
+  rankDirectories,
+  sessionNames,
+  unescapeFormat,
+} from "./session-list";
 
 // Taken verbatim from a real Claude Code session on this machine.
 const CLAUDE_SCREEN = [
@@ -386,4 +394,17 @@ test("a field with nothing escaped is unchanged", () => {
 
 test("an escaped backslash survives as one backslash", () => {
   expect(unescapeFormat("/tmp/a\\\\b")).toBe("/tmp/a\\b");
+});
+
+test("LIST_FORMAT 把 session_id 放在最前，名字仍在最后", () => {
+  expect(LIST_FORMAT.startsWith("#{session_id}|")).toBe(true);
+  expect(LIST_FORMAT.endsWith("|#{session_name}")).toBe(true);
+});
+
+test("解析出 sessionId，名字里的竖线不受影响", () => {
+  const row = "$7|80|24|1700000000|0|node|/tmp/x|叫 a|b 的会话";
+  const parsed = parseSessionRow(row);
+  expect(parsed?.sessionId).toBe("$7");
+  expect(parsed?.name).toBe("叫 a|b 的会话");
+  expect(parsed?.path).toBe("/tmp/x");
 });

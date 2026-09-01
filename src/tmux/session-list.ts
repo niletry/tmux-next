@@ -36,6 +36,14 @@ export type SessionSummary = {
   // present: it comes from tmux itself, so it covers sessions with no binding
   // record and sessions that are not Claude at all.
   path: string;
+  /**
+   * tmux 的内部会话 id（形如 `$7`）。
+   *
+   * 绑定用它扛住改名：id 跨改名不变、跨 tmux server 重启会重排；名字反过来。
+   * 存两个、解析时 id 优先名字兜底，各覆盖一半——于是内核不必长出一个"会话改名
+   * 事件"。
+   */
+  sessionId: string;
   // The most recent tool call in this session's transcript: what it did and
   // when. This is the honest answer to "last updated" — the screen-diff stamp
   // below repaints constantly while a turn runs, so it reads "just now" for
@@ -121,8 +129,12 @@ const FIELD_SEP = "|";
 // versioned binary name (2.1.223), which is the version marker. The name stays
 // last so it keeps any `|` of its own; the command sits before it and is a
 // process basename, which cannot contain the separator in practice.
-const LIST_FORMAT =
-  "#{window_width}|#{window_height}|#{window_activity}|#{session_attached}|#{pane_current_command}|#{q:session_path}|#{session_name}";
+// session_id 放最前：它形如 $7，不可能含分隔符，所以按固定下标取得住；名字仍
+// 然是最后一个贪婪字段，因为它可以含 `|`。绑定要靠这个 id 扛住会话改名——
+// #{session_id} 跨改名不变，名字跨改名变，两者各覆盖一半。
+export const LIST_FORMAT =
+  "#{session_id}|#{window_width}|#{window_height}|#{window_activity}|#{session_attached}|" +
+  "#{pane_current_command}|#{q:session_path}|#{session_name}";
 
 /**
  * Undoes tmux's `#{q:…}` escaping.
@@ -135,6 +147,52 @@ const LIST_FORMAT =
  */
 export function unescapeFormat(value: string): string {
   return value.replace(/\\(.)/g, "$1");
+}
+
+/**
+ * Parses one row of `list-sessions -F LIST_FORMAT` output.
+ *
+ * Pulled out of `listSessions` because it now has real edge cases worth
+ * testing headlessly: field position (session_id fixed up front) and a name
+ * that contains the row separator (the trailing field is greedy, so it eats
+ * the rest of the row no matter how many `|` are left in it). Returns null on
+ * a malformed row — fewer fields than the format promises.
+ */
+export function parseSessionRow(row: string): {
+  sessionId: string;
+  windowWidth: number;
+  windowHeight: number;
+  activity: number;
+  attached: boolean;
+  command: string;
+  path: string;
+  name: string;
+} | null {
+  const parts = row.split(FIELD_SEP);
+  if (parts.length < 8) return null;
+  const [sessionId, width, height, activity, attached, command, escapedPath] = parts as [
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
+  const name = parts.slice(7).join(FIELD_SEP);
+  return {
+    sessionId,
+    windowWidth: Number(width),
+    windowHeight: Number(height),
+    activity: Number(activity),
+    attached: attached === "1",
+    command,
+    // Where this session was opened, which is what groups the list by
+    // project. `session_path` rather than `pane_current_path`: a `cd` inside
+    // the pane should not move a session to another project.
+    path: unescapeFormat(escapedPath),
+    name,
+  };
 }
 
 // Per-session record of the last visible-screen change, keyed by session name.
@@ -280,21 +338,10 @@ export async function listSessions(): Promise<SessionSummary[]> {
 
   const summaries = await Promise.all(
     rows.map(async (row): Promise<SessionSummary | null> => {
-      const parts = row.split(FIELD_SEP);
-      if (parts.length < 7) return null;
-      const [width, height, activity, attached, command, escapedPath] = parts as [
-        string,
-        string,
-        string,
-        string,
-        string,
-        string,
-      ];
-      const name = parts.slice(6).join(FIELD_SEP);
-      // Where this session was opened, which is what groups the list by
-      // project. `session_path` rather than `pane_current_path`: a `cd` inside
-      // the pane should not move a session to another project.
-      const path = unescapeFormat(escapedPath);
+      const parsedRow = parseSessionRow(row);
+      if (!parsedRow) return null;
+      const { sessionId, windowWidth, windowHeight, activity, attached, command, path, name } =
+        parsedRow;
 
       // Web sessions are this app's own attach points, not something to show.
       if (name.startsWith(WEB_SESSION_PREFIX)) return null;
@@ -323,13 +370,13 @@ export async function listSessions(): Promise<SessionSummary[]> {
         const entry = nextStamp(
           activityStore.get(name),
           String(Bun.hash(parsed.preview.join("\n"))),
-          Number(activity),
+          activity,
           now,
         );
         activityStore.set(name, entry);
         lastActivityEpoch = entry.epoch;
       } else {
-        lastActivityEpoch = activityStore.get(name)?.epoch ?? Number(activity);
+        lastActivityEpoch = activityStore.get(name)?.epoch ?? activity;
       }
 
       // What the conversation was last asked to do. Only a tail read, and only
@@ -370,10 +417,11 @@ export async function listSessions(): Promise<SessionSummary[]> {
 
       return {
         name,
-        windowWidth: Number(width),
-        windowHeight: Number(height),
+        sessionId,
+        windowWidth,
+        windowHeight,
         lastActivityEpoch,
-        attached: attached === "1",
+        attached,
         pinned: pinnedSet.has(name),
         claudeId: claudeIdByName.get(name) ?? null,
         task,
