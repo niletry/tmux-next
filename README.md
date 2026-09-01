@@ -32,7 +32,8 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 
 | | |
 |---|---|
-| **Session list** | What each session was last asked to do, a preview of the last lines, a "waiting on you" dot, unsent input, last-active time |
+| **Work items** | The home page. One card per unit of work — a local task or one claimed from an external tracker like Jira — with the sessions bound to it and a row of dimension chips (status, "waiting on you"/"working", working directory, tags, whatever a plugin adds). Group or filter by any chip; the choices on offer come from whatever's in the data right now, not a fixed list, and your grouping/filter picks are remembered per device |
+| **Session list** | A separate tab (`sessions.html`): every tmux session on the machine, what each was last asked to do, a preview of the last lines, a "waiting on you" dot, unsent input, last-active time |
 | **Interface language** | English or Chinese, switched from Settings; guessed from the browser on first visit |
 | **New session** | Pick an agent (Claude Code / opencode / pi), tap to pick a directory (drill down, or create one on the spot), optional name, optional skip-permissions, or resume a past conversation |
 | **Terminal** | Width that adapts to the window, a soft-keyboard toolbar (Esc / Tab / ⇧Tab / Ctrl / arrows / ^C / ⏎), drag to scroll full-screen programs |
@@ -42,7 +43,7 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 | **Colour themes** | Four presets (Tokyo Night, Catppuccin Mocha, One Dark, Nord), switched from the list header, applied without a reload |
 | **Voice input** | Speak instead of typing; takes pile up in an editable draft, then go over as one line plus Enter (optional, needs a recognition key) |
 | **Artifacts** | Anything dropped in `~/.tmux-next/gallery/` shows up in the UI — images and self-contained HTML render in place |
-| **Jira issues** | Optional plugin: see the issues assigned to you, start a session for one with a tap, and the session list shows which issue each session belongs to (needs `~/.tmux-next/jira/config.json`) |
+| **Jira issues** | Optional plugin: see the issues assigned to you, start a session for one with a tap; its status, epic, PRs and checks show up as chips on the issue's work-item card (needs `~/.tmux-next/jira/config.json`) |
 | **CJK input** | Works around the xterm.js 5.5.0 guard that swallows CJK punctuation |
 
 ## Getting it running
@@ -72,7 +73,7 @@ bun install          # two packages, both just xterm.js for the front-end
 bun run src/index.ts
 ```
 
-Either way, open `http://127.0.0.1:7682/` and every tmux session on the machine is listed.
+Either way, open `http://127.0.0.1:7682/` and land on the work-item list; the "Sessions" tab lists every tmux session on the machine.
 
 ```
 tmux-next [options]
@@ -102,7 +103,7 @@ The repo ships no service file — paths and users differ per machine. Use a lau
 
 ### Getting around
 
-The list, artifacts and notifications are siblings, so every page carries the same header: a segmented control to switch between them on the left, and the actions — notification subscription, settings, new session — on the right. The count for the page you are on sits inside its own segment.
+The work-item list (home), the session list, artifacts and notifications are siblings, so every page carries the same header: a segmented control to switch between them on the left, and the actions — notification subscription, settings, new session — on the right. The count for the page you are on sits inside its own segment.
 
 Starting a session is a page of its own rather than a sheet. Browsing directories needs the height, the three input fields need somewhere for the soft keyboard to push, and the directory you are in lives in the URL — so the back button walks up the path you came down instead of discarding it, and `new.html?dir=/some/project` can be kept as a link.
 
@@ -176,6 +177,10 @@ This needs the hook (`bunx tmux-next hook`), which is what ties a tmux session t
 A work item is the unit of work — a session is just a means to it, and a single item can have several. `~/.tmux-next/items.json` holds them; `~/.tmux-next/bindings.json` holds which tmux session (by name and by its stable `#{session_id}`, so a rename doesn't lose the link) belongs to which item. An item can stand alone or carry a `source` such as a claimed Jira issue — a plain item and a Jira-backed one are the same kind of row.
 
 On first startup, if `items.json` does not exist yet, tmux-next migrates any bindings already made through the Jira plugin's old private store into these two files — a one-time, idempotent move that leaves the old file in place rather than deleting it.
+
+### Grouping and filtering the work-item list
+
+Each item's card carries a row of chips — `waiting`/`working`/`none`, its session count, its working directory, its tags, and anything a plugin has attached (Jira's status, epic, PRs, checks). Every chip is a `{ dimension, value }` pair, and the home page groups or filters by whichever dimension you pick; the choices on offer are read straight off the current cards, not a hard-coded list, so a new plugin dimension shows up without any change to the page itself. Your grouping and filter choices are remembered per device, not synced. Items with no bound session at all still get a card, in an "unassigned" group — nothing with no facets simply disappears from the list.
 
 ### Interface language
 
