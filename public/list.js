@@ -167,6 +167,112 @@ function pinBadge() {
  * The ⋯ menu: pin to the top, or end the session. Pinning is one tap; ending
  * still goes through its own confirming dialog.
  */
+/**
+ * 置顶 / 取消置顶。
+ *
+ * 抽出来是因为现在有两个入口在做同一件事：⋯ 浮层里的那颗按钮（窄屏），和卡片
+ * 底部动作行里的那颗（宽屏）。两份实现迟早会分叉，而分叉的那一天没有任何测试
+ * 会红——两个入口各自都还"能用"，只是行为不一样了。
+ *
+ * 失败不回滚也不报错：下一次渲染就是真相，而排序错一次不值得打断人。
+ */
+async function pinSession(session) {
+  try {
+    await fetch(`api/sessions/${encodeURIComponent(session.name)}/pin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pinned: !session.pinned }),
+    });
+  } catch {
+    // 见上：下一次渲染就是真相。
+  }
+  render();
+}
+
+/** 挂到一张单下。反方向（在单上挑会话）在首页，两边打的是同一个接口。 */
+function pickItemFor(session, itemsById) {
+  const items = [...(itemsById?.values() ?? [])].filter((i) => !i.closedAt);
+  openPicker({
+    title: tr("list.linkItem"),
+    // 单号单独显示：标题是人话（"Gate the remaining ungated queries"），单号才是
+    // 在 Jira、分支名、PR 标题里到处出现的那个标识——挑单的时候认的是它。
+    // 标题里已经含着单号就不重复画一遍。
+    options: items.map((i) => {
+      const ref = i.source?.ref;
+      return {
+        id: i.id,
+        label: i.title,
+        note: ref && !i.title.includes(ref) ? ref : undefined,
+        current: i.id === session.itemId,
+      };
+    }),
+    emptyText: tr("list.noItems"),
+    cancelText: tr("list.cancel"),
+    failedText: tr("list.linkFailed"),
+    onPick: async (id) => {
+      const res = await fetch(`api/items/${encodeURIComponent(id)}/bind`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session: session.name }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      render();
+    },
+    // 只有已经挂着的时候才给"解除"——没挂的时候画一个不做事的按钮，
+    // 等于让人怀疑自己是不是记错了。
+    ...(session.itemId
+      ? {
+          clear: {
+            label: tr("list.unlinkItem"),
+            onPick: async () => {
+              const res = await fetch(
+                `api/items/bind?session=${encodeURIComponent(session.name)}`,
+                { method: "DELETE" },
+              );
+              if (!res.ok) throw new Error(String(res.status));
+              render();
+            },
+          },
+        }
+      : {}),
+  });
+}
+
+/**
+ * 卡片底部的动作行，只在宽屏出现（样式表控制显隐，见 style.css 的宽屏一节）。
+ *
+ * 窄屏仍然走 ⋯ 浮层：手机列表靠密度吃饭，每张卡多一行 40px 的按钮，一屏就少
+ * 看两个会话。两个入口都画出来、由 CSS 决定露哪个，比在 JS 里读 matchMedia 稳——
+ * 后者要自己处理窗口缩放和重画时机，而这里没有任何状态需要跟着变。
+ *
+ * 「结束」跟另外几个隔开、走红色：它是这一行里唯一不可撤销的。它仍然弹二次确认，
+ * 所以误点一下不会真的杀掉会话——分开放是为了让手不往那边去，不是最后一道闸。
+ */
+function cardActions(session, itemsById) {
+  const bar = el("div", "card-actions");
+
+  const open = el("a", "card-act primary", tr("list.openSession"));
+  open.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
+  bar.append(open);
+
+  const pin = el("button", "card-act", tr(session.pinned ? "list.unpin" : "list.pin"));
+  pin.type = "button";
+  pin.addEventListener("click", () => pinSession(session));
+  bar.append(pin);
+
+  const link = el("button", "card-act", tr(session.itemId ? "list.relinkItem" : "list.linkItem"));
+  link.type = "button";
+  link.addEventListener("click", () => pickItemFor(session, itemsById));
+  bar.append(link);
+
+  const end = el("button", "card-act danger", tr("list.endSession"));
+  end.type = "button";
+  end.addEventListener("click", () => confirmAndKill(session));
+  bar.append(end);
+
+  return bar;
+}
+
 function openActions(session, itemsById) {
   const dialog = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
@@ -189,68 +295,15 @@ function openActions(session, itemsById) {
     if (e.target === dialog) close();
   });
 
-  pinBtn.addEventListener("click", async () => {
+  pinBtn.addEventListener("click", () => {
     pinBtn.disabled = true;
-    try {
-      await fetch(`api/sessions/${encodeURIComponent(session.name)}/pin`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pinned: !session.pinned }),
-      });
-    } catch {
-      // A failed toggle just leaves the order as it was; the next render is truth.
-    }
     close();
-    render();
+    pinSession(session);
   });
 
   linkBtn.addEventListener("click", () => {
     close();
-    const items = [...(itemsById?.values() ?? [])].filter((i) => !i.closedAt);
-    openPicker({
-      title: tr("list.linkItem"),
-      // 单号单独显示：标题是人话（"Gate the remaining ungated queries"），单号才是
-      // 在 Jira、分支名、PR 标题里到处出现的那个标识——挑单的时候认的是它。
-      // 标题里已经含着单号就不重复画一遍。
-      options: items.map((i) => {
-        const ref = i.source?.ref;
-        return {
-          id: i.id,
-          label: i.title,
-          note: ref && !i.title.includes(ref) ? ref : undefined,
-          current: i.id === session.itemId,
-        };
-      }),
-      emptyText: tr("list.noItems"),
-      cancelText: tr("list.cancel"),
-      failedText: tr("list.linkFailed"),
-      onPick: async (id) => {
-        const res = await fetch(`api/items/${encodeURIComponent(id)}/bind`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ session: session.name }),
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        render();
-      },
-      // 只有已经挂着的时候才给"解除"——没挂的时候画一个不做事的按钮，
-      // 等于让人怀疑自己是不是记错了。
-      ...(session.itemId
-        ? {
-            clear: {
-              label: tr("list.unlinkItem"),
-              onPick: async () => {
-                const res = await fetch(
-                  `api/items/bind?session=${encodeURIComponent(session.name)}`,
-                  { method: "DELETE" },
-                );
-                if (!res.ok) throw new Error(String(res.status));
-                render();
-              },
-            },
-          }
-        : {}),
-    });
+    pickItemFor(session, itemsById);
   });
 
   endBtn.addEventListener("click", () => {
@@ -348,7 +401,7 @@ function card(session, itemsById) {
     openActions(session, itemsById);
   });
 
-  wrapper.append(link, more);
+  wrapper.append(link, more, cardActions(session, itemsById));
   return wrapper;
 }
 

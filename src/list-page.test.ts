@@ -582,3 +582,69 @@ test("标题里已经含单号就不重复显示", async () => {
   await new Promise((r) => setTimeout(r, 20));
   expect(document.querySelector(".pick-note")).toBeNull();
 });
+
+/**
+ * 卡片底部的动作行。
+ *
+ * CSS 决定它在窄屏藏起来、宽屏露出来，而 CSS 在无头环境里不排版——所以这里断言
+ * 的是**它被画进了 DOM、内容是对的、点下去打的是对的接口**，宽度那一半交给
+ * src/responsive.test.ts 盯断点。两边合起来才覆盖得住：只测 DOM 会漏掉"手机上
+ * 也冒出来了"，只测断点会漏掉"按钮画错了"。
+ *
+ * ⋯ 必须同时还在。它是窄屏唯一的入口，而加动作行的时候最容易顺手把它删掉——
+ * 删掉之后桌面上一切正常，手机上所有动作全部消失，且没有任何测试会红。
+ */
+test("卡片上有动作行，四个动作都在，⋯ 也还在", async () => {
+  const root = await mount([session()], {}, [], []);
+  const labels = [...root.querySelectorAll(".card-actions .card-act")].map((b) => b.textContent);
+  expect(labels).toEqual(["Open", "Pin to top", "Link to a work item", "End session"]);
+  expect(root.querySelector(".more")).not.toBeNull();
+});
+
+test("动作行的「打开」指向这个会话的终端", async () => {
+  const root = await mount([session({ name: "orbit" })]);
+  const open = root.querySelector(".card-act.primary") as unknown as { href: string };
+  expect(open.href).toContain("terminal.html?target=orbit");
+});
+
+// 破坏性动作要跟另外三个分得开，靠的是它自己的 class——样式表按这个 class 把它
+// 顶到右端并染红。class 掉了的话，「结束」会安静地混进安全动作里排在中间。
+test("结束会话带 danger 标记", async () => {
+  const root = await mount([session()]);
+  const end = root.querySelector(".card-actions .card-act.danger");
+  expect(end?.textContent).toBe("End session");
+});
+
+test("已置顶的会话，动作行说的是取消置顶", async () => {
+  const root = await mount([session({ pinned: true })]);
+  const labels = [...root.querySelectorAll(".card-actions .card-act")].map((b) => b.textContent);
+  expect(labels).toContain("Unpin");
+});
+
+test("已挂单的会话，动作行说的是改挂", async () => {
+  const root = await mount([session({ itemId: "it-1" })], {}, [], [workItem()]);
+  const labels = [...root.querySelectorAll(".card-actions .card-act")].map((b) => b.textContent);
+  expect(labels).toContain("Move to another item");
+});
+
+test("动作行的置顶打的是这个会话的 pin 接口", async () => {
+  const root = await mount([session({ name: "orbit", pinned: false })]);
+  clickIt(root.querySelector(".card-actions .card-act:nth-child(2)"));
+  await new Promise((r) => setTimeout(r, 60));
+
+  const req = posted.find((p) => p.url.includes("/pin"));
+  expect(req?.method).toBe("POST");
+  expect(req?.url).toContain("api/sessions/orbit/pin");
+  expect(JSON.parse(req!.body)).toEqual({ pinned: true });
+});
+
+// 两个入口共用一份逻辑，所以浮层那边也得继续能用——抽函数最容易在这里断。
+test("⋯ 浮层里的置顶仍然打同一个接口", async () => {
+  const root = await mount([session({ name: "orbit" })]);
+  await openMenu(root as never);
+  clickIt(document.querySelector(".sheet-menu .btn"));
+  await new Promise((r) => setTimeout(r, 60));
+
+  const req = posted.find((p) => p.url.includes("/pin"));
+  expect(req?.url).toContain("api/sessions/orbit/pin");
+});

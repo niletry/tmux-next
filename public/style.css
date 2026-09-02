@@ -250,6 +250,11 @@ header .count {
 
 .more:active { background: #2a2f3a; color: var(--fg); }
 
+/* 会话卡片底部的动作行。默认不画——窄屏走 ⋯ 浮层，宽屏才摊开（见本文件末尾的
+   宽屏一节）。两个入口都由 list.js 画进 DOM，露哪个交给样式：JS 里读 matchMedia
+   就得自己处理窗口缩放和重画时机，而这里没有任何状态需要跟着变。 */
+.card-actions { display: none; }
+
 .row { display: flex; align-items: center; gap: 8px; }
 
 /* The name owns its row, so it can take the whole width before truncating. */
@@ -1857,10 +1862,16 @@ a.detail-label:hover {
     grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
     gap: 12px;
     padding-inline: 12px;
-    /* 每张卡按自己的内容取高，不跟同一行里最高的那张对齐。默认的 stretch 会把
-       一张只有两行的卡撑到隔壁那张的高度，多出来的是一块什么都没有的色块——
-       看着像内容加载失败了。 */
-    align-items: start;
+    /* 同一行的卡片等高。
+
+       一开始是 align-items:start（各按内容取高），因为 stretch 会把一张两行的卡
+       撑到隔壁那张的高度，多出来一块空色块。但那个问题的根子不是 stretch，是
+       卡片里没有任何东西愿意占据多出来的高度——把动作行用 margin-top:auto 钉到
+       底边之后，撑开的部分就成了标题区和动作区之间的呼吸，而不是一块无主的空白。
+
+       等高换来的是一整行卡片的下边缘对齐、动作行落在同一条水平线上。参差不齐的
+       下边缘在一屏十几张卡片时是最吵的那种噪音：眼睛会去找那条并不存在的规律。 */
+    align-items: stretch;
   }
 
   /* 默认横跨整行，卡片才是唯一进入网格的东西。反过来写（逐个列出工具条、
@@ -1894,6 +1905,43 @@ a.detail-label:hover {
   .card,
   .item-card {
     margin: 0;
+    /* 纵向的三段：标题+body 在上、动作行钉在下。等高之后多出来的高度全部落在
+       中间那段，两头的位置不动。 */
+    display: flex;
+    flex-direction: column;
+  }
+
+  .item-actions,
+  .card-actions {
+    margin-top: auto;
+  }
+
+  /* 会话卡片再多一条：定死高度。
+
+     它的 body 是终端画面的预览——长度完全由那一刻屏幕上有什么决定，从一行到
+     十几行都正常，所以光靠等高不够，一行里只要有一张卡在跑 npm install，整行
+     就被它顶到半屏高。预览是**可以截断的**内容（它本来就已经是截断过的一屏），
+     这跟单卡片里那些会话行不一样，那些每一行都是能点的东西，截掉就是藏功能。
+
+     288px 装得下标题两行 + 任务一行 + 四五行预览 + 动作行；再矮就只剩一两行预览，
+     等于没预览，而预览正是这张卡最值钱的东西。 */
+  #list .group > .card {
+    height: 288px;
+  }
+
+  #list .card-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    /* 内容被切断时下缘淡出，而不是齐刷刷一刀——一刀切会让人以为那就是全部，
+       淡出才说得清"下面还有，进去看"。
+
+       遮罩只看 alpha，色相无所谓，所以随便哪个不透明的颜色都行——但不能顺手写
+       一个十六进制的黑：src/themes.test.ts 扫的是"样式表里不许有颜色字面量"，
+       一个只为凑 alpha 的值同样会被扫到，往豁免名单里加它等于把守卫的口子越开
+       越大。用主题变量，既满足不透明，也不新增字面量。（那条扫描不剥注释，所以
+       连在注释里举例都会红——这句话本身就是那么改出来的。） */
+    mask-image: linear-gradient(to bottom, var(--fg) calc(100% - 24px), transparent);
   }
 
   /* 自带横向内边距的整行元素，抵掉容器那 12px，好让它们的左边缘跟窄屏时
@@ -1902,6 +1950,54 @@ a.detail-label:hover {
   #list .group > .group-head,
   #items > .empty {
     margin-inline: -12px;
+  }
+
+  /* 会话卡片摊开成"标题 / body / 动作"三段。窄屏那颗 ⋯ 同时收起来——两个入口
+     并存的话，同一张卡上会有两条路通向同一批动作，而其中一条还藏着。 */
+  .more { display: none; }
+
+  /* 名字那行原来给 ⋯ 留了 52px 的右侧留白（.card-main 的 padding-right），
+     ⋯ 没了就该还回去，否则每张卡右上角空一块没人认领的白。 */
+  .card-main { padding-right: 14px; }
+
+  .card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px 12px;
+    /* 跟 body 之间要有一道线：上面是"它在干什么"，下面是"我能拿它怎么办"，
+       两者之间没有分隔的话，按钮读起来像是终端输出的一部分。 */
+    border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  }
+
+  .card-act {
+    flex: 0 0 auto;
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    padding: 4px 12px;
+    background: var(--raised);
+    color: var(--dim);
+    font-size: 12px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  /* 主动作：跟另外几个同高同形，只靠 accent 底色区分主次——跟单卡片的 .item-new
+     是同一套写法，两张卡片的动作行不该长得不一样。 */
+  .card-act.primary {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* 结束会话：这一行里唯一不可撤销的那个，所以顶到右端、跟安全动作之间留一道
+     空隙，并且用主题的红。它仍然弹二次确认——分开放是为了让手不往那边去，
+     不是最后一道闸。 */
+  .card-act.danger {
+    margin-left: auto;
+    color: var(--term-red);
   }
 
   /* 会话卡片的两行元信息改成可换行。卡片在网格里被 overflow:hidden 裁住之后，
@@ -2004,6 +2100,7 @@ a.detail-label:hover {
      测试里隐身。 */
   .card-main,
   .more,
+  .card-act,
   .keys button,
   header .hbell,
   header .new,
@@ -2031,6 +2128,7 @@ a.detail-label:hover {
 
   .card-main:hover,
   .more:hover,
+  .card-act:hover,
   .keys button:hover,
   .copy-link:hover,
   .dir-row:hover,
