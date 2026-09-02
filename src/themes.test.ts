@@ -143,8 +143,10 @@ test("isLight 读的是调色板，不是名字", () => {
   expect(isLight(dark)).toBe(false);
 });
 
-test.each(names)("%s: 四套既有主题都判为深色", (name) => {
-  expect(isLight(THEMES[name]!)).toBe(false);
+test.each(names)("%s: 深色主题判为深色，浅色主题判为浅色", (name) => {
+  const t = THEMES[name]!;
+  const shouldBeLight = name === "catppuccin-latte";
+  expect(isLight(t)).toBe(shouldBeLight);
 });
 
 test.each(names)("%s: themeVars emits one variable per colour", (name) => {
@@ -194,15 +196,17 @@ test.each(names)("%s: xtermTheme covers every field we intend to set", (name) =>
  */
 const ui = (name: string) => uiVars(name) as Record<string, string>;
 
-test.each(THEME_ORDER)("%s: 表面层级单调递增", (name) => {
+test.each(THEME_ORDER)("%s: 表面层级单调远离底色", (name) => {
   const v = ui(name);
+  const light = isLight(THEMES[name]!);
   const steps = [1, 2, 3, 4, 5].map((i) => luminance(v[`--surface-${i}`]!));
-  // 暗色主题里"抬高"就是变亮。反过来的话，所有以 surface-4 为基准算出来的文字色
-  // 都会在别的表面上不达标，而每一条断言仍然是绿的——基准本身选错了。
+  // 「抬高」在深色主题里是变亮，在浅色主题里是变暗——同一件事的两个极性。
+  // 排反的话，所有以 surface-4 为基准算出来的文字色都会在别的表面上不达标，
+  // 而每一条断言仍然是绿的：基准本身选错了。
   // 一次报全部而不是停在第一处：层级排错时想看的是整条阶梯长什么样。
   const wrong = steps
     .map((lum, i) => ({ step: i + 1, lum }))
-    .filter((s, i) => i > 0 && s.lum <= steps[i - 1]!)
+    .filter((s, i) => i > 0 && (light ? s.lum >= steps[i - 1]! : s.lum <= steps[i - 1]!))
     .map((s) => `surface-${s.step}`);
   expect(wrong).toEqual([]);
 });

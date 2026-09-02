@@ -109,6 +109,33 @@ export const THEMES = {
       "#81a1c1", "#b48ead", "#8fbcbb", "#eceff4",
     ],
   },
+
+  // --- 浅色 ---------------------------------------------------------------
+  //
+  // 三套都是上游真实存在、作者专为浅底挑过的调色板。Nord 没有官方浅色版：把
+  // Aurora/Frost 搬到雪白底上是 green 1.77:1、cyan 1.74:1、yellow 1.35:1，
+  // 得重挑一半色相，出来的东西不是 Nord，而且无上游可引用——以后没人能判断
+  // 某个值为什么是那样。所以浅色只有三套，选择器左右不对称，但不造没有的东西。
+
+  "catppuccin-latte": {
+    label: "Catppuccin Latte",
+    background: "#eff1f5",
+    foreground: "#4c4f69",
+    // upstream rosewater #dc8a78 → 2.34:1
+    cursor: "#bd7767",
+    cursorAccent: "#eff1f5",
+    selectionBackground: "#bcc0cc",
+    onAccent: "#ffffff",
+    ansi: [
+      // upstream green #40a02b → 2.96:1、yellow #df8e1d → 2.31:1、
+      // pink #ea76cb → 2.34:1。都是朝纯黑压——三个通道同乘一个常数，
+      // 色相与 HSV 饱和度严格不变，只动亮度。
+      "#5c5f77", "#d20f39", "#3f9d2a", "#c07a19",
+      "#1e66f5", "#c965af", "#179299", "#acb0be",
+      "#6c6f85", "#d20f39", "#3f9d2a", "#c07a19",
+      "#1e66f5", "#c965af", "#179299", "#bcc0cc",
+    ],
+  },
 };
 
 export const DEFAULT_THEME = "tokyo-night";
@@ -121,7 +148,7 @@ export const ANSI_NAMES = [
 ];
 
 /** Picker order. Object key order would work, but relying on it is fragile. */
-export const THEME_ORDER = ["tokyo-night", "catppuccin-mocha", "one-dark", "nord"];
+export const THEME_ORDER = ["tokyo-night", "catppuccin-mocha", "one-dark", "nord", "catppuccin-latte"];
 
 /**
  * A theme by name, falling back to the default.
@@ -354,8 +381,11 @@ export function uiVars(name) {
 
     // 6-7：分隔线和可交互边框。不用半透明——半透明的实际颜色取决于它压在什么
     // 上面，于是同一条边在卡片上和在浮层上是两个颜色，谁也量不了。
-    "--border-1": mix(fg, bg, 0.16),
-    "--border-2": mix(fg, bg, 0.32),
+    // 固定配比在深色下够、浅色下不够：Latte 的 --border-2 实测 1.339，低于
+    // 「边框不能是隐形的」那条 1.4 的线。改成从原配比出发推到过线为止——
+    // 深色四套第一步就过，pushTo 原样返回起点，边框色逐字节不变。
+    "--border-1": pushTo(mix(fg, bg, 0.16), fg, s3, 1.12),
+    "--border-2": pushTo(mix(fg, bg, 0.32), fg, s4, 1.45),
 
     // 9-10：实心填充及其悬停。悬停：从常态填充朝远离表面的一端推，推到跟常态色差
     // 得出来为止。以前取 ansi[12]（亮蓝），而七套主题的 ansi[12] 全部等于 ansi[4]
@@ -379,10 +409,12 @@ export function uiVars(name) {
     "--text-3": dimTo(fg, s4, s4, MARK_FLOOR),
 
     // 语义色。先取该主题自己的亮色槽（它已经被现有测试保过在背景上达标），在
-    // surface-4 上不够就朝亮白推——只动亮度，不动色相。
-    "--ok": pushTo(t.ansi[10], t.ansi[15], s4, MARK_FLOOR),
-    "--warn": pushTo(t.ansi[11], t.ansi[15], s4, MARK_FLOOR),
-    "--danger": pushTo(t.ansi[9], t.ansi[15], s4, MARK_FLOOR),
+    // surface-4 上不够就推——端点按极性走：深色朝纯白，浅色朝纯黑。写死 ansi[15]
+    // 的话，浅色主题的表面本来就接近白，朝白推走完循环会返回端点本身——Latte
+    // 实测 --ok 和 --warn 双双变成 #bcc0cc，对 surface-4 只有 1.30:1，等于消失。
+    "--ok": pushTo(t.ansi[10], far, s4, MARK_FLOOR),
+    "--warn": pushTo(t.ansi[11], far, s4, MARK_FLOOR),
+    "--danger": pushTo(t.ansi[9], far, s4, MARK_FLOOR),
   };
 }
 
