@@ -7,9 +7,16 @@ import { dimensionsOf, valuesOf, groupItems, filterItems } from "./facet-view.js
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
 initTheme();
-initLang().then(() => {
+initLang().then(async () => {
   // After the language is known: the nav labels come from the dictionary.
-  renderHeader("items");
+  // Awaited, not fired-and-forgotten: renderHeader() is what creates #count
+  // (see the comment below), and render()'s first setCount() call was racing
+  // it — fetch("api/plugins") inside renderHeader and fetch("api/items") here
+  // both resolve in the same tick, and whichever settles first decides whether
+  // #count exists yet. Losing the race meant setCount() silently wrote to a
+  // node that didn't exist, and it never got a text node created after the
+  // fact — the count stayed permanently blank with nothing to say so.
+  await renderHeader("items");
   render();
 });
 

@@ -569,3 +569,30 @@ test("已归档的单上是取消归档，PATCH 的 closedAt 为 null", async ()
   const patch = posted.find((p) => p.method === "PATCH");
   expect(JSON.parse(patch?.body ?? "{}").closedAt).toBeNull();
 });
+
+// Ruling 2 之一：头部计数要跟卡片渲染同一份集合。两张单只在 closedAt 上不同，
+// 旧写法（数 items.length）会给 2，新写法（数 visible.length）给 1——这条断言
+// 专门盯着这个差异，不是随便一个"有计数"的测试。
+test("归档一张单之后，头部计数只数还画着的那些", async () => {
+  const root = await mount(payload({
+    items: [item({ id: "it-1" }), item({ id: "it-2", closedAt: 1787000000 })],
+  }));
+  expect(root.querySelectorAll(".item-card").length).toBe(1);
+  expect(document.getElementById("count")?.textContent).toBe(tr("items.count", { n: 1 }));
+});
+
+// Ruling 2 之二：筛选选项要从"看得见的单"里现算，不能来自后端给的全量 facets。
+// 两张单同一个维度、不同取值，取值只出现在被默认隐藏的归档单上的那个不该出现
+// 在筛选块里——旧写法（选项算在全量 facets 上）会连"Done"一起给出来。
+test("归档单独有的取值不出现在筛选选项里", async () => {
+  const store = { [FIELDS_KEY]: JSON.stringify(["jira.status"]) };
+  const root = await mount(payload({
+    items: [item({ id: "it-1" }), item({ id: "it-2", closedAt: 1787000000 })],
+    facets: {
+      "it-1": [{ dim: "jira.status", value: "In Progress" }],
+      "it-2": [{ dim: "jira.status", value: "Done" }],
+    },
+  }), store);
+  const values = [...root.querySelectorAll(".filter-chip")].map((c) => c.textContent);
+  expect(values).toEqual(["In Progress"]);
+});
