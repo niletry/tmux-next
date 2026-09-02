@@ -376,6 +376,33 @@ function buildToolbar(dims, facets, groupBy, selected, onChange) {
   const stored = loadFields();
   const shown = stored.filter((d) => dims.includes(d));
 
+  // 选择器紧跟在「筛选」标签后面，跟它并排一行——字段块各占整行，选择器要是排在
+  // 它们后面就会被挤到单独一行，白占一行高度。
+  const addable = dims.filter((d) => !stored.includes(d));
+  if (addable.length) {
+    const addWrap = el("label", "add-field-wrap");
+    const add = document.createElement("select");
+    add.id = "field-picker";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = tr("items.addField");
+    add.append(placeholder);
+    for (const dim of addable) {
+      const opt = document.createElement("option");
+      opt.value = dim;
+      opt.textContent = dimLabel(dim);
+      add.append(opt);
+    }
+    add.value = "";
+    add.addEventListener("change", () => {
+      if (!add.value) return;
+      saveFields([...stored, add.value]);
+      onChange();
+    });
+    addWrap.append(add);
+    filters.append(addWrap);
+  }
+
   for (const dim of shown) {
     filters.append(
       filterField(
@@ -404,30 +431,6 @@ function buildToolbar(dims, facets, groupBy, selected, onChange) {
     );
   }
 
-  const addable = dims.filter((d) => !stored.includes(d));
-  if (addable.length) {
-    const addWrap = el("label", "add-field-wrap");
-    const add = document.createElement("select");
-    add.id = "field-picker";
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = tr("items.addField");
-    add.append(placeholder);
-    for (const dim of addable) {
-      const opt = document.createElement("option");
-      opt.value = dim;
-      opt.textContent = dimLabel(dim);
-      add.append(opt);
-    }
-    add.value = "";
-    add.addEventListener("change", () => {
-      if (!add.value) return;
-      saveFields([...stored, add.value]);
-      onChange();
-    });
-    addWrap.append(add);
-    filters.append(addWrap);
-  }
 
   bar.append(filters);
   return bar;
