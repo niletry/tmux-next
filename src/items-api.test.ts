@@ -188,10 +188,16 @@ test("同步返回汇总形状", async () => {
   expect(Object.keys(body).sort()).toEqual(["created", "total", "truncated", "updated"]);
 });
 
-// sync 必须排在 /api/items/:id 之前，否则会被当成一个 item id。
-test("sync 不会被当成 item id", async () => {
+// 顺序今天并不会被违反：^/api/items/([^/]+)$ 那条只挂在 PATCH 上，这里发的
+// 是 POST，就算把 sync 挪到它后面，方法不匹配也会跳过去、照样落到 sync 处
+// 理器。留着这条顺序是给将来某条不按方法区分的 :id 路由预留的防护，这个测
+// 试因此测的不是"顺序对不对"，而是"sync 这条路由确实可达、确实答出了
+// SyncResult 的形状"，不是被当成条目当掉。
+test("POST /api/items/sync 落到 sync 处理器，答出 SyncResult 形状", async () => {
   const res = await json("/api/items/sync", "POST", {});
   expect(res.status).toBe(200);
+  const body = (await res.json()) as Record<string, unknown>;
+  expect(Object.keys(body).sort()).toEqual(["created", "total", "truncated", "updated"]);
 });
 
 test("刷新不存在的单给 404", async () => {
