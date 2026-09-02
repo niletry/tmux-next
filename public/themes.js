@@ -244,20 +244,51 @@ function dimTo(from, to, on, floor) {
 }
 
 /**
- * 从 `from` 提亮到达标为止，用来救那些太暗的语义色。
- * @param {string} from
- * @param {string} toward
- * @param {string} on
- * @param {number} floor
+ * 从 `from` 朝 `toward` 推，取第一个达标的那一步。
+ *
+ * 原名 `liftTo`——「提亮」，因为端点写死是主题的亮白色，只服务深色主题。浅色
+ * 主题的表面本来就接近白，朝白提只会更糟，循环走完会返回纯白端点，于是
+ * `--ok`/`--warn`/`--danger` 在浅色下直接消失。方向本来就该由极性决定，
+ * 名字里不该有方向。
+ *
+ * @param {string} from   起点
+ * @param {string} toward 端点，由 `farEnd()` 按极性给出
+ * @param {string} on     实际用来量对比度的背景
+ * @param {number} floor  对比度下限
  * @returns {string}
  */
-function liftTo(from, toward, on, floor) {
+function pushTo(from, toward, on, floor) {
   for (let step = 100; step >= 0; step -= 2) {
     const c = mix(from, toward, step / 100);
     if (contrast(c, on) >= floor) return c;
   }
   return toward;
 }
+
+/**
+ * 一套主题是深是浅。
+ *
+ * 算出来而不是让主题自己声明：一套主题的极性完全由它的 background 和
+ * foreground 决定，再写一个 `dark: true` 字段只是制造两者打架的机会。
+ *
+ * @param {Theme} t
+ * @returns {boolean}
+ */
+export function isLight(t) {
+  return luminance(t.background) > luminance(t.foreground);
+}
+
+/**
+ * 远离表面的那一端。所有「推到过线为止」的构造都朝它走。
+ *
+ * 纯黑/纯白而不是主题自己的 ansi[15]：Catppuccin Mocha 的亮白 #a6adc8 和它的
+ * 蓝 #89b4fa 亮度太近，朝它推最多只能推出 1.057 的差，肉眼等于没变（见
+ * Task 2 的 --accent-hover）。
+ *
+ * @param {Theme} t
+ * @returns {string}
+ */
+const farEnd = (t) => (isLight(t) ? "#000000" : "#ffffff");
 
 /** 正文级：WCAG AA。 */
 const TEXT_FLOOR = 4.5;
@@ -295,15 +326,15 @@ export function uiVars(name) {
   const s4 = mix(bg, fg, 0.86);
   const s5 = mix(bg, fg, 0.81);
 
-  // 强调色当文字用：先试主蓝，再试亮蓝，都不够就从亮蓝朝前景色提。三级而不是
-  // 一步到位，是为了尽量停在调色板自己的颜色上——朝前景色提会把蓝拉灰，那是
+  // 强调色当文字用：先试主蓝，再试亮蓝，都不够就从亮蓝朝前景色推。三级而不是
+  // 一步到位，是为了尽量停在调色板自己的颜色上——朝前景色推会把蓝拉灰，那是
   // 最后手段。
   const accentText =
     contrast(t.ansi[4], s4) >= TEXT_FLOOR
       ? t.ansi[4]
       : contrast(t.ansi[12], s4) >= TEXT_FLOOR
         ? t.ansi[12]
-        : liftTo(t.ansi[12], fg, s4, TEXT_FLOOR);
+        : pushTo(t.ansi[12], fg, s4, TEXT_FLOOR);
 
   return {
     "--surface-1": s1,
@@ -321,11 +352,11 @@ export function uiVars(name) {
     "--accent": t.ansi[4],
     "--accent-hover": t.ansi[12],
     // 强调色当**文字**用（链接、"进入"、主动作的字），这是正文级的要求，跟当填充
-    // 是两回事。太暗就朝亮蓝提，提不动再朝前景色提。
+    // 是两回事。太暗就朝亮蓝推，推不动再朝前景色推。
     "--accent-text": accentText,
     // 第二个分类色。不是"某个插件要用紫色"——是"当一个界面需要第二种可区分的
     // 着色时用哪个"，跟 --accent-text 一样是正文级的要求。工单页拿它标史诗。
-    "--accent-alt-text": liftTo(t.ansi[13], fg, s4, TEXT_FLOOR),
+    "--accent-alt-text": pushTo(t.ansi[13], fg, s4, TEXT_FLOOR),
     "--on-accent": t.onAccent,
 
     // 11-12：文字。text-2 是次要文字（状态、时间、字段名），text-3 是更弱的那一档
@@ -335,10 +366,10 @@ export function uiVars(name) {
     "--text-3": dimTo(fg, s4, s4, MARK_FLOOR),
 
     // 语义色。先取该主题自己的亮色槽（它已经被现有测试保过在背景上达标），在
-    // surface-4 上不够就朝亮白提——只动亮度，不动色相。
-    "--ok": liftTo(t.ansi[10], t.ansi[15], s4, MARK_FLOOR),
-    "--warn": liftTo(t.ansi[11], t.ansi[15], s4, MARK_FLOOR),
-    "--danger": liftTo(t.ansi[9], t.ansi[15], s4, MARK_FLOOR),
+    // surface-4 上不够就朝亮白推——只动亮度，不动色相。
+    "--ok": pushTo(t.ansi[10], t.ansi[15], s4, MARK_FLOOR),
+    "--warn": pushTo(t.ansi[11], t.ansi[15], s4, MARK_FLOOR),
+    "--danger": pushTo(t.ansi[9], t.ansi[15], s4, MARK_FLOOR),
   };
 }
 

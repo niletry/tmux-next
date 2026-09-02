@@ -10,6 +10,7 @@ import {
   themeVars,
   uiVars,
   xtermTheme,
+  isLight,
 } from "../public/themes.js";
 
 /**
@@ -137,6 +138,19 @@ test("themeOf falls back rather than returning undefined", () => {
   expect(themeOf(null)).toBe(THEMES[DEFAULT_THEME]!);
   expect(themeOf(undefined)).toBe(THEMES[DEFAULT_THEME]!);
   expect(themeOf("nord")).toBe(THEMES.nord!);
+});
+
+test("isLight 读的是调色板，不是名字", () => {
+  // 用合成对象而不是真主题：这条断言要说的是「极性由两个色决定」，
+  // 用真主题的话，等于在断言那套主题的取值，而不是这个函数的行为。
+  const light = { background: "#ffffff", foreground: "#000000" } as never;
+  const dark = { background: "#000000", foreground: "#ffffff" } as never;
+  expect(isLight(light)).toBe(true);
+  expect(isLight(dark)).toBe(false);
+});
+
+test.each(names)("%s: 四套既有主题都判为深色", (name) => {
+  expect(isLight(THEMES[name]!)).toBe(false);
 });
 
 test.each(names)("%s: themeVars emits one variable per colour", (name) => {
