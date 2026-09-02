@@ -64,6 +64,8 @@ const zh = {
   "items.groupBy": "分组",
   "items.groupNone": "不分组",
   "items.filter": "筛选",
+  "items.addField": "添加字段…",
+  "items.removeField": "移除这个字段",
   "items.noneMatch": "没有符合筛选的单",
 
   // 内核维度的字面量映射——跟 list.js:52 附近同一招：facet.dim 是动态查的，
@@ -270,6 +272,8 @@ const en = {
   "items.groupBy": "Group by",
   "items.groupNone": "None",
   "items.filter": "Filter",
+  "items.addField": "Add field…",
+  "items.removeField": "Remove this field",
   "items.noneMatch": "No items match the filter",
 
   "item.agent": "Agent",

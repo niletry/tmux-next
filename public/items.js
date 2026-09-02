@@ -163,6 +163,7 @@ function itemCard(item, sessions, facets) {
  */
 const GROUP_KEY = "tmux-next.items.groupBy";
 const FILTER_KEY = "tmux-next.items.filter";
+const FIELDS_KEY = "tmux-next.items.fields";
 
 // 手机上第一眼要回答的是"该我动了吗"，所以默认分组维度是 agent 状态而不是随便
 // 一个维度或不分组。
@@ -225,6 +226,47 @@ function saveFilter(selected) {
   }
 }
 
+/**
+ * 哪些字段被加进了筛选区。
+ *
+ * 筛选是**按需加字段**，不是把数据里每个维度都摊开：维度是开放集合，插件随时能
+ * 再贴几个，全摊开就是几十个取值挤成一片，谁属于哪个字段都看不出来。哪些字段值
+ * 得筛是使用者的判断，不是这个文件该替他做的——所以默认一个都不加，由「添加字
+ * 段」按需取用。
+ *
+ * 默认空还有一层好处：分组选择器已经给出了首屏最要紧的那个信号（默认按 agent
+ * 状态分组），筛选是精简结果用的第二层，不该在你没要求时先占掉半屏。
+ *
+ * 返回的是**存下来的原样**，不按当前数据过滤——过滤只发生在渲染那一步。一个维度
+ * 暂时没出现在这批单里（插件停用、这批单没打那个标签），它这一行只是不画，不该被
+ * 从存储里抹掉；抹掉的话维度回来时你还得重加一遍。
+ * @returns {string[]}
+ */
+function loadFields() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(FIELDS_KEY);
+  } catch {
+    raw = null;
+  }
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((d) => typeof d === "string");
+  } catch {
+    return [];
+  }
+}
+
+function saveFields(fields) {
+  try {
+    localStorage.setItem(FIELDS_KEY, JSON.stringify(fields));
+  } catch {
+    // 同上。
+  }
+}
+
 /** 维度显示名：内核维度走字面量表，插件维度走通用字典查找，理由同 facetChip。 */
 function dimLabel(dim) {
   return ITEM_DIM_LABEL[dim]?.() ?? tr(dim);
@@ -241,18 +283,53 @@ function groupLabel(dim, value) {
   return value;
 }
 
-/** 一个筛选开关：某维度的某个取值，点一下切换选中态。 */
+/**
+ * 一个筛选开关：某维度的某个取值，点一下切换选中态。
+ *
+ * chip 上只写取值，不再重复维度名——它已经画在自己那一行的标题上了。从前所有维度
+ * 的取值平铺成一排时，每个 chip 都得自带"维度: 取值"才分得清归属，而那让一排 chip
+ * 长得又臭又长；按字段分行之后，归属由位置表达，chip 就能只说自己那半句。
+ */
 function filterChip(dim, value, active, onToggle) {
-  const label = dimLabel(dim);
   const display = dim === "item.agent" ? (AGENT_VALUE[value]?.() ?? value) : value;
   const chip = document.createElement("button");
   chip.type = "button";
   chip.className = active ? "filter-chip selected" : "filter-chip";
-  chip.append(el("span", "f-dim", label));
-  chip.append(el("span", "f-value", display));
-  chip.title = `${label}: ${display}`;
+  chip.textContent = display;
+  chip.title = `${dimLabel(dim)}: ${display}`;
+  chip.setAttribute("aria-pressed", active ? "true" : "false");
   chip.addEventListener("click", onToggle);
   return chip;
+}
+
+/**
+ * 筛选区里的一个字段：标题 + 一个移除按钮 + 它全部取值的 toggle chips。
+ *
+ * chips 换行铺开，不横向滚动：横向滚动会把取值藏在屏幕外，而藏起来的筛选项等于
+ * 不存在——你不会去滑一个不知道有没有内容的方向。
+ */
+function filterField(dim, facets, selected, onToggleValue, onRemove) {
+  const box = el("div", "filter-field");
+
+  const head = el("div", "field-head");
+  head.append(el("span", "field-name", dimLabel(dim)));
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "field-remove";
+  remove.textContent = "×";
+  remove.title = tr("items.removeField");
+  remove.setAttribute("aria-label", tr("items.removeField"));
+  remove.addEventListener("click", onRemove);
+  head.append(remove);
+  box.append(head);
+
+  const values = el("div", "field-values");
+  for (const value of valuesOf(facets, dim)) {
+    const active = (selected[dim] ?? []).includes(value);
+    values.append(filterChip(dim, value, active, () => onToggleValue(value)));
+  }
+  box.append(values);
+  return box;
 }
 
 /**
@@ -289,13 +366,23 @@ function buildToolbar(dims, facets, groupBy, selected, onChange) {
   groupWrap.append(select);
   bar.append(groupWrap);
 
-  if (dims.length) {
-    const filterRow = el("div", "filter-row");
-    filterRow.append(el("span", "toolbar-label", tr("items.filter")));
-    for (const dim of dims) {
-      for (const value of valuesOf(facets, dim)) {
-        const active = (selected[dim] ?? []).includes(value);
-        filterRow.append(filterChip(dim, value, active, () => {
+  if (!dims.length) return bar;
+
+  const filters = el("div", "filter-row");
+  filters.append(el("span", "toolbar-label", tr("items.filter")));
+
+  // 存下来的原样 vs 现在画得出来的：一个暂时不在数据里的字段不画，但留在存储里，
+  // 所以增删都改 stored，渲染只看 shown。
+  const stored = loadFields();
+  const shown = stored.filter((d) => dims.includes(d));
+
+  for (const dim of shown) {
+    filters.append(
+      filterField(
+        dim,
+        facets,
+        selected,
+        (value) => {
           const next = { ...selected };
           const cur = new Set(next[dim] ?? []);
           if (cur.has(value)) cur.delete(value);
@@ -303,12 +390,46 @@ function buildToolbar(dims, facets, groupBy, selected, onChange) {
           next[dim] = [...cur];
           saveFilter(next);
           onChange();
-        }));
-      }
-    }
-    bar.append(filterRow);
+        },
+        () => {
+          // 移掉字段时连它的选择一起清掉。留着的话就成了一个看不见却仍在生效的
+          // 筛选——页面少了几张单，而屏幕上没有任何东西解释为什么。
+          const nextSel = { ...selected };
+          delete nextSel[dim];
+          saveFilter(nextSel);
+          saveFields(stored.filter((d) => d !== dim));
+          onChange();
+        },
+      ),
+    );
   }
 
+  const addable = dims.filter((d) => !stored.includes(d));
+  if (addable.length) {
+    const addWrap = el("label", "add-field-wrap");
+    const add = document.createElement("select");
+    add.id = "field-picker";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = tr("items.addField");
+    add.append(placeholder);
+    for (const dim of addable) {
+      const opt = document.createElement("option");
+      opt.value = dim;
+      opt.textContent = dimLabel(dim);
+      add.append(opt);
+    }
+    add.value = "";
+    add.addEventListener("change", () => {
+      if (!add.value) return;
+      saveFields([...stored, add.value]);
+      onChange();
+    });
+    addWrap.append(add);
+    filters.append(addWrap);
+  }
+
+  bar.append(filters);
   return bar;
 }
 

@@ -378,3 +378,99 @@ test("未归单不受分组与筛选影响", async () => {
   }), store);
   expect(root.querySelector(".unassigned")?.textContent).toContain("随手开的");
 });
+
+/**
+ * 筛选按字段分行、按需添加。
+ *
+ * 从前所有维度的取值平铺成一排 chips，谁属于哪个字段全靠 chip 自带的"维度: 取值"
+ * 前缀区分——十三张单九个维度时那是几十个挤在一起、彼此长得一样的按钮。现在一个
+ * 字段一块，默认一块都不加，由使用者挑。
+ */
+
+const FIELDS_KEY = "tmux-next.items.fields";
+
+const twoDims = {
+  "it-1": [
+    { dim: "item.agent", value: "waiting" },
+    { dim: "jira.status", value: "In Progress" },
+  ],
+  "it-2": [
+    { dim: "item.agent", value: "working" },
+    { dim: "jira.status", value: "Done" },
+  ],
+};
+
+const twoItems = [{ ...item(), id: "it-1" }, { ...item(), id: "it-2", title: "另一张" }];
+
+test("默认一个筛选字段都不加，只给一个添加入口", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }));
+  expect(root.querySelectorAll(".filter-field").length).toBe(0);
+  expect(root.querySelector("#field-picker")).not.toBeNull();
+});
+
+test("添加入口列出数据里有的维度", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }));
+  const options = [...root.querySelectorAll("#field-picker option")].map((o) => o.getAttribute("value"));
+  expect(options).toContain("item.agent");
+  expect(options).toContain("jira.status");
+});
+
+test("加过的字段各占一块，块里是它自己的取值", async () => {
+  const store = { [FIELDS_KEY]: JSON.stringify(["jira.status"]) };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  const fields = root.querySelectorAll(".filter-field");
+  expect(fields.length).toBe(1);
+  expect(fields[0].querySelector(".field-name")?.textContent).toBeTruthy();
+  const values = [...fields[0].querySelectorAll(".filter-chip")].map((c) => c.textContent);
+  expect(values.sort()).toEqual(["Done", "In Progress"]);
+});
+
+// chip 上只写取值：归属由它所在的那一块表达，不必每个按钮都重复一遍字段名。
+test("chip 上不再重复字段名", async () => {
+  const store = { [FIELDS_KEY]: JSON.stringify(["jira.status"]) };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  const chip = root.querySelector(".filter-chip");
+  expect(chip?.textContent).toBe("In Progress");
+});
+
+test("已加的字段不再出现在添加入口里", async () => {
+  const store = { [FIELDS_KEY]: JSON.stringify(["jira.status"]) };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  const options = [...root.querySelectorAll("#field-picker option")].map((o) => o.getAttribute("value"));
+  expect(options).not.toContain("jira.status");
+  expect(options).toContain("item.agent");
+});
+
+test("字段块里的取值是 toggle，选中态画出来", async () => {
+  const store = {
+    [FIELDS_KEY]: JSON.stringify(["jira.status"]),
+    "tmux-next.items.filter": JSON.stringify({ "jira.status": ["In Progress"] }),
+  };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  const chips = [...root.querySelectorAll(".filter-chip")];
+  const on = chips.filter((c) => c.className.includes("selected"));
+  expect(on.length).toBe(1);
+  expect(on[0].textContent).toBe("In Progress");
+  expect(on[0].getAttribute("aria-pressed")).toBe("true");
+});
+
+test("存的字段在当前数据里没有就不画，但不从存储里抹掉", async () => {
+  const store = { [FIELDS_KEY]: JSON.stringify(["gone.dim", "jira.status"]) };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  expect(root.querySelectorAll(".filter-field").length).toBe(1);
+  expect(JSON.parse(store[FIELDS_KEY])).toEqual(["gone.dim", "jira.status"]);
+});
+
+// 移掉字段却留着它的选择，等于留一个看不见还在生效的筛选——页面少了几张单，而屏幕
+// 上没有任何东西解释为什么。
+test("移除字段时连它的选择一起清掉", async () => {
+  const store = {
+    [FIELDS_KEY]: JSON.stringify(["jira.status"]),
+    "tmux-next.items.filter": JSON.stringify({ "jira.status": ["Done"] }),
+  };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  root.querySelector(".field-remove")?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(JSON.parse(store[FIELDS_KEY])).toEqual([]);
+  expect(JSON.parse(store["tmux-next.items.filter"])).toEqual({});
+});
