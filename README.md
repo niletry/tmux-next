@@ -178,6 +178,10 @@ A work item is the unit of work — a session is just a means to it, and a singl
 
 On first startup, if `items.json` does not exist yet, tmux-next migrates any bindings already made through the Jira plugin's old private store into these two files — a one-time, idempotent move that leaves the old file in place rather than deleting it.
 
+### Syncing, refreshing, and archiving items
+
+The **Sync** button on the work-item list asks every enabled plugin that's backed by an external tracker to pull its issues and create or update the matching items; with no tracker configured it comes back reporting zero rather than failing. A single item with a `source` also gets its own **Refresh** button, for re-checking just that one issue's status, PRs, and checks without paying for a full sync — an item with no `source` (a local, unclaimed one) shows no refresh button at all. Any item can be archived and unarchived from its card; the toolbar's "Show archived" checkbox toggles whether archived items are included in the list.
+
 ### Grouping and filtering the work-item list
 
 Each item's card carries a row of chips — `waiting`/`working`/`none`, its session count, its working directory, its tags, and anything a plugin has attached (Jira's status, epic, PRs, checks). Every chip is a `{ dimension, value }` pair, and the home page groups or filters by whichever dimension you pick; the choices on offer are read straight off the current cards, not a hard-coded list, so a new plugin dimension shows up without any change to the page itself. Your grouping and filter choices are remembered per device, not synced. An item with no bound sessions still gets an ordinary card — its `item.agent` chip just reads `none`, and it groups and filters like any other. The "unassigned" group at the bottom of the list is the other direction: tmux sessions that aren't bound to any item at all, not items missing a session.
