@@ -268,22 +268,43 @@ export async function sync(): Promise<SyncResult> {
 }
 
 /**
- * 只刷新一个单：先重取工单本身，再重取它的 PR/检查。
+ * 只刷新一个单：先重取工单本身，再重取它的 PR/检查，再把标题写回内核。
  *
  * 不经过 devTargets 的"只给有活跃会话的单拉"这条限制——那条限制是为了不在批量
  * 同步时打出上百个请求，单条刷新是用户明确点了这一个,该刷就刷。
+ *
+ * refreshIssue 返回 null 时（未配置、Jira 不通）不能悄悄 return——那样调用方
+ * （refreshFromSource，再往上是首页的刷新按钮）会看到一个 resolve 掉的
+ * Promise，把"没问到"读成"问到了、也刷了"。抛出去，让 refreshFromSource 已有的
+ * try/catch 把它收成 false，页面才会照实说"刷新失败"而不是假装刷新成功地
+ * 重新渲染一遍原样的卡片。这条判断是 CLAUDE.md 里 checksKnown 那条的同一个理由：
+ * "我们没问到"不能被表现成"我们问到了"。
+ *
+ * ensureItemForSource(..., { refreshTitle: true }) 补的是同步（sync()）已经在
+ * 做、但单条刷新一直没做的事：远端改了标题，全量同步会跟着改，点这一个单的
+ * 刷新按钮却不会——同一个按钮，越具体的动作反而做得比笼统的那个少，用户会当
+ * 成没生效。
  */
 export async function refreshItem(ref: string): Promise<void> {
   const issue = await refreshIssue(ref);
-  if (!issue) return;
+  if (!issue) throw new Error(`refreshIssue(${ref}) 没问到——未配置或 Jira 不通`);
   await dev(issue.id, issue.key, true);
+  await ensureItemForSource("jira", ref, issue.summary, { refreshTitle: true });
 }
 
 /**
  * 进程启动时的一次机会。发出去就不管——手机打开这个页面不该等 Jira 的网络往返。
+ *
+ * 失败不能吞得干干净净：一个被吊销的 token 会让这次同步永远失败，而没有任何
+ * 显式动作会再告诉你——用户只会看到列表悄悄停在旧数据上，不知道该去查哪里。
+ * console.error 而不是抛，理由跟外层的 catch 一样：这条同步不该拖垮进程启动，
+ * 只是不该连日志都不留。src/migrate-items.ts 的 migrateJiraBindings() 就在
+ * 隔壁用的同一招。
  */
 export function start(): void {
-  void sync().catch(() => {});
+  void sync().catch((err) => {
+    console.error("[jira] 启动同步失败：", err);
+  });
 }
 
 export async function handle(req: Request, url: URL): Promise<Response | null> {
