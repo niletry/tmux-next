@@ -379,6 +379,47 @@ header .count {
   padding: 8px 12px;
 }
 
+/* 同步按钮 + 它的状态文案，一整行独占——truncated 的提示可能比较长，跟别的
+   工具条控件挤在一行会被截断到看不出内容，而这条提示恰恰是不能被悄悄吞掉
+   的那种信息。 */
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 100%;
+}
+
+.sync-btn {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 8px;
+  padding: 5px 12px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sync-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.sync-status {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.show-archived-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  color: var(--dim);
+  font-size: 12px;
+}
+
 .group-by-wrap {
   display: flex;
   align-items: center;
@@ -598,6 +639,32 @@ a.item-title { color: var(--accent); }
   color: var(--accent);
   font-size: 12px;
   white-space: nowrap;
+}
+
+/* 刷新/归档：跟 .item-new 一样是卡片底部的按钮行，但两个动作横排而不是各占
+   一整行——它们不是"下一步"，是维护动作，不该抢 .item-new 的视觉分量。 */
+.item-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.item-refresh,
+.item-archive {
+  flex: 1 1 0;
+  border: none;
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--card);
+  color: var(--dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.item-refresh:disabled,
+.item-archive:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .item-new {

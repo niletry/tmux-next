@@ -4,7 +4,7 @@ import { t } from "../public/i18n.js";
 
 // mount() 的 fetch shim 把 api/language 答成 "en"，所以断言里的翻译也固定在
 // "en"——跟页面实际渲染用的是同一份字典、同一种语言，不是巧合对上。
-const tr = (key: string) => t(key, "en");
+const tr = (key: string, vars?: Record<string, string | number>) => t(key, "en", vars);
 
 /**
  * The work-item list, driven in a real DOM.
@@ -65,6 +65,14 @@ const payload = (over: Record<string, unknown> = {}) => ({
 const PATCHED = ["window", "document", "location", "history", "URLSearchParams",
   "localStorage", "fetch", "setInterval"] as const;
 const saved = new Map<string, unknown>();
+
+/** 页面发出去的写请求，供断言用。每次 mount 清空。 */
+let posted: Array<{ url: string; method: string; body: string }> = [];
+
+/** POST /api/items/sync 的应答，个别测试改它；mount() 之间不清也不影响别的测试
+ * 用不到它的分支——不涉及同步的测试根本不会打这条路由。 */
+let syncReply: { created: number; updated: number; total: number; truncated: boolean } =
+  { created: 0, updated: 0, total: 0, truncated: false };
 // Only mount()/mountFailing() touch globalThis — without this flag a test file
 // that never mounted would still run the restore loop, find `saved` empty and
 // delete real globals like `fetch` that were never touched, breaking every
@@ -97,6 +105,7 @@ function patch(shims: Record<string, unknown>) {
 }
 
 async function mount(body: unknown, store: Record<string, string> = {}) {
+  posted = [];
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
   const doc = win.document;
   doc.body.innerHTML = '<header id="header"></header><main id="items"></main>';
@@ -111,8 +120,14 @@ async function mount(body: unknown, store: Record<string, string> = {}) {
       getItem: (k: string) => (k in store ? store[k] : null),
       setItem: (k: string, v: string) => { store[k] = v; },
     },
-    fetch: (async (u: unknown) => {
+    fetch: (async (u: unknown, init?: RequestInit) => {
       const href = String(u);
+      if (init?.method && init.method !== "GET") {
+        posted.push({ url: href, method: init.method, body: String(init.body ?? "") });
+        if (href.includes("/refresh")) return new Response(JSON.stringify({ ok: true }));
+        if (href.includes("api/items/sync")) return new Response(JSON.stringify(syncReply));
+        return new Response(JSON.stringify({}));
+      }
       if (href.includes("api/items")) return new Response(JSON.stringify(body));
       if (href.includes("api/plugins")) return new Response(JSON.stringify([]));
       if (href.includes("api/language")) return new Response(JSON.stringify({ lang: "en" }));
@@ -473,4 +488,84 @@ test("移除字段时连它的选择一起清掉", async () => {
   await new Promise((r) => setTimeout(r, 30));
   expect(JSON.parse(store[FIELDS_KEY])).toEqual([]);
   expect(JSON.parse(store["tmux-next.items.filter"])).toEqual({});
+});
+
+// ---- 同步、单张刷新、归档（Task 8）----
+
+const withSource = () => item({ source: { provider: "jira", ref: "EXAMPLE-1" } });
+const clickable = (root: any, sel: string) =>
+  root.querySelector(sel)?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+
+test("顶栏有同步按钮", async () => {
+  await mount(payload({ items: [item()] }));
+  expect(document.getElementById("sync-items")).not.toBeNull();
+});
+
+test("点同步会 POST /api/items/sync", async () => {
+  await mount(payload({ items: [item()] }));
+  document.getElementById("sync-items")?.dispatchEvent(
+    new (globalThis as any).window.Event("click", { bubbles: true }),
+  );
+  await new Promise((r) => setTimeout(r, 60));
+  expect(posted.some((p) => p.url.includes("api/items/sync") && p.method === "POST")).toBe(true);
+});
+
+// 静默截断会让页面看起来像"就这么多"——「我们没问到」和「没有」是两回事。
+test("同步返回 truncated 时说出来", async () => {
+  syncReply = { created: 0, updated: 200, total: 200, truncated: true };
+  const root = await mount(payload({ items: [item()] }));
+  document.getElementById("sync-items")?.dispatchEvent(
+    new (globalThis as any).window.Event("click", { bubbles: true }),
+  );
+  await new Promise((r) => setTimeout(r, 60));
+  expect(root.parentElement?.textContent ?? "").toContain(tr("items.syncTruncated", { n: 200 }));
+  syncReply = { created: 0, updated: 0, total: 0, truncated: false };
+});
+
+test("有来源的单画刷新按钮", async () => {
+  const root = await mount(payload({ items: [withSource()] }));
+  expect(root.querySelector(".item-refresh")).not.toBeNull();
+});
+
+// 没有来源就没有可刷的东西——画一个必然失败的按钮比不画更糟。
+test("没有来源的本地单不画刷新按钮", async () => {
+  const root = await mount(payload({ items: [item()] }));
+  expect(root.querySelector(".item-refresh")).toBeNull();
+});
+
+test("点刷新会 POST 到那张单的 refresh 路由", async () => {
+  const root = await mount(payload({ items: [withSource()] }));
+  clickable(root, ".item-refresh");
+  await new Promise((r) => setTimeout(r, 60));
+  expect(posted.some((p) => p.url.includes("api/items/it-1/refresh") && p.method === "POST")).toBe(true);
+});
+
+test("点归档会 PATCH 一个 closedAt", async () => {
+  const root = await mount(payload({ items: [item()] }));
+  clickable(root, ".item-archive");
+  await new Promise((r) => setTimeout(r, 60));
+  const patch = posted.find((p) => p.method === "PATCH");
+  expect(patch?.url).toContain("api/items/it-1");
+  expect(typeof JSON.parse(patch?.body ?? "{}").closedAt).toBe("number");
+});
+
+test("已归档的单默认不画", async () => {
+  const root = await mount(payload({ items: [item({ closedAt: 1787000000 })] }));
+  expect(root.querySelectorAll(".item-card").length).toBe(0);
+});
+
+test("打开显示已归档后画出来", async () => {
+  const store = { "tmux-next.items.showArchived": "1" };
+  const root = await mount(payload({ items: [item({ closedAt: 1787000000 })] }), store);
+  expect(root.querySelectorAll(".item-card").length).toBe(1);
+});
+
+// 归档不是删除：取消归档要能把它拿回来。
+test("已归档的单上是取消归档，PATCH 的 closedAt 为 null", async () => {
+  const store = { "tmux-next.items.showArchived": "1" };
+  const root = await mount(payload({ items: [item({ closedAt: 1787000000 })] }), store);
+  clickable(root, ".item-archive");
+  await new Promise((r) => setTimeout(r, 60));
+  const patch = posted.find((p) => p.method === "PATCH");
+  expect(JSON.parse(patch?.body ?? "{}").closedAt).toBeNull();
 });

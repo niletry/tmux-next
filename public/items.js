@@ -117,11 +117,79 @@ function sessionRow(session) {
 }
 
 /**
+ * 单张单的动作：刷新（有来源才画）、归档/取消归档（永远画）。
+ *
+ * 两个动作都是"点了就打一次接口，成功了就整页重新 render()"——不在本地拼装
+ * 变化后的状态，因为服务端才是真相（尤其刷新，它可能把标题、状态都换了）。
+ * 失败复用 push.js 已有的 push.actionFailed：这是唯一一个已经存在、语义是
+ * "操作失败"的通用键，没有必要为这两个动作各造一个新键。
+ *
+ * @param {*} item
+ * @param {() => Promise<void>} onChange
+ */
+function itemActions(item, onChange) {
+  const wrap = el("div", "item-actions");
+
+  if (item.source) {
+    const refresh = document.createElement("button");
+    refresh.type = "button";
+    refresh.className = "item-refresh";
+    refresh.textContent = tr("items.refresh");
+    refresh.title = tr("items.refresh");
+    refresh.addEventListener("click", async () => {
+      refresh.disabled = true;
+      try {
+        const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}/refresh`), { method: "POST" });
+        if (res.ok) {
+          await onChange();
+          return;
+        }
+        // 404 = 那张单没有可刷的东西（单没了、没来源、没有插件认领这个来源）。
+        // 三种情况故意收拢成一种：提示一次，不重画——那张单没变，重画只会抖一下
+        // 又变回原样。
+        alert(tr("push.actionFailed"));
+      } catch {
+        alert(tr("push.actionFailed"));
+      } finally {
+        refresh.disabled = false;
+      }
+    });
+    wrap.append(refresh);
+  }
+
+  const archived = Boolean(item.closedAt);
+  const archive = document.createElement("button");
+  archive.type = "button";
+  archive.className = "item-archive";
+  archive.textContent = archived ? tr("items.unarchive") : tr("items.archive");
+  archive.addEventListener("click", async () => {
+    archive.disabled = true;
+    try {
+      const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}`), {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        // 归档不是删除：取消归档就是把 closedAt 送回 null，绑定和标签原样留着。
+        body: JSON.stringify({ closedAt: archived ? null : Math.floor(Date.now() / 1000) }),
+      });
+      if (res.ok) await onChange();
+      else alert(tr("push.actionFailed"));
+    } catch {
+      alert(tr("push.actionFailed"));
+    } finally {
+      archive.disabled = false;
+    }
+  });
+  wrap.append(archive);
+
+  return wrap;
+}
+
+/**
  * 单卡片。
  *
  * 「再开一个会话」永远在，不是「打开」——一张单多个会话是常态，不是边角情况。
  */
-function itemCard(item, sessions, facets) {
+function itemCard(item, sessions, facets, onChange) {
   const card = el("article", "item-card");
 
   const head = el("div", "item-head");
@@ -151,6 +219,8 @@ function itemCard(item, sessions, facets) {
 
   for (const session of sessions) card.append(sessionRow(session));
 
+  card.append(itemActions(item, onChange));
+
   const more = el("a", "item-new", sessions.length ? tr("items.newSession") : tr("items.firstSession"));
   more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
   card.append(more);
@@ -164,6 +234,7 @@ function itemCard(item, sessions, facets) {
 const GROUP_KEY = "tmux-next.items.groupBy";
 const FILTER_KEY = "tmux-next.items.filter";
 const FIELDS_KEY = "tmux-next.items.fields";
+const SHOW_ARCHIVED_KEY = "tmux-next.items.showArchived";
 
 // 手机上第一眼要回答的是"该我动了吗"，所以默认分组维度是 agent 状态而不是随便
 // 一个维度或不分组。
@@ -267,6 +338,64 @@ function saveFields(fields) {
   }
 }
 
+/**
+ * 「显示已归档」是设备偏好，跟分组/筛选/字段那三把键同一类——不是"这台机器"的
+ * 事（那是主题），存在 localStorage，读写都包 try/catch。
+ */
+function loadShowArchived() {
+  try {
+    return localStorage.getItem(SHOW_ARCHIVED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveShowArchived(value) {
+  try {
+    localStorage.setItem(SHOW_ARCHIVED_KEY, value ? "1" : "0");
+  } catch {
+    // 隐私窗口：记不住就记不住，不是页面能崩的理由。
+  }
+}
+
+/**
+ * 同步的进行中状态是模块级的，不是某次 draw() 闭包里的——它要跨越"点击时的这次
+ * draw()"和"同步完成后触发的整页 render()"存活，后者会重新执行 draw() 生成全新
+ * 的工具条节点，只有读同一个模块变量才能让新节点接着显示上一步的结果。
+ */
+let syncing = false;
+let syncMessage = "";
+
+/**
+ * 顶栏「同步」：进行中禁用按钮、文案换成 items.syncing；完成后整页 render()，
+ * 新工具条会读到这里更新过的 syncMessage。truncated 是「我们没问全」，跟「就这
+ * 么多」是两回事，收到就额外说出来，不能悄悄吞掉。
+ */
+async function doSync() {
+  if (syncing) return;
+  syncing = true;
+  syncMessage = "";
+  // 立刻反馈，不等下面的整页 render()：网络慢的时候按钮要马上显得"按下去了"。
+  const btn = document.getElementById("sync-items");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = tr("items.syncing");
+  }
+  try {
+    const res = await fetch(url("api/items/sync"), { method: "POST" });
+    if (!res.ok) throw new Error(String(res.status));
+    const data = await res.json();
+    let msg = tr("items.syncDone", { created: data?.created ?? 0, updated: data?.updated ?? 0 });
+    if (data?.truncated) msg += " " + tr("items.syncTruncated", { n: data?.total ?? 0 });
+    syncMessage = msg;
+  } catch {
+    syncMessage = tr("items.syncFailed");
+  } finally {
+    syncing = false;
+  }
+  await render();
+}
+
 /** 维度显示名：内核维度走字面量表，插件维度走通用字典查找，理由同 facetChip。 */
 function dimLabel(dim) {
   return ITEM_DIM_LABEL[dim]?.() ?? tr(dim);
@@ -339,10 +468,36 @@ function filterField(dim, facets, selected, onToggleValue, onRemove) {
  * @param {Record<string, Array<{dim: string, value: string}>>} facets
  * @param {string} groupBy
  * @param {Record<string, string[]>} selected
+ * @param {boolean} showArchived
  * @param {() => void} onChange
  */
-function buildToolbar(dims, facets, groupBy, selected, onChange) {
+function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   const bar = el("div", "toolbar");
+
+  const actions = el("div", "toolbar-actions");
+  const syncBtn = document.createElement("button");
+  syncBtn.type = "button";
+  syncBtn.id = "sync-items";
+  syncBtn.className = "sync-btn";
+  syncBtn.textContent = syncing ? tr("items.syncing") : tr("items.sync");
+  syncBtn.disabled = syncing;
+  syncBtn.addEventListener("click", doSync);
+  actions.append(syncBtn);
+  if (syncMessage) actions.append(el("span", "sync-status", syncMessage));
+  bar.append(actions);
+
+  const archivedWrap = el("label", "show-archived-wrap");
+  const archivedToggle = document.createElement("input");
+  archivedToggle.type = "checkbox";
+  archivedToggle.id = "show-archived";
+  archivedToggle.checked = showArchived;
+  archivedToggle.addEventListener("change", () => {
+    saveShowArchived(archivedToggle.checked);
+    onChange();
+  });
+  archivedWrap.append(archivedToggle);
+  archivedWrap.append(el("span", "toolbar-label", tr("items.showArchived")));
+  bar.append(archivedWrap);
 
   const groupWrap = el("label", "group-by-wrap");
   groupWrap.append(el("span", "toolbar-label", tr("items.groupBy")));
@@ -480,8 +635,6 @@ async function render() {
   // 同一套半新半旧兜底。
   const facets = body?.facets && typeof body.facets === "object" ? body.facets : {};
 
-  setCount(tr("items.count", { n: items.length }));
-
   const byName = new Map(sessions.map((s) => [s.name, s]));
   const mine = new Map();
   const bound = new Set();
@@ -507,36 +660,57 @@ async function render() {
   ).length;
   setTabWaiting(waiting);
 
-  if (!open.length && !loose.length) {
+  // 「压根没有单」现在只看 items 本身，不看 open——items 里全是归档单、
+  // open 为空也不等于没东西可看：还有「显示已归档」这个开关能把它们叫回来，
+  // 而那个开关画在 draw() 里的工具条上，在这里短路掉就永远够不到它。
+  if (!items.length && !loose.length) {
     renderEmpty(tr("items.empty"), tr("items.emptyHint"));
     return;
   }
 
-  const dims = dimensionsOf(facets);
-
-  // 重画不重新请求：分组/筛选是本地状态的切换，不该每点一下 chip 就再打一次
-  // /api/items。open/loose/facets 在这个闭包里是常量。
+  // 重画不重新请求：分组/筛选/显示已归档都是本地状态的切换，不该每点一下就
+  // 再打一次 /api/items。items/loose/facets/mine 在这个闭包里是常量，
+  // showArchived 之下的一切都在 draw() 内部现算，好让切换开关立刻生效。
   function draw() {
+    const showArchived = loadShowArchived();
+    const visible = showArchived ? items : open;
+
+    // 头部计数跟卡片渲染同一份集合——数的是实际画出来的东西，不是后端给了
+    // 多少条。之前它读的是 items.length：归档一张单之后这个数字纹丝不动，
+    // 跟卡片数对不上，看着像页面没反应过来。
+    setCount(tr("items.count", { n: visible.length }));
+
+    // 分组/筛选的选项也要限定在同一份集合上：facets 是按全部 items（含归档）
+    // 算的，选项摊开时就可能出现一个只有归档单才有的取值——点上去正好落进
+    // "没有符合筛选的单"，而屏幕上一张归档单都看不见，用户搞不清哪里出的错。
+    const visibleFacets = {};
+    for (const it of visible) if (facets[it.id]) visibleFacets[it.id] = facets[it.id];
+    const dims = dimensionsOf(visibleFacets);
+
     const groupBy = loadGroupBy(dims);
     const selected = loadFilter();
-    const filtered = filterItems(open, facets, selected);
+    const filtered = filterItems(visible, visibleFacets, selected);
 
     root.replaceChildren();
-    root.append(buildToolbar(dims, facets, groupBy, selected, draw));
+    root.append(buildToolbar(dims, visibleFacets, groupBy, selected, showArchived, draw));
 
     if (!filtered.length) {
-      // 跟"压根没有单"是两件不同的事——这里是筛出来的空，得说清楚，不能看着
-      // 像页面坏了。
+      // 跟"压根没有单"是两件不同的事——这里是筛出来的空（或者归档单都被
+      // 开关挡住了），得说清楚，不能看着像页面坏了。
       root.append(el("p", "empty", tr("items.noneMatch")));
     } else if (groupBy) {
-      for (const group of groupItems(filtered, facets, groupBy)) {
+      for (const group of groupItems(filtered, visibleFacets, groupBy)) {
         const section = el("section");
         section.append(el("h2", "group-name", groupLabel(groupBy, group.value)));
-        for (const item of group.items) section.append(itemCard(item, mine.get(item.id) ?? [], facets[item.id]));
+        for (const item of group.items) {
+          section.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], render));
+        }
         root.append(section);
       }
     } else {
-      for (const item of filtered) root.append(itemCard(item, mine.get(item.id) ?? [], facets[item.id]));
+      for (const item of filtered) {
+        root.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], render));
+      }
     }
 
     if (loose.length) root.append(unassignedGroup(loose));

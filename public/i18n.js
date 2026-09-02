@@ -67,6 +67,15 @@ const zh = {
   "items.addField": "添加字段…",
   "items.removeField": "移除这个字段",
   "items.noneMatch": "没有符合筛选的单",
+  "items.sync": "同步",
+  "items.syncing": "同步中…",
+  "items.syncDone": "新增 {created}，更新 {updated}",
+  "items.syncFailed": "同步失败",
+  "items.syncTruncated": "只同步了前 {n} 条",
+  "items.refresh": "刷新这一个单",
+  "items.archive": "归档",
+  "items.unarchive": "取消归档",
+  "items.showArchived": "显示已归档",
 
   // 内核维度的字面量映射——跟 list.js:52 附近同一招：facet.dim 是动态查的，
   // src/i18n.test.ts 的死键扫描只认字符串字面量，拼出来的键名它看不见，会把这
@@ -275,6 +284,15 @@ const en = {
   "items.addField": "Add field…",
   "items.removeField": "Remove this field",
   "items.noneMatch": "No items match the filter",
+  "items.sync": "Sync",
+  "items.syncing": "Syncing…",
+  "items.syncDone": "{created} added, {updated} updated",
+  "items.syncFailed": "Sync failed",
+  "items.syncTruncated": "Only synced the first {n}",
+  "items.refresh": "Refresh this item",
+  "items.archive": "Archive",
+  "items.unarchive": "Unarchive",
+  "items.showArchived": "Show archived",
 
   "item.agent": "Agent",
   "item.sessions": "Sessions",
