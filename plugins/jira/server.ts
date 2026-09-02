@@ -230,11 +230,27 @@ export function devTargets(items: ItemRef[], bindings: ResolvedBinding[]): strin
  * 未配置、拉取失败都返回零结果而不是抛——同步是后台动作，不该有一条异常路径
  * 能把调用方（runSync，进而是启动流程）带崩。PR 那一步单独 try/catch：拿不到
  * PR 不该抹掉刚刚同步成功的工单。
+ *
+ * "返回零结果而不是抛"曾经意味着失败会彻底安静：start() 里 `void sync().catch()`
+ * 的那个 handler 永远等不到会抛的 sync()，一个被吊销的 token 就会让列表悄悄停
+ * 在旧数据上、什么都不说。日志因此打在这里——`!result.ok` 分支自己才是真正
+ * 知道"问不到、以及为什么"的地方，把 log 塞进 start() 的 catch 只是一段看着
+ * 像在处理这件事、实际永远不会跑的死代码。
  */
 export async function sync(): Promise<SyncResult> {
   // 显式同步动作，绕开 60 秒的页面缓存——用户点了同步，就该真的问一次。
   const result = await issues(true);
-  if (!result.ok) return { created: 0, updated: 0, total: 0, truncated: false };
+  if (!result.ok) {
+    // 这里才是真正知道"问不到"这件事的地方——不是 start() 那个永远等不到异常
+    // 的 .catch()。unconfigured 不算失败：还没配置的人不该每次启动都吃一行
+    // 错误日志，那是"正常"的初始状态，不是故障。auth/query/unreachable 才是
+    // 值得写进日志的——只打分类过的原因，不打原始响应体：那里面带账号信息，
+    // 跟 /api/jira/config 从不回显 token 是同一条线。
+    if (result.reason !== "unconfigured") {
+      console.error(`[jira] 启动同步失败：${result.reason}`);
+    }
+    return { created: 0, updated: 0, total: 0, truncated: false };
+  }
 
   // 同步之前先记下已经存在的 (provider, ref)：ensureItemForSource 返回的是
   // WorkItem 本身，不带"是不是新建的"这个标志——加这个标志要为了这一个调用方
@@ -295,16 +311,18 @@ export async function refreshItem(ref: string): Promise<void> {
 /**
  * 进程启动时的一次机会。发出去就不管——手机打开这个页面不该等 Jira 的网络往返。
  *
- * 失败不能吞得干干净净：一个被吊销的 token 会让这次同步永远失败，而没有任何
- * 显式动作会再告诉你——用户只会看到列表悄悄停在旧数据上，不知道该去查哪里。
- * console.error 而不是抛，理由跟外层的 catch 一样：这条同步不该拖垮进程启动，
- * 只是不该连日志都不留。src/migrate-items.ts 的 migrateJiraBindings() 就在
- * 隔壁用的同一招。
+ * 这里的 .catch() **不是失败报告的地方**——真正知道"问不到、以及为什么"的是
+ * sync() 内部 `!result.ok` 那个分支，日志已经打在那儿了（见 sync() 的注释）。
+ * 这条 .catch() 现在纯粹是防呆：sync() 目前每一步都在自己的 try/catch 里
+ * （issues()/readJiraConfig() 从不抛，PR/dev 那一步有自己的 try/catch），
+ * 按今天的写法它不会拒绝，但"今天不会"不是语言保证——以后有人往 sync() 里加
+ * 一步没包 try/catch 的代码，这条 .catch() 是唯一挡在"一个插件的 start() 抛出
+ * 未捕获异常"和"整个启动流程"之间的东西（同 plugins/handlers.ts 的
+ * startPlugins() 那条"一个插件的 start 抛了不能挡住服务器起来"）。故意不在这
+ * 里第二次打日志：那会让人以为这里也是覆盖失败原因的地方，而它现在真的不是。
  */
 export function start(): void {
-  void sync().catch((err) => {
-    console.error("[jira] 启动同步失败：", err);
-  });
+  void sync().catch(() => {});
 }
 
 export async function handle(req: Request, url: URL): Promise<Response | null> {
