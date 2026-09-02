@@ -47,7 +47,7 @@
 1. 每一处 `@media` 里的 `min-width` / `max-width` 取值 ∈ `{ 900px }`
 2. 每一处指针相关的媒体查询写作 `(hover: hover) and (pointer: fine)`，不接受单独的 `hover: hover`（Windows 上带触摸屏的笔记本两者都报 true，只查 hover 会把它误判成纯鼠标设备）
 
-断点值本身导出成模块常量供测试引用，避免测试和样式表各写一遍 900。
+断点的允许集合写在这个测试文件里，不新建模块：CSS 读不到 TypeScript 常量，多一个模块换不来单一事实来源，只多一个要同步的地方。
 
 ## 三、逐项改动
 
@@ -98,7 +98,7 @@
 
 ### 3.6 插件页
 
-`plugins/jira/public/style.css`（602 行）与 `plugins/gallery/public/style.css`（139 行）各自加宽屏规则，用同一个断点常量。画廊的缩略图网格本来就该在宽屏多列；Jira 的 issue 列表套用 3.1 同一套内容列 + 网格。插件样式表由插件自己拥有（见 CLAUDE.md），不把它们的规则搬进内核样式表。
+`plugins/jira/public/style.css`（602 行）与 `plugins/gallery/public/style.css`（139 行）各自加宽屏规则，断点值与内核样式表写同一个 900px（由 §2 的测试跨文件盯住）。画廊的缩略图网格本来就该在宽屏多列；Jira 的 issue 列表套用 3.1 同一套内容列 + 网格。插件样式表由插件自己拥有（见 CLAUDE.md），不把它们的规则搬进内核样式表。
 
 ## 四、测试
 
@@ -108,7 +108,6 @@ CLAUDE.md 立的规矩是"会渲染的浏览器模块必须有渲染它的测试
 
 1. 断点唯一性：所有样式表里的 `min-width` / `max-width` 取值只能是 900px（见 §2）
 2. 指针查询的写法必须带 `pointer: fine`（见 §2）
-断点的允许集合就写在这个测试文件里，不新建模块：CSS 读不到 TypeScript 常量，多一个模块也换不来单一事实来源，只是多一个要同步的地方。
 
 **回归**：`src/themes.test.ts`（颜色字面量）和 `src/public-parses.test.ts`（`Bun.build` 能过）必须继续通过。样式表不经过 `Bun.build`，所以后者不会覆盖到这次改动，这是已知的空隙，不在本次填补。
 
