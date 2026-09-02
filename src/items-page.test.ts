@@ -998,3 +998,18 @@ test("会话现挂在哪张单下，优先用单号说", async () => {
   expect(notes[0]).toContain("EXAMPLE-45943");
   expect(notes[1]).toContain("本地随手记");
 });
+
+test("单卡片的动作按钮都带图标", async () => {
+  const root = await mount(payload({ items: [item()] }));
+  const acts = [...root.querySelectorAll(".item-actions button, .item-actions a")];
+  expect(acts.length).toBeGreaterThan(0);
+  expect(acts.every((a) => a.querySelector("svg"))).toBe(true);
+  // 文字必须还在——图标是给扫视用的，不是替代标签。
+  expect(acts.every((a) => (a.textContent ?? "").trim().length > 0)).toBe(true);
+});
+
+test("工具条的新建和同步都带图标", async () => {
+  const root = await mount(payload({ items: [item()] }));
+  expect(root.querySelector("#new-item svg")).not.toBeNull();
+  expect(root.querySelector("#sync-items svg")).not.toBeNull();
+});

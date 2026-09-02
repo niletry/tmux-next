@@ -1,5 +1,6 @@
 import { filterEntries, splitPath } from "./dir-filter.js";
 import { initLang, tr } from "./i18n-apply.js";
+import { icon } from "./icons.js";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -284,7 +285,9 @@ export function renderNewSession(root) {
       const typed = offerableName(filter.value);
       if (typed) {
         const make = el("button", "dir-make");
-        make.append(el("span", "dir-make-plus", "＋"), el("span", null, tr("new.makeHere", { name: typed })));
+        const plusMark = el("span", "dir-make-plus");
+        plusMark.innerHTML = icon("plus", 14);
+        make.append(plusMark, el("span", null, tr("new.makeHere", { name: typed })));
         make.addEventListener("click", () => createDir(typed));
         list.replaceChildren(make);
         return;

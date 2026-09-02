@@ -14,39 +14,9 @@
 import { tr } from "./i18n-apply.js";
 import { PLUGINS } from "../plugins/registry.js";
 import { url } from "./root.js";
+import { icon, svgShell, ICON_PATHS } from "./icons.js";
 
 /** @typedef {string} Page "items"、"sessions"，或某个插件 id（见 plugins/registry.js）。 */
-
-const ICONS = {
-  bell:
-    '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>' +
-    '<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
-  gear:
-    '<circle cx="12" cy="12" r="3.2"/>' +
-    '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 ' +
-    '1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 ' +
-    '0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 ' +
-    '0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 ' +
-    '0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 ' +
-    '2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
-  sessions:
-    '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>' +
-    '<line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.2"/>' +
-    '<circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/>',
-  // A box with a checkmark — deliberately distinct from the sessions icon's
-  // three lines, so the two leading tabs don't read as the same shape at a
-  // glance.
-  items:
-    '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/>' +
-    '<path d="M8 12.5l2.5 2.5 5.5-5.5"/>',
-};
-
-function svg(/** @type {string} */ paths) {
-  return (
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-    `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`
-  );
-}
 
 /**
  * 启用的插件 id。服务端才读得到 TMUX_NEXT_DISABLE_PLUGINS，所以问它一次。
@@ -91,12 +61,14 @@ async function enabledIds() {
 export async function renderNav(header, current) {
   const on = new Set(await enabledIds());
   const tabs = [
-    { page: "items", href: url("./"), key: "items.title", icon: ICONS.items },
-    { page: "sessions", href: url("sessions.html"), key: "list.title", icon: ICONS.sessions },
+    { page: "items", href: url("./"), key: "items.title", icon: ICON_PATHS.items },
+    { page: "sessions", href: url("sessions.html"), key: "list.title", icon: ICON_PATHS.sessions },
     ...PLUGINS.filter((p) => on.has(p.id)).map((p) => ({
       page: p.id,
       href: url(`p/${p.id}/`),
       key: p.titleKey,
+      // 插件在清单里给的是路径，不是名字——它的图标不在内核的 icons.js 里，也
+      // 不该在：内核不认识任何一个插件。所以这里直接套外壳。
       icon: p.icon,
     })),
   ];
@@ -116,7 +88,7 @@ export async function renderNav(header, current) {
       /** @type {HTMLAnchorElement} */ (node).href = tab.href;
     }
 
-    node.innerHTML = svg(tab.icon);
+    node.innerHTML = svgShell(tab.icon);
     // Icons only, so the accessible name is the only thing naming this tab —
     // it is not decoration here, it is the label.
     node.title = label;
@@ -160,19 +132,19 @@ export async function renderHeader(current) {
   const bell = document.createElement("button");
   bell.className = "hbell";
   bell.id = "notify-toggle";
-  bell.innerHTML = svg(ICONS.bell);
+  bell.innerHTML = icon("bell", 18);
   actions.append(bell);
 
   const gear = document.createElement("button");
   gear.className = "hbell";
-  gear.innerHTML = svg(ICONS.gear);
+  gear.innerHTML = icon("gear", 18);
   gear.title = tr("list.settings");
   gear.setAttribute("aria-label", tr("list.settings"));
   actions.append(gear);
 
   const plus = document.createElement("button");
   plus.className = "new";
-  plus.textContent = "＋";
+  plus.innerHTML = icon("plus", 18);
   plus.title = tr("list.newSession");
   plus.setAttribute("aria-label", tr("list.newSession"));
   actions.append(plus);

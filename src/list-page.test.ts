@@ -648,3 +648,31 @@ test("⋯ 浮层里的置顶仍然打同一个接口", async () => {
   const req = posted.find((p) => p.url.includes("/pin"));
   expect(req?.url).toContain("api/sessions/orbit/pin");
 });
+
+/**
+ * 图标缺 import 是运行时才炸的一类错——页面文件不做类型检查，Bun.build 看到的
+ * 也只是一个合法的全局引用。所以每个画图标的地方都要有一条真的去数 <svg> 的
+ * 断言。（写这批的时候 new.js 就漏了一次 import。）
+ */
+test("分组标题有折叠箭头和文件夹两个图标", async () => {
+  const root = await mount([session()]);
+  expect(root.querySelector(".group-chevron svg")).not.toBeNull();
+  expect(root.querySelector(".group-icon svg")).not.toBeNull();
+});
+
+test("动作行每个按钮都带图标，文字也还在", async () => {
+  const root = await mount([session()]);
+  const acts = [...root.querySelectorAll(".card-actions .card-act")];
+  expect(acts.map((a) => Boolean(a.querySelector("svg")))).toEqual([true, true, true, true]);
+  // 图标不替代文字：只留图标就是让人靠猜，而这一行四个动作里三个会改状态。
+  expect(acts.map((a) => a.textContent?.trim())).toEqual([
+    "Open", "Pin to top", "Link to a work item", "End session",
+  ]);
+});
+
+test("⋯ 是图标而不是字形", async () => {
+  const root = await mount([session()]);
+  const more = root.querySelector(".more");
+  expect(more?.querySelector("svg")).not.toBeNull();
+  expect(more?.textContent?.trim()).toBe("");
+});

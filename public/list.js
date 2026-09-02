@@ -2,6 +2,7 @@ import { initTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
 import { renderHeader } from "./nav.js";
 import { openPicker } from "./pick-sheet.js";
+import { icon } from "./icons.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
@@ -251,22 +252,36 @@ function pickItemFor(session, itemsById) {
 function cardActions(session, itemsById) {
   const bar = el("div", "card-actions");
 
-  const open = el("a", "card-act primary", tr("list.openSession"));
+  /**
+   * 图标在前、文字在后。图标不替代文字——这一行四个动作里三个会改状态，只留
+   * 图标就是让人靠猜；图标的作用是让这行能被"扫"而不是被"读"。
+   * @param {string} cls @param {string} iconName @param {string} text
+   */
+  const act = (cls, iconName, text) => {
+    const b = el("button", cls);
+    b.type = "button";
+    b.innerHTML = icon(iconName);
+    b.append(document.createTextNode(text));
+    return b;
+  };
+
+  const open = el("a", "card-act primary");
   open.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
+  open.innerHTML = icon("terminal");
+  open.append(document.createTextNode(tr("list.openSession")));
   bar.append(open);
 
-  const pin = el("button", "card-act", tr(session.pinned ? "list.unpin" : "list.pin"));
-  pin.type = "button";
+  const pin = act("card-act", "pin", tr(session.pinned ? "list.unpin" : "list.pin"));
   pin.addEventListener("click", () => pinSession(session));
   bar.append(pin);
 
-  const link = el("button", "card-act", tr(session.itemId ? "list.relinkItem" : "list.linkItem"));
-  link.type = "button";
+  const link = act("card-act", "swap", tr(session.itemId ? "list.relinkItem" : "list.linkItem"));
   link.addEventListener("click", () => pickItemFor(session, itemsById));
   bar.append(link);
 
-  const end = el("button", "card-act danger", tr("list.endSession"));
-  end.type = "button";
+  // 电源符号，不是垃圾桶：会话是跑着的东西，关掉它才是这个动作；垃圾桶会让人
+  // 以为有什么被删掉了。
+  const end = act("card-act danger", "power", tr("list.endSession"));
   end.addEventListener("click", () => confirmAndKill(session));
   bar.append(end);
 
@@ -392,7 +407,8 @@ function card(session, itemsById) {
     link.append(pending);
   }
 
-  const more = el("button", "more", "⋯");
+  const more = el("button", "more");
+  more.innerHTML = icon("more", 18);
   more.setAttribute("aria-label", tr("list.actionsFor", { name: session.name }));
   more.addEventListener("click", (e) => {
     // The button sits on top of the card link; do not follow it.
@@ -455,11 +471,16 @@ function groupHeader(label, path, key, count, collapsed) {
   head.setAttribute("tabindex", "0");
   head.setAttribute("aria-expanded", collapsed ? "false" : "true");
 
-  const chevron = el("span", "group-chevron", collapsed ? "▸" : "▾");
-  chevron.setAttribute("aria-hidden", "true");
+  const chevron = el("span", "group-chevron");
+  chevron.innerHTML = icon(collapsed ? "chevronRight" : "chevronDown", 14);
+  // 分组就是目录，所以给它目录的形状。名字被大写、变灰、缩到 0.78rem，在一列
+  // 卡片里很容易被当成某张卡的一部分；图标把"这是分隔线不是内容"说在读到文字
+  // 之前。
+  const folder = el("span", "group-icon");
+  folder.innerHTML = icon("folder", 14);
   const name = el("span", "group-name", label);
   if (path) name.title = path;
-  head.append(chevron, name);
+  head.append(chevron, folder, name);
 
   // The count is what a folded group has left to say about itself.
   if (collapsed) head.append(el("span", "group-count", String(count)));

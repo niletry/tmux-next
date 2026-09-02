@@ -237,3 +237,31 @@ test("没有 item 时不会凭空写一个空的进去", async () => {
   await new Promise((r) => setTimeout(r, 60));
   expect(location.search).not.toContain("item=");
 });
+
+/**
+ * 图标是运行时才炸的那一类改动。
+ *
+ * 页面文件不做类型检查（checkJs: false），而 `icon(...)` 少了 import 之后仍然是
+ * 合法 JavaScript——tsc 看不到它，public-parses.test.ts 的 Bun.build 也看不到：
+ * 缺的不是一个解析不了的模块，是一个不存在的全局。它只在浏览器真的走到那一行时
+ * 才 ReferenceError。写这条测试的时候我已经踩过一次：new.js 的 import 就是漏的。
+ *
+ * CLAUDE.md 里"tr 被调用 25 次却没 import"是同一个坑的上一次发作。
+ */
+test("目录不存在时那行「新建」带图标，而不是运行时炸掉", async () => {
+  const root = await mount();
+  // happy-dom 的 Event 必须来自它自己那个 window：拿全局的那个构造出来的实例，
+  // 它的 instanceof 检查不认。
+  const view = (root as unknown as { ownerDocument: { defaultView: { Event: typeof Event } } })
+    .ownerDocument.defaultView;
+  const filter = root.querySelector(".field") as unknown as
+    { value: string; dispatchEvent(e: Event): boolean };
+  filter.value = "brand-new-dir";
+  filter.dispatchEvent(new view.Event("input"));
+  await new Promise((r) => setTimeout(r, 20));
+
+  const make = root.querySelector(".dir-make");
+  expect(make).not.toBeNull();
+  expect(make!.querySelector("svg")).not.toBeNull();
+  expect(make!.textContent).toContain("brand-new-dir");
+});

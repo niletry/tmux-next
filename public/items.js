@@ -4,6 +4,7 @@ import { renderHeader } from "./nav.js";
 import { url } from "./root.js";
 import { dimensionsOf, valuesOf, groupItems, filterItems, pruneSelection } from "./facet-view.js";
 import { openPicker } from "./pick-sheet.js";
+import { icon } from "./icons.js";
 import { PLUGINS } from "../plugins/registry.js";
 
 // Before anything renders: paints the cached theme synchronously, then
@@ -330,7 +331,8 @@ function itemActions(item, claimed, onChange, link) {
   const linkBtn = document.createElement("button");
   linkBtn.type = "button";
   linkBtn.className = "item-link";
-  linkBtn.textContent = tr("items.linkSession");
+  linkBtn.innerHTML = icon("link");
+  linkBtn.append(document.createTextNode(tr("items.linkSession")));
   linkBtn.addEventListener("click", () => {
     openPicker({
       title: tr("items.linkSession"),
@@ -366,7 +368,8 @@ function itemActions(item, claimed, onChange, link) {
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "item-refresh";
-    refresh.textContent = tr("items.refresh");
+    refresh.innerHTML = icon("refresh");
+    refresh.append(document.createTextNode(tr("items.refresh")));
     refresh.title = tr("items.refresh");
     refresh.addEventListener("click", async () => {
       refresh.disabled = true;
@@ -393,7 +396,8 @@ function itemActions(item, claimed, onChange, link) {
   const archive = document.createElement("button");
   archive.type = "button";
   archive.className = "item-archive";
-  archive.textContent = archived ? tr("items.unarchive") : tr("items.archive");
+  archive.innerHTML = icon("archive");
+  archive.append(document.createTextNode(archived ? tr("items.unarchive") : tr("items.archive")));
   archive.addEventListener("click", async () => {
     archive.disabled = true;
     try {
@@ -455,7 +459,11 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
   // 都收成小按钮靠右。之前它们占了三行——两个半宽按钮加一条整宽的开会话——在
   // 一屏几十张卡片的列表里，光是卡片自己的操作区就吃掉了大半屏。
   const actions = itemActions(item, claimed, onChange, link);
-  const more = el("a", "item-new", sessions.length ? tr("items.newSession") : tr("items.firstSession"));
+  const more = el("a", "item-new");
+  more.innerHTML = icon("plus");
+  more.append(
+    document.createTextNode(sessions.length ? tr("items.newSession") : tr("items.firstSession")),
+  );
   more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
   actions.prepend(more);
   card.append(actions);
@@ -680,7 +688,7 @@ function filterField(dim, facets, selected, onToggleValue, onRemove) {
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "field-remove";
-  remove.textContent = "×";
+  remove.innerHTML = icon("x", 14);
   remove.title = tr("items.removeField");
   remove.setAttribute("aria-label", tr("items.removeField"));
   remove.addEventListener("click", onRemove);
@@ -716,7 +724,8 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   newBtn.type = "button";
   newBtn.id = "new-item";
   newBtn.className = "new-item-btn";
-  newBtn.textContent = tr("items.newItem");
+  newBtn.innerHTML = icon("plus");
+  newBtn.append(document.createTextNode(tr("items.newItem")));
   // 这里不能用 onChange（它只拿已经拉到的数据重画一遍，新建的单不在里面），
   // 要 render() 重新去问一次服务端。
   newBtn.addEventListener("click", () => openNewItemSheet(() => render()));
@@ -726,7 +735,8 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   syncBtn.type = "button";
   syncBtn.id = "sync-items";
   syncBtn.className = "sync-btn";
-  syncBtn.textContent = syncing ? tr("items.syncing") : tr("items.sync");
+  syncBtn.innerHTML = icon("refresh");
+  syncBtn.append(document.createTextNode(syncing ? tr("items.syncing") : tr("items.sync")));
   syncBtn.disabled = syncing;
   syncBtn.addEventListener("click", doSync);
   actions.append(syncBtn);
@@ -775,7 +785,10 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   // filter-row 在样式里是 display:contents——它自己不成盒子，标签落进网格左列、
   // filter-body 落进右列，这样「筛选」跟「分组」两个标签才在同一条竖线上。
   const filters = el("div", "filter-row");
-  filters.append(el("span", "toolbar-label", tr("items.filter")));
+  const filterLabel = el("span", "toolbar-label");
+  filterLabel.innerHTML = icon("filter", 13);
+  filterLabel.append(document.createTextNode(tr("items.filter")));
+  filters.append(filterLabel);
   const body = el("div", "filter-body");
 
   // 存下来的原样 vs 现在画得出来的：一个暂时不在数据里的字段不画，但留在存储里，

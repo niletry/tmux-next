@@ -48,6 +48,35 @@
 
 * { box-sizing: border-box; }
 
+/* ---- 图标 ----------------------------------------------------------------
+
+   全部由 public/icons.js 生成：24×24 画布、只描边、stroke-width 2、圆头圆角、
+   currentColor。颜色跟着所在元素的文字色走，所以主题切换和 :hover 都不用为图标
+   单独写规则——也就不会有颜色字面量从这里溜进来。
+
+   `flex: 0 0 auto` 是必需的：图标几乎总是坐在 flex 行里，跟一段可能很长的文字
+   并排；不锁住的话它会被文字挤扁成一条竖线，而那看起来像渲染坏了，不像图标小。 */
+.icon {
+  flex: 0 0 auto;
+  display: block;
+}
+
+/* 图标 + 文字的按钮。文字节点是图标的兄弟，所以要 inline-flex 才对得齐基线；
+   用 align-items:center 而不是 baseline——SVG 没有基线，baseline 会让它掉下去。 */
+.card-act,
+.item-new,
+.item-link,
+.item-refresh,
+.item-archive,
+.new-item-btn,
+.sync-btn,
+.toolbar-label,
+.dir-make {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 body {
   margin: 0;
   background: var(--surface-1);
@@ -143,11 +172,16 @@ header .count {
   -webkit-user-select: none;
 }
 
-.group-chevron {
+.group-chevron,
+.group-icon {
+  display: flex;
+  align-items: center;
   color: var(--text-2);
-  font-size: 0.7rem;
-  line-height: 1;
 }
+
+/* 文件夹比箭头再淡一档：箭头是能点的（整行都是），文件夹只是在说这行是什么。
+   两个同样重的图标并排，会让人以为文件夹也能点。 */
+.group-icon { opacity: 0.7; }
 
 /* What a folded group has left to say: how much is behind it. */
 .group-count {
@@ -253,10 +287,11 @@ header .count {
   height: 36px;
   border: 0;
   border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   color: var(--text-2);
-  font-size: 18px;
-  line-height: 1;
 }
 
 .more:active { background: var(--surface-4); color: var(--text-1); }
@@ -545,11 +580,11 @@ header .count {
 }
 
 .field-remove {
+  display: inline-flex;
+  align-items: center;
   border: none;
   background: none;
   color: var(--text-2);
-  font-size: 14px;
-  line-height: 1;
   padding: 0 2px;
   cursor: pointer;
 }
