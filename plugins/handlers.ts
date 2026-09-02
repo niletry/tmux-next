@@ -17,7 +17,14 @@ import { handle as jira, enrich as jiraEnrich } from "./jira/server";
  * 而"某个插件在这张表里、不在那张表里"没有任何东西在检查。合成一张之后，插件能做
  * 什么写在一处，registry.test.ts 也能检查注册表与它同步。
  */
-export type PluginServer = { handle?: PluginHandler; enrich?: PluginEnricher };
+export type PluginServer = {
+  handle?: PluginHandler;
+  enrich?: PluginEnricher;
+  /** 把这个插件认领的所有来源同步一遍（新建/更新单）。显式动作，会发网络请求。 */
+  sync?: () => Promise<SyncResult>;
+  /** 只刷新一个单，`ref` 是 `source.ref`（比如 Jira 的 issue key）。 */
+  refreshItem?: (ref: string) => Promise<void>;
+};
 
 export const SERVERS: Record<string, PluginServer> = {
   gallery: { handle: gallery },
@@ -135,4 +142,100 @@ export async function collectFacets(
   }
   for (const id of Object.keys(merged)) merged[id] = merged[id]!.slice(0, MAX_FACETS_PER_ITEM);
   return merged;
+}
+
+/** 一次同步的结果。多个来源的结果相加，truncated 只要有一个为真就是真。 */
+export type SyncResult = { created: number; updated: number; total: number; truncated: boolean };
+
+/**
+ * 来源操作的硬超时。
+ *
+ * 不能沿用 enrich 的 300ms——那条预算是为"每次页面加载都跑"设的。sync 和
+ * refreshItem 是显式动作，会真的发网络请求，30 秒是"慢得可以接受"和"卡住了"之间
+ * 的线。
+ */
+export const SOURCE_TIMEOUT_MS = 30_000;
+
+async function withTimeout<T>(work: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
+  const timeout = new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs));
+  try {
+    return await Promise.race([work, timeout]);
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * 让所有声明了 `sync` 的插件各同步一遍自己的来源，把结果相加。
+ *
+ * servers/plugins 作为参数、真表做默认值——理由跟 collectFacets 一样：注册表是
+ * 编译期常量，没有这个参数就没法塞进"会抛的假插件"和"永远卡住的假插件"，那两条
+ * 测试是这个安全阀真的会兜住的唯一证据。
+ *
+ * timeoutMs 单独开成可注入的尾参数（默认 SOURCE_TIMEOUT_MS）：真实预算是 30 秒，
+ * 但测试"卡住的插件不会吊死调用方"这件事跟等多久无关，注入一个很小的值就能在
+ * 毫秒级证明同一条性质，不用真的等 30 秒。
+ */
+export async function runSync(
+  servers: Record<string, PluginServer> = SERVERS,
+  plugins: Plugin[] = PLUGINS,
+  timeoutMs: number = SOURCE_TIMEOUT_MS,
+): Promise<SyncResult> {
+  const enabled = new Set(enabledPlugins().map((p) => p.id));
+  // 真实插件按启用状态过滤；测试注进来的假插件不在注册表里，一律放行——跟
+  // collectFacets 同一条判断。
+  const ids = plugins
+    .filter((p) => !PLUGINS.some((real) => real.id === p.id) || enabled.has(p.id))
+    .map((p) => p.id)
+    .filter((id) => servers[id]?.sync);
+
+  const results = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        return await withTimeout(servers[id]!.sync!(), null, timeoutMs);
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  const total: SyncResult = { created: 0, updated: 0, total: 0, truncated: false };
+  for (const r of results) {
+    if (!r) continue;
+    total.created += r.created;
+    total.updated += r.updated;
+    total.total += r.total;
+    total.truncated = total.truncated || r.truncated;
+  }
+  return total;
+}
+
+/**
+ * 按 `source.provider` 找到声明了 `provides` 里含它的插件，请它刷新这一个单。
+ *
+ * 内核只知道 provider 字符串，从不知道插件 id——这一步查表用的是插件自己声明的
+ * `provides`，不是内核维护的 provider→插件 名单。没人认领、认领了但没实现
+ * `refreshItem`、调用抛了、或者超时，都算失败，一律返回 false：调用方（首页的
+ * 刷新按钮）不需要区分这几种情况，只需要知道"刷没刷成"。
+ */
+export async function refreshFromSource(
+  provider: string,
+  ref: string,
+  servers: Record<string, PluginServer> = SERVERS,
+  plugins: Plugin[] = PLUGINS,
+  timeoutMs: number = SOURCE_TIMEOUT_MS,
+): Promise<boolean> {
+  const owner = plugins.find((p) => p.provides?.includes(provider));
+  const refreshItem = owner ? servers[owner.id]?.refreshItem : undefined;
+  if (!refreshItem) return false;
+
+  try {
+    return await withTimeout(
+      refreshItem(ref).then(() => true),
+      false,
+      timeoutMs,
+    );
+  } catch {
+    return false;
+  }
 }

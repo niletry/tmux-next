@@ -39,6 +39,15 @@ export type Plugin = {
    * 这个逃生口是为它这种情况留的，不是摆设。
    */
   page?: { mainId: string };
+  /**
+   * 这个插件认领哪些 `WorkItem.source.provider`，例如 `["jira"]`。
+   *
+   * 内核据此知道"谁负责这个来源"，从而能在首页发起「刷新这一个单」而**不点名任何
+   * 插件**——它只做一次查表，而这张表是插件自己声明的数据，不是内核维护的名单。
+   * 跟 titleKey、legacyPaths、facetDims 同一步棋：凡是内核需要知道、又不该写死的
+   * 东西，都由清单声明。
+   */
+  provides?: string[];
 };
 
 /**
