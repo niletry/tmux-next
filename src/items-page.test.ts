@@ -319,12 +319,14 @@ test("卡片画出 facet chips", async () => {
 });
 
 // dim 是 i18n 键：内核里没有"哪个插件有哪些维度"的表，维度名跟着数据来。
+// chip 上现在只画值，维度名进 title——查不到字典时退回 dim 本身这条仍然要成立，
+// 只是要去 title 上看。
 test("维度名走字典，查不到就显示 dim 本身", async () => {
   const root = await mount(payload({
     items: [item()],
     facets: { "it-1": [{ dim: "some.unknown.dim", value: "x" }] },
   }));
-  expect(root.querySelector(".facet")?.textContent).toContain("some.unknown.dim");
+  expect(root.querySelector(".facet")?.getAttribute("title")).toBe("some.unknown.dim: x");
 });
 
 test("agent 维度的取值走字典而不是显示英文", async () => {
@@ -1012,4 +1014,81 @@ test("工具条的新建和同步都带图标", async () => {
   const root = await mount(payload({ items: [item()] }));
   expect(root.querySelector("#new-item svg")).not.toBeNull();
   expect(root.querySelector("#sync-items svg")).not.toBeNull();
+});
+
+/**
+ * chip 上只画值。
+ *
+ * 一行 chip 里「状态 / 史诗 / 负责人」这些词每张卡片都一样，重复七遍换不来任何
+ * 信息，却把真正在变的东西挤到了第三行。
+ */
+
+test("能自己说话的值不带维度名", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "jira.status", value: "In Deployment" }] },
+  }));
+  const chip = root.querySelector(".facet")!;
+  expect(chip.textContent).toBe("In Deployment");
+  expect(chip.querySelector(".f-dim")).toBeNull();
+  // 名字没丢，只是挪进了 title。
+  expect(chip.getAttribute("title")).toBe(`${tr("jira.status")}: In Deployment`);
+});
+
+// "1"、"0/9" 脱离维度名就什么都不是。
+test("光秃秃的数字保留维度名", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [
+      { dim: "jira.prs", value: "1" },
+      { dim: "jira.checks", value: "0/9" },
+    ] },
+  }));
+  const dims = [...root.querySelectorAll(".facet .f-dim")].map((n) => n.textContent);
+  expect(dims).toEqual([tr("jira.prs"), tr("jira.checks")]);
+});
+
+// 除非有图标——图标已经说明了它是什么，字就多余了。
+test("有图标的数字不再重复写维度名", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "jira.prs", value: "1", icon: '<circle cx="6" cy="6" r="2"/>' }] },
+  }));
+  const chip = root.querySelector(".facet")!;
+  expect(chip.querySelector(".f-dim")).toBeNull();
+  expect(chip.querySelector(".f-icon svg")).not.toBeNull();
+  expect(chip.textContent).toBe("1");
+});
+
+// item.agent 那颗已经写着「无会话」，再画一颗「0」是这张卡片上密度最低的一处。
+test("没有会话时不画会话数那颗 chip", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [
+      { dim: "item.agent", value: "none" },
+      { dim: "item.sessions", value: "0" },
+    ] },
+  }));
+  const titles = [...root.querySelectorAll(".facet")].map((c) => c.getAttribute("title"));
+  expect(titles.length).toBe(1);
+  expect(titles[0]).toContain(tr("item.agent"));
+});
+
+test("有会话时照画", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "item.sessions", value: "2" }] },
+  }));
+  expect(root.querySelectorAll(".facet").length).toBe(1);
+});
+
+// 挡的只是显示。维度本身还在数据里，否则「按会话数分组/筛选」会跟着一起没了——
+// 而那正是这些 facet 存在的另一半理由。
+test("被挡下的 chip 仍然出现在分组选项里", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "item.sessions", value: "0" }] },
+  }));
+  const options = [...root.ownerDocument.querySelectorAll("#group-by option")].map((o) => o.textContent);
+  expect(options).toContain(tr("item.sessions"));
 });

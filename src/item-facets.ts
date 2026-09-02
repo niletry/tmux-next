@@ -52,6 +52,10 @@ function agentState(sessions: SessionSummary[]): AgentState {
   return "working";
 }
 
+/** 一个终端窗口：这一格数的是会话。跟顶栏「会话」标签同一族形状。 */
+const SESSION_ICON =
+  '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/>';
+
 export function kernelFacets(
   items: WorkItem[],
   sessions: SessionSummary[],
@@ -75,7 +79,10 @@ export function kernelFacets(
     const state = agentState(mine);
     const facets: Facet[] = [
       { dim: "item.agent", value: state, tone: AGENT_TONE[state] },
-      { dim: "item.sessions", value: String(mine.length) },
+      // 图标而不是"会话"两个字：值是个光秃秃的数字，卡片上只画值时需要有东西
+      // 说明它数的是什么，而图标只占一个字宽。为 0 时这颗 chip 根本不画（见
+      // items.js 的 chipVisible），但维度本身照留——按会话数分组和筛选还得靠它。
+      { dim: "item.sessions", value: String(mine.length), icon: SESSION_ICON },
     ];
     if (item.source) facets.push({ dim: "item.source", value: item.source.provider });
     for (const tag of item.tags) facets.push({ dim: "item.tag", value: tag });

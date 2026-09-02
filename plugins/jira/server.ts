@@ -170,6 +170,14 @@ function checkFacetTone(state: string): "ok" | "warn" | "dim" {
  * 因为内核的外壳是统一的 fill="none"——把填充也做成可配置，等于让每个插件都能改
  * 内核的图标语言，那正是这个外壳存在的理由的反面。
  */
+/** 两条分支加一个合流点：到处都是这个形状，看见就知道是 PR。 */
+const PR_ICON =
+  '<circle cx="6" cy="6" r="2.2"/><circle cx="6" cy="18" r="2.2"/>' +
+  '<circle cx="18" cy="18" r="2.2"/><path d="M6 8.2v7.6"/><path d="M18 15.8V11a3 3 0 0 0-3-3h-4"/>';
+
+/** 对勾：这一格说的是"过了几个"。 */
+const CHECK_ICON = '<path d="m4 12.5 5 5L20 6.5"/>';
+
 const TYPE_ICONS: Record<string, string> = {
   // 闪电，Jira 已经把所有人训练成看到它就想到史诗。
   epic: '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',
@@ -241,6 +249,9 @@ export function facetsFor(
     facets.push({
       dim: "jira.prs",
       value: String(got.prs.length),
+      // 值是个光秃秃的数字，卡片上不带维度名就读不出意思。给个图标比给"PR"两个字
+      // 省地方，也跟这一行别的 chip 一样只占一个字的宽度。
+      icon: PR_ICON,
       // 数字说不出是哪个分支、开着还是并了。明细一行一个 PR：标题、状态、链接。
       // 这里给 url 而 checks 不给，是因为一个 PR 有自己的地址而一次检查在这份数据
       // 里没有——不是两处标准不一样。
@@ -261,6 +272,7 @@ export function facetsFor(
         dim: "jira.checks",
         value: `${failed}/${all.length}`,
         tone: failed ? "warn" : "ok",
+        icon: CHECK_ICON,
         // 汇总数字只说"几个挂了"，说不出**是哪个**挂了——而那才是看到红色之后
         // 唯一想知道的事。明细把每个检查的名字（形如 ci/circleci: test）和状态
         // 带上去，首页因此不必再跳一趟工单页。

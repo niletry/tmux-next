@@ -265,10 +265,30 @@ function facetChip(facet) {
     mark.innerHTML = svgShell(facet.icon, 13);
     chip.append(mark);
   }
-  chip.append(el("span", "f-dim", label));
+  // 默认只画值，维度名进 title。一行 chip 里"Status / Epic / Assignee"这些词每张
+  // 卡片都一样，重复七遍换不来任何信息，却把史诗名和状态挤到了第三行去。
+  //
+  // 唯一留下名字的情况：值自己说不出话。"1"、"0/9" 这种光秃秃的数字脱离维度名就
+  // 什么都不是——除非插件给了图标，那时图标已经说明了它是什么，字就多余了。
+  if (!facet.icon && BARE_NUMBER.test(value)) chip.append(el("span", "f-dim", label));
   chip.append(el("span", "f-value", value));
   chip.title = `${label}: ${value}`;
   return chip;
+}
+
+/** 纯数字或比值：`1`、`0/9`。这种值离了维度名就读不出意思。 */
+const BARE_NUMBER = /^\d+(?:\/\d+)?$/;
+
+/**
+ * 这颗 chip 该不该画出来。**只管显示，不动数据**——被挡下的维度照样参与分组和
+ * 筛选，否则"按会话数筛"这类能力会跟着一起没了。
+ *
+ * 目前只有一条：没有会话时不画 `item.sessions`。`item.agent` 那颗已经写着"无会话"，
+ * 两颗 chip 说同一件事，是这张卡片上密度最低的一处。这是内核对**自己**那几个维度
+ * 的判断（它们是封闭集合），不涉及任何插件维度——插件的 chip 一律照画。
+ */
+function chipVisible(facet) {
+  return !(facet.dim === "item.sessions" && facet.value === "0");
 }
 
 /**
@@ -456,9 +476,10 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
 
   // facets 可能是 undefined（老后端没这个字段）或空数组——两种都不画这行容器，
   // 不抛。
-  if (facets && facets.length) {
+  const shown = (facets ?? []).filter(chipVisible);
+  if (shown.length) {
     const row = el("div", "facets");
-    for (const facet of facets) row.append(facetChip(facet));
+    for (const facet of shown) row.append(facetChip(facet));
     card.append(row);
   }
 
