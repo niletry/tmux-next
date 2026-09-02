@@ -16,7 +16,7 @@
    summary rendered through it came out a truncated grey whisper. A card is what
    this app uses for a thing you act on. */
 .jira-card {
-  background: var(--card);
+  background: var(--surface-3);
   border-radius: 12px;
   margin: 0 12px 12px;
   overflow: hidden;
@@ -35,7 +35,7 @@
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--accent);
+  color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -47,13 +47,13 @@
   flex: 0 0 auto;
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--bg);
-  color: var(--dim);
+  background: var(--surface-1);
+  color: var(--text-2);
   font-size: 12px;
   white-space: nowrap;
 }
-.jira-status.on { color: var(--accent); }
-.jira-status.done { color: var(--idle); }
+.jira-status.on { color: var(--accent-text); }
+.jira-status.done { color: var(--ok); }
 
 /* The part you actually read. Two lines then clip: one truncated line loses the
    half of a Jira title that says what it is about. */
@@ -79,7 +79,7 @@
 
 /* Hairlines are --bg against --card: the same step the card already makes,
    rather than a border colour nobody picked for this theme. */
-.jira-sessions { border-top: 1px solid var(--bg); }
+.jira-sessions { border-top: 1px solid var(--surface-1); }
 
 .jira-session {
   display: flex;
@@ -87,7 +87,7 @@
   gap: 8px;
   padding: 0 6px 0 14px;
 }
-.jira-session + .jira-session { border-top: 1px solid var(--bg); }
+.jira-session + .jira-session { border-top: 1px solid var(--surface-1); }
 
 .jira-session-link {
   flex: 1 1 auto;
@@ -100,11 +100,11 @@
   white-space: nowrap;
 }
 .jira-session-link:active { opacity: 0.6; }
-.jira-session.stopped .jira-session-link { color: var(--dim); }
+.jira-session.stopped .jira-session-link { color: var(--text-2); }
 
 .jira-dead {
   flex: 0 0 auto;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
 }
 
@@ -116,11 +116,11 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 18px;
   line-height: 1;
 }
-.jira-unbind:active { background: var(--bg); color: var(--fg); }
+.jira-unbind:active { background: var(--surface-1); color: var(--text-1); }
 .jira-unbind:disabled { opacity: 0.5; }
 
 /* The card's own action, reading as an affordance rather than a form button. */
@@ -131,14 +131,14 @@
   width: 100%;
   padding: 12px 14px;
   border: 0;
-  border-top: 1px solid var(--bg);
+  border-top: 1px solid var(--surface-1);
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 15px;
   font-weight: 600;
   text-align: left;
 }
-.jira-start:active { background: var(--bg); }
+.jira-start:active { background: var(--surface-1); }
 .jira-plus { font-size: 17px; line-height: 1; }
 
 .jira-toolbar {
@@ -169,22 +169,22 @@
   flex: 0 0 auto;
   padding: 1px 7px;
   border-radius: 5px;
-  background: var(--bg);
-  color: var(--dim);
+  background: var(--surface-1);
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
 }
-.jira-type.epic { color: var(--term-magenta); }
-.jira-type.bug { color: var(--term-red); }
+.jira-type.epic { color: var(--accent-alt-text); }
+.jira-type.bug { color: var(--danger); }
 .jira-type.sub { text-transform: none; letter-spacing: 0; font-weight: 600; }
 
 /* PR rows under an issue. Facts, not a verdict: the counts say what the checks
    returned and the reader decides what that means — a green tick painted over a
    failed check would be this page tidying itself at the cost of being true. */
-.jira-prs { border-top: 1px solid var(--bg); }
+.jira-prs { border-top: 1px solid var(--surface-1); }
 
 /* 整行不再是一个链接：检查汇总是个按钮，按钮嵌在 <a> 里不合法、点击也会打架。
    左半边通往 Bitbucket，右边的检查是另一个目标。 */
@@ -194,7 +194,7 @@
   gap: 8px;
   padding: 0 8px 0 14px;
 }
-.jira-pr + .jira-pr { border-top: 1px solid var(--bg); }
+.jira-pr + .jira-pr { border-top: 1px solid var(--surface-1); }
 
 .jira-pr-main {
   flex: 1 1 auto;
@@ -212,7 +212,7 @@
   flex: 0 0 auto;
   font-size: 13px;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -221,10 +221,10 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--dim);
+  color: var(--text-2);
 }
-.jira-pr-state.on { color: var(--accent); }
-.jira-pr-state.done { color: var(--idle); }
+.jira-pr-state.on { color: var(--accent-text); }
+.jira-pr-state.done { color: var(--ok); }
 
 /* The branch is the least urgent thing on the row, so it is the one that gives
    up its width first. */
@@ -232,7 +232,7 @@
   flex: 1 1 auto;
   min-width: 0;
   font-size: 12px;
-  color: var(--dim);
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -251,11 +251,11 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-button.jira-ci:active { background: var(--bg); }
-.jira-ci.unknown, .jira-ci.none { color: var(--dim); }
-.jira-ci-ok { color: var(--idle); }
-.jira-ci-run { color: var(--accent); }
-.jira-ci-bad { color: var(--term-red); }
+button.jira-ci:active { background: var(--surface-1); }
+.jira-ci.unknown, .jira-ci.none { color: var(--text-2); }
+.jira-ci-ok { color: var(--ok); }
+.jira-ci-run { color: var(--accent-text); }
+.jira-ci-bad { color: var(--danger); }
 
 /* Refreshing one issue rather than the whole board. Sits with the status so the
    thing it refreshes is the thing it is next to. */
@@ -267,11 +267,11 @@ button.jira-ci:active { background: var(--bg); }
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 15px;
   line-height: 1;
 }
-.jira-again:active { background: var(--bg); color: var(--fg); }
+.jira-again:active { background: var(--surface-1); color: var(--text-1); }
 .jira-again:disabled { opacity: 0.4; }
 
 /* Type as a glyph. A column of words in the same small caps has to be read; a
@@ -283,13 +283,13 @@ button.jira-ci:active { background: var(--bg); }
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  color: var(--dim);
+  color: var(--text-2);
 }
-.jira-typeicon.epic { color: var(--term-magenta); }
-.jira-typeicon.bug { color: var(--term-red); }
-.jira-typeicon.story { color: var(--idle); }
-.jira-typeicon.task { color: var(--accent); }
-.jira-typeicon.sub { color: var(--dim); }
+.jira-typeicon.epic { color: var(--accent-alt-text); }
+.jira-typeicon.bug { color: var(--danger); }
+.jira-typeicon.story { color: var(--ok); }
+.jira-typeicon.task { color: var(--accent-text); }
+.jira-typeicon.sub { color: var(--text-2); }
 
 /* What the key filter took out. Quiet, but present: the filter exists because
    dev-status attaches other issues' PRs, and a filter that hides silently has
@@ -297,7 +297,7 @@ button.jira-ci:active { background: var(--bg); }
 .jira-hidden {
   margin: 0;
   padding: 8px 14px;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
 }
 
@@ -311,8 +311,8 @@ button.jira-ci:active { background: var(--bg); }
   max-width: 40%;
   padding: 1px 6px;
   border-radius: 5px;
-  background: var(--bg);
-  color: var(--dim);
+  background: var(--surface-1);
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -320,7 +320,7 @@ button.jira-ci:active { background: var(--bg); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.jira-parent.epic { color: var(--term-magenta); }
+.jira-parent.epic { color: var(--accent-alt-text); }
 
 /* The key and the parent chip are links into Jira now. They keep the colour and
    weight they had as text — the affordance is the tap target, not a blue
@@ -332,8 +332,8 @@ a.jira-key:active, a.jira-parent:active { opacity: 0.6; }
 /* Refresh feedback. Without it the only sign anything happened was the button
    dimming, which reads the same as a dead button — and a failure looked exactly
    like a success that changed nothing. */
-.jira-again.spin { animation: jira-spin 0.9s linear infinite; color: var(--accent); }
-.jira-again.err { color: var(--term-red); }
+.jira-again.spin { animation: jira-spin 0.9s linear infinite; color: var(--accent-text); }
+.jira-again.err { color: var(--danger); }
 
 @keyframes jira-spin { to { transform: rotate(360deg); } }
 
@@ -350,9 +350,9 @@ a.jira-key:active, a.jira-parent:active { opacity: 0.6; }
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  color: var(--accent);
+  color: var(--accent-text);
 }
-.jira-session.stopped .jira-session-icon { color: var(--dim); }
+.jira-session.stopped .jira-session-icon { color: var(--text-2); }
 
 /* Filter rows. The chips are the app's existing selectable-chip vocabulary (the
    agent picker uses the same), so a tapped one looks tapped without inventing a
@@ -371,7 +371,7 @@ a.jira-key:active, a.jira-parent:active { opacity: 0.6; }
 
 .jira-filter-label {
   flex: 0 0 auto;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -416,7 +416,7 @@ a.jira-key:active, a.jira-parent:active { opacity: 0.6; }
   color: inherit;
   text-decoration: none;
 }
-.jira-check + .jira-check { border-top: 1px solid var(--bg); }
+.jira-check + .jira-check { border-top: 1px solid var(--surface-1); }
 a.jira-check:active { opacity: 0.6; }
 
 .jira-check-name {
@@ -434,9 +434,9 @@ a.jira-check:active { opacity: 0.6; }
   font-weight: 700;
   letter-spacing: 0.03em;
 }
-.jira-check-state.ok { color: var(--idle); }
-.jira-check-state.run { color: var(--accent); }
-.jira-check-state.bad { color: var(--term-red); }
+.jira-check-state.ok { color: var(--ok); }
+.jira-check-state.run { color: var(--accent-text); }
+.jira-check-state.bad { color: var(--danger); }
 
 /* 会话此刻在做什么。绿点与措辞都跟会话列表页一致——同一个状态在两个页面上长得
    不一样，是最没必要的困惑。 */
@@ -445,12 +445,12 @@ a.jira-check:active { opacity: 0.6; }
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--idle);
+  background: var(--ok);
 }
 
 .jira-session-status {
   flex: 0 0 auto;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -460,7 +460,7 @@ button.jira-session-status.ask {
   border: 0;
   background: transparent;
   padding: 6px 4px;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 12px;
   text-decoration: underline dotted;
   text-underline-offset: 3px;
@@ -493,7 +493,7 @@ button.jira-session-status.ask:active { opacity: 0.6; }
 .jira-question .md-code {
   padding: 1px 5px;
   border-radius: 4px;
-  background: var(--bg);
+  background: var(--surface-1);
   font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -502,7 +502,7 @@ button.jira-session-status.ask:active { opacity: 0.6; }
   margin: 0 0 10px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: var(--bg);
+  background: var(--surface-1);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   /* 滚到尽头就停在这里，不把剩下的滚动交给浮层和页面。 */
@@ -516,12 +516,12 @@ button.jira-session-status.ask:active { opacity: 0.6; }
 .jira-question .md-quote {
   margin: 0 0 10px;
   padding-left: 10px;
-  border-left: 2px solid var(--dim);
-  color: var(--dim);
+  border-left: 2px solid var(--text-2);
+  color: var(--text-2);
 }
 
-.jira-question .md-hr { margin: 12px 0; border: 0; border-top: 1px solid var(--bg); }
-.jira-question .md-link { color: var(--accent); }
+.jira-question .md-hr { margin: 12px 0; border: 0; border-top: 1px solid var(--surface-1); }
+.jira-question .md-link { color: var(--accent-text); }
 
 /* 状态还没拉到时占住那个位置。
    一条呼吸的灰条，而不是转圈：它替代的是一行文字，形状该像文字。 */
@@ -530,7 +530,7 @@ button.jira-session-status.ask:active { opacity: 0.6; }
   width: 52px;
   height: 9px;
   border-radius: 5px;
-  background: var(--bg);
+  background: var(--surface-1);
   animation: jira-breathe 1.2s ease-in-out infinite;
 }
 
@@ -559,13 +559,13 @@ button.jira-session-status.ask:active { opacity: 0.6; }
 .jira-question .md-table th,
 .jira-question .md-table td {
   padding: 6px 10px;
-  border-bottom: 1px solid var(--bg);
+  border-bottom: 1px solid var(--surface-1);
   white-space: nowrap;
   vertical-align: top;
 }
 
 .jira-question .md-table th {
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -597,7 +597,7 @@ button.jira-session-status.ask:active { opacity: 0.6; }
 .jira-reply-note {
   margin: 6px 0 0;
   min-height: 16px;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
 }
 
@@ -650,8 +650,8 @@ button.jira-session-status.ask:active { opacity: 0.6; }
   .jira-start:hover,
   .jira-again:hover,
   button.jira-ci:hover {
-    background: var(--bg);
-    color: var(--fg);
+    background: var(--surface-1);
+    color: var(--text-1);
   }
 
   .jira-session-link:hover,

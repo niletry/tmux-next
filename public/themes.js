@@ -163,6 +163,185 @@ export function themeVars(name) {
   return vars;
 }
 
+// --- 页面 chrome 的角色色 ---------------------------------------------------
+
+/**
+ * 十六进制通道读写。这个模块里所有颜色都是 `#rrggbb`，别的形式在 themes.test.ts
+ * 里就被拒了，所以这里不做容错。
+ * @param {string} hex
+ * @param {number} i
+ * @returns {number}
+ */
+const chan = (hex, i) => parseInt(hex.slice(i, i + 2), 16);
+
+/**
+ * @param {number} n
+ * @returns {string}
+ */
+const byte = (n) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
+
+/**
+ * 线性插值两个颜色，`p` 是 `a` 的占比。
+ * @param {string} a
+ * @param {string} b
+ * @param {number} p
+ * @returns {string}
+ */
+function mix(a, b, p) {
+  return "#" + [1, 3, 5].map((i) => byte(chan(a, i) * p + chan(b, i) * (1 - p))).join("");
+}
+
+/**
+ * WCAG 相对亮度。
+ * @param {string} hex
+ * @returns {number}
+ */
+function luminance(hex) {
+  /** @param {number} i */
+  const ch = (i) => {
+    const c = chan(hex, i) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * ch(1) + 0.7152 * ch(3) + 0.0722 * ch(5);
+}
+
+/**
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+function contrast(a, b) {
+  const x = luminance(a);
+  const y = luminance(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+/**
+ * 从 `from` 朝 `to` 走，取仍然满足对比度下限的那一步。
+ *
+ * 这个函数是整套角色色的关键。次要文字色以前取的是 ANSI 的 bright black——一个
+ * 为终端挑的槽位，没有任何东西保证它在**卡片**上读得清，实测四套主题在 chip 上
+ * 是 1.89–2.35:1。这里改成算：从前景色开始往背景色压暗，压到再压一步就掉到线
+ * 以下为止。于是"够不够读得清"不再是碰巧，而是构造出来的。
+ *
+ * 一步都走不动（连 `from` 自己都不达标）时返回 `from`：那说明这套主题的这个颜色
+ * 本身就不合格，应该由测试报出来，而不是在这里悄悄换成一个不属于该主题的颜色。
+ *
+ * @param {string} from  起点，通常是最高对比度的那一端
+ * @param {string} to    终点，通常是它所在的表面
+ * @param {string} on    实际用来量对比度的背景
+ * @param {number} floor 对比度下限
+ * @returns {string}
+ */
+function dimTo(from, to, on, floor) {
+  let best = from;
+  for (let step = 100; step >= 0; step -= 2) {
+    const c = mix(from, to, step / 100);
+    if (contrast(c, on) < floor) break;
+    best = c;
+  }
+  return best;
+}
+
+/**
+ * 从 `from` 提亮到达标为止，用来救那些太暗的语义色。
+ * @param {string} from
+ * @param {string} toward
+ * @param {string} on
+ * @param {number} floor
+ * @returns {string}
+ */
+function liftTo(from, toward, on, floor) {
+  for (let step = 100; step >= 0; step -= 2) {
+    const c = mix(from, toward, step / 100);
+    if (contrast(c, on) >= floor) return c;
+  }
+  return toward;
+}
+
+/** 正文级：WCAG AA。 */
+const TEXT_FLOOR = 4.5;
+/** 非正文的着色标记（状态点、单个字形、边框）：WCAG AA 的非文本档。 */
+const MARK_FLOOR = 3.0;
+
+/**
+ * 页面 chrome 的角色色，按 Radix 12 级色阶的语义分层生成。
+ *
+ * 为什么是"生成"而不是"写死"：这四套主题各有身份，手写四套 chrome 配色就是四份
+ * 会各自漂移的数据；而以前那种在 style.css 里 `color-mix()` 的做法，值要到浏览器
+ * 里才算得出来，对比度测试根本够不着——CLAUDE.md 早就写着"颜色字面量会从对比度
+ * 测试里隐身"，一个算出来的颜色同样会隐身，只是换了个形式。放在这里出真实
+ * hex，测试才第一次能量到页面自己的表面。
+ *
+ * 分层对应 Radix：1-2 底色，3-5 组件表面（常态/悬停/按下），6-8 边框，
+ * 9-10 实心填充及其悬停，11-12 文字。终端那 23 个字段一个不动——`themeVars` 和
+ * `xtermTheme` 都不经过这里。
+ *
+ * 文字和语义色以 surface-4 为准绳：chip、卡片里的按钮、悬停态都坐在它上面，而它
+ * 是常用表面里最亮的一层，也就是对浅色文字最不利的那一层。在它上面过线，在更暗
+ * 的表面上只会更好。
+ *
+ * @param {string | null | undefined} name
+ * @returns {Record<string, string>}
+ */
+export function uiVars(name) {
+  const t = themeOf(name);
+  const bg = t.background;
+  const fg = t.foreground;
+
+  const s1 = bg;
+  const s2 = mix(bg, fg, 0.96);
+  const s3 = mix(bg, fg, 0.91);
+  const s4 = mix(bg, fg, 0.86);
+  const s5 = mix(bg, fg, 0.81);
+
+  // 强调色当文字用：先试主蓝，再试亮蓝，都不够就从亮蓝朝前景色提。三级而不是
+  // 一步到位，是为了尽量停在调色板自己的颜色上——朝前景色提会把蓝拉灰，那是
+  // 最后手段。
+  const accentText =
+    contrast(t.ansi[4], s4) >= TEXT_FLOOR
+      ? t.ansi[4]
+      : contrast(t.ansi[12], s4) >= TEXT_FLOOR
+        ? t.ansi[12]
+        : liftTo(t.ansi[12], fg, s4, TEXT_FLOOR);
+
+  return {
+    "--surface-1": s1,
+    "--surface-2": s2,
+    "--surface-3": s3,
+    "--surface-4": s4,
+    "--surface-5": s5,
+
+    // 6-7：分隔线和可交互边框。不用半透明——半透明的实际颜色取决于它压在什么
+    // 上面，于是同一条边在卡片上和在浮层上是两个颜色，谁也量不了。
+    "--border-1": mix(fg, bg, 0.16),
+    "--border-2": mix(fg, bg, 0.32),
+
+    // 9-10：实心填充及其悬停。悬停用同主题的亮蓝，而不是随手调亮——留在调色板里。
+    "--accent": t.ansi[4],
+    "--accent-hover": t.ansi[12],
+    // 强调色当**文字**用（链接、"进入"、主动作的字），这是正文级的要求，跟当填充
+    // 是两回事。太暗就朝亮蓝提，提不动再朝前景色提。
+    "--accent-text": accentText,
+    // 第二个分类色。不是"某个插件要用紫色"——是"当一个界面需要第二种可区分的
+    // 着色时用哪个"，跟 --accent-text 一样是正文级的要求。工单页拿它标史诗。
+    "--accent-alt-text": liftTo(t.ansi[13], fg, s4, TEXT_FLOOR),
+    "--on-accent": t.onAccent,
+
+    // 11-12：文字。text-2 是次要文字（状态、时间、字段名），text-3 是更弱的那一档
+    // （占位、禁用）。两者都算到刚好过线为止，见 dimTo。
+    "--text-1": fg,
+    "--text-2": dimTo(fg, s4, s4, TEXT_FLOOR),
+    "--text-3": dimTo(fg, s4, s4, MARK_FLOOR),
+
+    // 语义色。先取该主题自己的亮色槽（它已经被现有测试保过在背景上达标），在
+    // surface-4 上不够就朝亮白提——只动亮度，不动色相。
+    "--ok": liftTo(t.ansi[10], t.ansi[15], s4, MARK_FLOOR),
+    "--warn": liftTo(t.ansi[11], t.ansi[15], s4, MARK_FLOOR),
+    "--danger": liftTo(t.ansi[9], t.ansi[15], s4, MARK_FLOOR),
+  };
+}
+
 /**
  * The xterm.js ITheme for a theme.
  *

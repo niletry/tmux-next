@@ -8,6 +8,7 @@ import {
   ANSI_NAMES,
   themeOf,
   themeVars,
+  uiVars,
   xtermTheme,
 } from "../public/themes.js";
 
@@ -166,6 +167,103 @@ test.each(names)("%s: xtermTheme covers every field we intend to set", (name) =>
   for (const v of Object.values(theme)) expect(v).toMatch(HEX);
 });
 
+// --- 页面 chrome 的角色色 ---------------------------------------------------
+
+/**
+ * 这一节是这套角色色存在的理由。
+ *
+ * 在它之前，本文件每一条对比度断言的基准都是**终端背景**，而页面自己的表面
+ * （卡片、chip、卡片里的按钮）是 style.css 里的 `color-mix()`，值要到浏览器里
+ * 才算得出来——测试够不着。实测的后果：次要文字坐在 chip 上时四套主题分别是
+ * 2.77 / 3.30 / 3.05 / 2.63 在卡片上，1.98 / 2.32 / 2.35 / 1.89 在 chip 上。
+ * 而那个颜色是状态、时间、字段名、以及卡片底部整排按钮的文字色。
+ *
+ * 现在这些值由 uiVars 从每套主题自己的颜色算出来、出真实 hex，下面逐个量。
+ *
+ * 基准取 --surface-4：chip、卡片里的按钮、悬停态都坐在它上面，而它是常用表面里
+ * 最亮的一层，也就是对浅色文字最不利的那一层。在它上面过线，在更暗的表面上只会
+ * 更好——「表面越高文字越难读」那条也在下面断言了，免得哪天层级被排反。
+ */
+const ui = (name: string) => uiVars(name) as Record<string, string>;
+
+test.each(THEME_ORDER)("%s: 表面层级单调递增", (name) => {
+  const v = ui(name);
+  const steps = [1, 2, 3, 4, 5].map((i) => luminance(v[`--surface-${i}`]!));
+  // 暗色主题里"抬高"就是变亮。反过来的话，所有以 surface-4 为基准算出来的文字色
+  // 都会在别的表面上不达标，而每一条断言仍然是绿的——基准本身选错了。
+  // 一次报全部而不是停在第一处：层级排错时想看的是整条阶梯长什么样。
+  const wrong = steps
+    .map((lum, i) => ({ step: i + 1, lum }))
+    .filter((s, i) => i > 0 && s.lum <= steps[i - 1]!)
+    .map((s) => `surface-${s.step}`);
+  expect(wrong).toEqual([]);
+});
+
+test.each(THEME_ORDER)("%s: 次要文字在最亮的常用表面上仍是正文级", (name) => {
+  const v = ui(name);
+  expect(contrast(v["--text-2"]!, v["--surface-4"]!)).toBeGreaterThanOrEqual(FG_MIN);
+});
+
+test.each(THEME_ORDER)("%s: 三级文字至少够得上非文本标记", (name) => {
+  const v = ui(name);
+  expect(contrast(v["--text-3"]!, v["--surface-4"]!)).toBeGreaterThanOrEqual(COLOUR_MIN);
+});
+
+test.each(THEME_ORDER)("%s: 主要文字在每一层表面上都是正文级", (name) => {
+  const v = ui(name);
+  const short = [1, 2, 3, 4, 5]
+    .map((i) => ({ surface: i, ratio: contrast(v["--text-1"]!, v[`--surface-${i}`]!) }))
+    .filter((r) => r.ratio < FG_MIN)
+    .map((r) => `surface-${r.surface} ${r.ratio.toFixed(2)}:1`);
+  expect(short).toEqual([]);
+});
+
+// 强调色有两个身份，要求不一样：当填充时人看的是压在上面的字，当文字时人看的是
+// 它自己。以前只有一个 --accent 同时干这两件事，于是「文字够不够读得清」从来没
+// 被问过——链接、"进入"、主动作的字用的都是它。
+test.each(THEME_ORDER)("%s: 强调色当文字用时是正文级", (name) => {
+  const v = ui(name);
+  expect(contrast(v["--accent-text"]!, v["--surface-4"]!)).toBeGreaterThanOrEqual(FG_MIN);
+  expect(contrast(v["--accent-alt-text"]!, v["--surface-4"]!)).toBeGreaterThanOrEqual(FG_MIN);
+});
+
+test.each(THEME_ORDER)("%s: 强调色当填充时压在上面的字读得清", (name) => {
+  const v = ui(name);
+  expect(contrast(v["--on-accent"]!, v["--accent"]!)).toBeGreaterThanOrEqual(FG_MIN);
+});
+
+// 语义色是短标记（状态点、✓ ✗、一个词的状态），所以是 3:1 那一档而不是 4.5。
+// Nord 的红在这套推算之前是 2.24:1 —— 而那是"结束会话"用的颜色。
+test.each(THEME_ORDER)("%s: 语义色在表面上分得出来", (name) => {
+  const v = ui(name);
+  const short = ["--ok", "--warn", "--danger"]
+    .map((k) => ({ token: k, ratio: contrast(v[k]!, v["--surface-4"]!) }))
+    .filter((r) => r.ratio < COLOUR_MIN)
+    .map((r) => `${r.token} ${r.ratio.toFixed(2)}:1`);
+  expect(short).toEqual([]);
+});
+
+// 边框不承担阅读，但必须看得见——一条跟自己所在表面同色的边不是"淡"，是"没有"。
+// 这跟本文件上面那条「黑色不能等于背景」是同一类断言。
+test.each(THEME_ORDER)("%s: 边框在它所在的表面上不是隐形的", (name) => {
+  const v = ui(name);
+  expect(contrast(v["--border-1"]!, v["--surface-3"]!)).toBeGreaterThan(1.1);
+  expect(contrast(v["--border-2"]!, v["--surface-4"]!)).toBeGreaterThan(1.4);
+});
+
+test.each(THEME_ORDER)("%s: uiVars 的每个值都是 #rrggbb", (name) => {
+  for (const [key, value] of Object.entries(ui(name))) {
+    expect({ key, value }).toEqual({ key, value: expect.stringMatching(HEX) as unknown as string });
+  }
+});
+
+// 终端那一组不该被这次改动碰到：uiVars 和 themeVars 是两份互不重叠的输出，
+// 混进去的话，改一个页面颜色就会顺手改掉 xterm 的调色板。
+test.each(THEME_ORDER)("%s: 角色色和终端调色板互不重叠", (name) => {
+  const shared = Object.keys(ui(name)).filter((k) => k in themeVars(name));
+  expect(shared).toEqual(["--on-accent"]);
+});
+
 // --- 颜色字面量 -------------------------------------------------------------
 
 /**
@@ -189,38 +287,24 @@ const styleSheets = (() => {
 })();
 
 /**
- * 已经欠下的债，按今天的实际内容生成的一张单子。
+ * 还没能主题化的那几个值。
  *
- * 不是把规则放宽，是把违规变成**有限且可见**的：新写的样式一律拦住，这 22 种什么
- * 时候还清、什么时候从这里删。之所以不在这次顺手改掉，是它们跟这次重构无关——混
- * 进来会让"这次到底改了什么"说不清，而这批字面量里有几个（半透明遮罩、iframe 的
- * 白底）未必真该主题化。
+ * 这张单子从 22 条缩到 4 条：其余的在角色色（--surface-* / --text-* / --border-* /
+ * 语义色）落地时全部换掉了，因为它们本来就是在手搓表面层级和状态色——只是搓的
+ * 结果没人量得到。剩下的这几条是真的不该主题化：
  *
- * 单子只会变短，不该变长：加一行到这里之前，先想清楚为什么那个值不能来自主题。
+ * - #fff 是画廊全屏查看器里 iframe 的底色。里面渲染的是用户自己的 HTML 制品，
+ *   那份文档假定自己躺在白纸上，跟本站的主题无关。
+ * - 三个纯黑半透明是遮罩和投影。遮罩按定义就是黑的——它的作用是把身后的东西压
+ *   暗，换成主题色只会让它在浅色主题下压不住。
+ *
+ * 单子只会变短，不该变长：往这里加一行之前，先想清楚为什么那个值不能来自主题。
  */
 const GRANDFATHERED = new Set([
-  "#0c0d10",
-  "#0f1115",
-  "#1b1e25",
-  "#1c2836",
-  "#22262f",
-  "#252932",
-  "#2a2f3a",
-  "#2a3a52",
-  "#39404e",
-  "#3a4050",
-  "#565f70",
-  "#8b919c",
-  "#b3413c",
-  "#e2706b",
-  "#e6e8ec",
   "#fff",
   "rgba(0, 0, 0, .45)",
   "rgba(0, 0, 0, 0.55)",
   "rgba(0, 0, 0, 0.6)",
-  "rgba(122, 162, 247, 0.16)",
-  "rgba(20, 22, 26, 0.5)",
-  "rgba(20, 22, 26, 0.85)",
 ]);
 
 test.each(styleSheets)("%s 里没有新的颜色字面量", (sheet) => {

@@ -1,37 +1,48 @@
 /*
- * The palette below is the fallback only — themes.js writes the real --term-*
- * values onto :root before first paint, and everything here derives from those.
- * The literals are Tokyo Night, the default theme, so a page that somehow runs
- * without the script still renders in the right colours rather than unstyled.
+ * 兜底调色板，只在脚本没跑起来的时候用得上——theme-apply.js 会在首屏之前把真正
+ * 的值写到 :root 上。这里的字面量是 Tokyo Night（默认主题）算出来的结果，所以
+ * 一个没能加载脚本的页面渲染出来的是正确的颜色，而不是没样式的一片白。
  *
- * Do not add a colour literal outside this block. Every value belongs in
- * themes.js, where the contrast tests can reach it.
+ * 这个块之外不许出现颜色字面量。每个值都属于 themes.js——对比度测试只够得到
+ * 那里。
+ *
+ * 角色分层照 Radix 的 12 级色阶：1-2 底色，3-5 组件表面（常态/悬停/按下），
+ * 6-8 边框，9-10 实心填充及其悬停，11-12 文字。以前这里只有"卡片"和"再抬一层"
+ * 两级，且是用 color-mix 在浏览器里算的——算出来的颜色跟写死的颜色一样，对比度
+ * 测试都看不见，而实测次要文字在 chip 上只有 1.89–2.35:1。现在整套在 themes.js
+ * 里出真实 hex，并且是算到刚好过线为止的，src/themes.test.ts 逐个量。
  */
 :root {
-  --term-bg: #1a1b26;
-  --term-fg: #c0caf5;
-  --term-blue: #7aa2f7;
-  --term-green: #9ece6a;
-  --term-bright-black: #6272a4;
+  /* 1-5：表面。数字越大离前景色越近，也就是"抬得越高"。 */
+  --surface-1: #1a1b26;
+  --surface-2: #21222e;
+  --surface-3: #292b39;
+  --surface-4: #313443;
+  --surface-5: #3a3c4d;
+
+  /* 6-7：边框。不透明，不是半透明——半透明的实际颜色取决于压在什么上面，
+     于是同一条边在卡片上和浮层上是两个颜色，谁也量不了。 */
+  --border-1: #353747;
+  --border-2: #4f5368;
+
+  /* 9-10：实心填充及其悬停；--accent-text 是同一个强调色当文字用的那一档，
+     要求是正文级的 4.5:1，跟当填充不是一回事。 */
+  --accent: #7aa2f7;
+  --accent-hover: #7aa2f7;
+  --accent-text: #7aa2f7;
+  --accent-alt-text: #bb9af7;
   --on-accent: #1a1b26;
 
-  --bg: var(--term-bg);
-  --fg: var(--term-fg);
-  --accent: var(--term-blue);
-  --idle: var(--term-green);
-  --dim: var(--term-bright-black);
-  /* Cards sit just above the background; mixed from it so every theme gets a
-     lift of the same weight instead of one hand-picked grey that only suits
-     the default. */
-  --card: color-mix(in srgb, var(--term-bg) 88%, var(--term-fg));
-  /* 卡片之上再抬一层，给坐在卡片里的 chip 和按钮用。
-     跟 --card 同一个派生路子：从它自己再往前景色混一点，所以每个主题得到的
-     "抬升"权重一致，不是挑一个只配默认主题的灰。
-     没有它的时候，卡片里的 chip 和按钮都用 --card——跟卡片同色，于是最该被点
-     的两个控件成了整张卡上最看不见的东西。 */
-  --raised: color-mix(in srgb, var(--card) 86%, var(--term-fg));
-  /* 一道几乎看不见的边，用来说明"这个东西可以点"，而不用再加一层背景色。 */
-  --edge: color-mix(in srgb, var(--term-fg) 16%, transparent);
+  /* 11-12：文字。 */
+  --text-1: #c0caf5;
+  --text-2: #959dc0;
+  --text-3: #797f9c;
+
+  /* 语义色，量的是在 --surface-4 上——chip 和卡片里的按钮都坐在那一层。 */
+  --ok: #9ece6a;
+  --warn: #e0af68;
+  --danger: #f7768e;
+
   color-scheme: dark;
 }
 
@@ -39,8 +50,8 @@
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--surface-1);
+  color: var(--text-1);
   font: 15px/1.5 -apple-system, system-ui, sans-serif;
   -webkit-text-size-adjust: 100%;
 }
@@ -65,7 +76,7 @@ header {
 header .count {
   font-size: 13px;
   font-weight: 400;
-  color: var(--dim);
+  color: var(--text-2);
 }
 
 /* Project grouping. The heading is deliberately quiet — it is a divider that
@@ -95,12 +106,12 @@ header .count {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--text-2);
 }
 
 .restore-group-count {
   margin-left: auto;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
@@ -133,7 +144,7 @@ header .count {
 }
 
 .group-chevron {
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 0.7rem;
   line-height: 1;
 }
@@ -141,7 +152,7 @@ header .count {
 /* What a folded group has left to say: how much is behind it. */
 .group-count {
   margin-left: auto;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
@@ -153,7 +164,7 @@ header .count {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--text-2);
   /* A long path segment must not push the row wide on a phone. */
   overflow: hidden;
   text-overflow: ellipsis;
@@ -184,12 +195,12 @@ header .count {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--text-2);
 }
 
 .restore-group-count {
   margin-left: auto;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
@@ -215,7 +226,7 @@ header .count {
 
 .card {
   position: relative;
-  background: var(--card);
+  background: var(--surface-3);
   border-radius: 12px;
   margin: 0 12px 12px;
 }
@@ -230,7 +241,7 @@ header .count {
   border-radius: 12px;
 }
 
-.card-main:active { background: #252932; }
+.card-main:active { background: var(--surface-4); }
 
 /* Small and off in the corner: ending a session is destructive, so it should
    take aim rather than sit under a thumb scrolling the list. */
@@ -243,12 +254,12 @@ header .count {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 18px;
   line-height: 1;
 }
 
-.more:active { background: #2a2f3a; color: var(--fg); }
+.more:active { background: var(--surface-4); color: var(--text-1); }
 
 /* 会话卡片底部的动作行。默认不画——窄屏走 ⋯ 浮层，宽屏才摊开（见本文件末尾的
    宽屏一节）。两个入口都由 list.js 画进 DOM，露哪个交给样式：JS 里读 matchMedia
@@ -276,12 +287,12 @@ header .count {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--idle);
+  background: var(--ok);
 }
 
 .sid {
   flex: 0 0 auto;
-  color: var(--dim);
+  color: var(--text-2);
   font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
   opacity: 0.7;
 }
@@ -292,8 +303,8 @@ header .count {
   min-width: 0;
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--card);
-  color: var(--dim);
+  background: var(--surface-3);
+  color: var(--text-2);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -305,8 +316,8 @@ header .count {
   flex: 0 0 auto;
   padding: 1px 7px;
   border-radius: 999px;
-  background: #22262f;
-  color: var(--accent);
+  background: var(--surface-5);
+  color: var(--accent-text);
   font: 600 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.02em;
 }
@@ -314,7 +325,7 @@ header .count {
 /* The agent's build, when knowable (Claude's pane command, or --version). */
 .agent-ver {
   flex: 0 0 auto;
-  color: var(--dim);
+  color: var(--text-2);
   font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
   opacity: 0.75;
 }
@@ -322,19 +333,19 @@ header .count {
 /* Precise state in words: working / waiting / unsent input. */
 .status {
   flex: 0 0 auto;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
   white-space: nowrap;
 }
 
-.time { margin-left: auto; color: var(--dim); font-size: 13px; white-space: nowrap; }
+.time { margin-left: auto; color: var(--text-2); font-size: 13px; white-space: nowrap; }
 
 /* Build marker, unobtrusive in the corner. */
 .ver {
   position: fixed;
   right: 8px;
   bottom: calc(4px + env(safe-area-inset-bottom));
-  color: var(--dim);
+  color: var(--text-2);
   font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
   opacity: 0.5;
   pointer-events: none;
@@ -345,20 +356,20 @@ header .count {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--dim);
+  color: var(--text-2);
 }
 
 .pending {
   margin-top: 8px;
   padding: 6px 8px;
   border-radius: 6px;
-  background: #2a2f3a;
-  color: var(--accent);
+  background: var(--surface-4);
+  color: var(--accent-text);
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
   overflow-wrap: anywhere;
 }
 
-.pending b { color: var(--dim); font-weight: 400; margin-left: 6px; }
+.pending b { color: var(--text-2); font-weight: 400; margin-left: 6px; }
 
 /* 插件贴在会话行上的标注。颜色全部取自主题变量，这个文件不该出现颜色字面量。 */
 .session-notes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
@@ -366,28 +377,28 @@ header .count {
   font-size: 12px;
   padding: 1px 6px;
   border-radius: 6px;
-  background: var(--card);
+  background: var(--surface-3);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.note-ok { color: var(--idle); }
-.note-warn { color: var(--term-red); }
-.note-dim { color: var(--dim); }
+.note-ok { color: var(--ok); }
+.note-warn { color: var(--danger); }
+.note-dim { color: var(--text-2); }
 
-.empty { padding: 24px; color: var(--dim); text-align: center; }
-.empty .hint { display: block; margin-top: 8px; font-size: 13px; color: var(--dim); }
+.empty { padding: 24px; color: var(--text-2); text-align: center; }
+.empty .hint { display: block; margin-top: 8px; font-size: 13px; color: var(--text-2); }
 
 /* 筛空时的自救入口：说了"没有符合筛选的单"就得给得出解除它的东西。 */
 .clear-filter {
   display: block;
   margin: 12px auto 0;
-  border: 1px solid var(--edge);
+  border: 1px solid var(--border-1);
   border-radius: 8px;
   padding: 6px 14px;
-  background: var(--raised);
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   font-size: 13px;
   cursor: pointer;
 }
@@ -411,7 +422,7 @@ header .count {
   gap: 10px;
   padding: 10px 12px 12px;
   margin-bottom: 12px;
-  border-bottom: 1px solid var(--edge);
+  border-bottom: 1px solid var(--border-1);
 }
 
 /* 第一行：同步 / 显示已归档 / 分组。窄屏放不下时换行，行内仍然左对齐。 */
@@ -472,7 +483,7 @@ header .count {
 /* 独立一行，不跟按钮抢宽度——"只同步了前 N 条"这类话被截断等于没说。 */
 .sync-status {
   margin: 0;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
 }
 
@@ -481,21 +492,21 @@ header .count {
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
 }
 
 /* 定位交给上面那张网格；这里只管它自己的两个孩子怎么排。 */
 
 .toolbar-label {
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
   white-space: nowrap;
 }
 
 #group-by {
-  background: var(--card);
-  color: var(--fg);
+  background: var(--surface-3);
+  color: var(--text-1);
   border: none;
   border-radius: 8px;
   padding: 4px 8px;
@@ -529,14 +540,14 @@ header .count {
 }
 
 .field-name {
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
 }
 
 .field-remove {
   border: none;
   background: none;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 14px;
   line-height: 1;
   padding: 0 2px;
@@ -556,8 +567,8 @@ header .count {
 }
 
 #field-picker {
-  background: var(--card);
-  color: var(--dim);
+  background: var(--surface-3);
+  color: var(--text-2);
   border: none;
   border-radius: 8px;
   padding: 4px 8px;
@@ -578,9 +589,9 @@ header .count {
   flex: 0 0 auto;
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid var(--edge);
-  background: var(--raised);
-  color: var(--fg);
+  border: 1px solid var(--border-1);
+  background: var(--surface-4);
+  color: var(--text-1);
   font-size: 11px;
   max-width: 22ch;
   overflow: hidden;
@@ -593,12 +604,12 @@ header .count {
 .filter-chip.selected {
   background: var(--accent);
   color: var(--on-accent);
-  border-color: var(--accent);
+  border-color: var(--accent-text);
 }
 
 
 .item-card {
-  background: var(--card);
+  background: var(--surface-3);
   border-radius: 12px;
   margin: 0 12px 12px;
   padding: 14px;
@@ -627,15 +638,15 @@ header .count {
   white-space: nowrap;
 }
 
-a.item-title { color: var(--accent); }
+a.item-title { color: var(--accent-text); }
 
 .item-source,
 .item-count {
   flex: 0 0 auto;
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--raised);
-  color: var(--dim);
+  background: var(--surface-4);
+  color: var(--text-2);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -657,8 +668,8 @@ a.item-title { color: var(--accent); }
   gap: 4px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--raised);
-  color: var(--dim);
+  background: var(--surface-4);
+  color: var(--text-2);
   font-size: 11px;
   max-width: 100%;
   overflow: hidden;
@@ -682,9 +693,9 @@ a.item-title { color: var(--accent); }
 
 /* 颜色只从主题变量派生，跟 .note-ok/.note-warn/.note-dim 同一套——
    src/themes.test.ts 要查的就是这条。 */
-.facet.ok { color: var(--idle); }
-.facet.warn { color: var(--term-red); }
-.facet.dim { color: var(--dim); }
+.facet.ok { color: var(--ok); }
+.facet.warn { color: var(--danger); }
+.facet.dim { color: var(--text-2); }
 
 .item-session {
   display: flex;
@@ -693,7 +704,7 @@ a.item-title { color: var(--accent); }
   padding: 8px 4px;
   text-decoration: none;
   color: inherit;
-  border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--text-1) 8%, transparent);
 }
 
 .s-name {
@@ -706,14 +717,14 @@ a.item-title { color: var(--accent); }
 
 .s-state {
   flex: 0 0 auto;
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 12px;
   white-space: nowrap;
 }
 
 .s-open {
   flex: 0 0 auto;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -735,11 +746,11 @@ a.item-title { color: var(--accent); }
 .item-link,
 .item-archive {
   flex: 0 0 auto;
-  border: 1px solid var(--edge);
+  border: 1px solid var(--border-1);
   border-radius: 999px;
   padding: 4px 12px;
-  background: var(--raised);
-  color: var(--dim);
+  background: var(--surface-4);
+  color: var(--text-2);
   font-size: 12px;
   cursor: pointer;
 }
@@ -758,7 +769,7 @@ a.item-title { color: var(--accent); }
   border: 1px solid transparent;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
   font-size: 12px;
   font-weight: 600;
@@ -771,7 +782,7 @@ a.item-title { color: var(--accent); }
 
 .unassigned .item-session {
   padding: 8px 12px;
-  background: var(--card);
+  background: var(--surface-3);
   border-radius: 8px;
   border-top: none;
   margin-top: 6px;
@@ -793,12 +804,12 @@ a.item-title { color: var(--accent); }
   align-items: center;
   gap: 10px;
   padding: max(8px, env(safe-area-inset-top)) 12px 8px;
-  background: var(--card);
+  background: var(--surface-3);
   font-size: 14px;
   flex: 0 0 auto;
 }
 
-.term-bar a { color: var(--accent); text-decoration: none; }
+.term-bar a { color: var(--accent-text); text-decoration: none; }
 
 /* The back link is an icon now, so it needs its own tap target: the chevron is
    20px but a thumb is not. Padding grows the target, the negative margin keeps
@@ -812,26 +823,26 @@ a.item-title { color: var(--accent); }
 }
 .term-back:active { opacity: 0.6; }
 .term-bar .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.term-bar .status { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; }
+.term-bar .status { margin-left: auto; color: var(--text-2); font-size: 12px; white-space: nowrap; }
 
 /* Connection state, 9px of it. Three readings that survive a colour-blind eye
    and a phone in sunlight: filled circle up, hollow ring working, filled
-   square broken — shape carries it, colour only reinforces. --term-red comes
-   from the theme's ANSI slots, so it follows the palette like everything else
-   and no colour literal lands in this file. */
+   square broken — shape carries it, colour only reinforces。--danger 是从主题
+   自己的亮红推出来、并且保证在表面上过 3:1 的那一档，所以这里既跟着调色板走，
+   也不会出现一个没人量过的红。 */
 .conn {
   flex: 0 0 auto;
   width: 9px;
   height: 9px;
   border-radius: 50%;
 }
-.conn.ok { background: var(--idle); }
+.conn.ok { background: var(--ok); }
 .conn.wait {
   background: transparent;
-  border: 2px solid var(--dim);
+  border: 2px solid var(--text-2);
   animation: conn-pulse 1.4s ease-in-out infinite;
 }
-.conn.bad { background: var(--term-red); border-radius: 2px; }
+.conn.bad { background: var(--danger); border-radius: 2px; }
 
 @keyframes conn-pulse { 50% { opacity: 0.35; } }
 
@@ -844,7 +855,7 @@ a.item-title { color: var(--accent); }
 /* Login expired: the one status that must be noticed and tapped, so it drops
    the dim treatment for the accent and a clear target. */
 .status-relogin {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
   text-decoration: none;
   padding: 4px 6px;
@@ -858,8 +869,8 @@ a.item-title { color: var(--accent); }
   border: 0;
   border-radius: 8px;
   padding: 6px 10px;
-  background: #2a2f3a;
-  color: var(--dim);
+  background: var(--surface-4);
+  color: var(--text-2);
   font-size: 13px;
 }
 
@@ -871,15 +882,15 @@ a.item-title { color: var(--accent); }
   padding: 4px 8px;
   border: 1px solid var(--accent);
   border-radius: 6px;
-  background: #1b1e25;
-  color: var(--fg);
+  background: var(--surface-2);
+  color: var(--text-1);
   font: 600 16px/1 -apple-system, system-ui, sans-serif; /* 16px so iOS doesn't zoom. */
 }
 
 .title-edit:focus { outline: none; }
 
 /* Armed: one more tap kills. Red so it can't be mistaken for anything else. */
-.term-kill.armed { background: #b3413c; color: #fff; }
+.term-kill.armed { background: var(--danger); color: var(--on-accent); }
 
 #term { flex: 1 1 auto; min-height: 0; overflow: hidden; }
 
@@ -892,7 +903,7 @@ a.item-title { color: var(--accent); }
   gap: 6px;
   padding: 8px;
   padding-bottom: calc(8px + env(safe-area-inset-bottom));
-  background: var(--card);
+  background: var(--surface-3);
 }
 
 .keys-row { display: flex; gap: 6px; }
@@ -906,15 +917,15 @@ a.item-title { color: var(--accent); }
   padding: 0 10px;
   border: 0;
   border-radius: 8px;
-  background: #2a2f3a;
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* The expand/collapse handle stays a fixed, narrow square. The id keeps this
    from losing to `.keys button` on specificity. */
-#keys-toggle { flex: 0 0 40px; color: var(--dim); font-size: 15px; }
-.keys.expanded #keys-toggle { color: var(--accent); }
+#keys-toggle { flex: 0 0 40px; color: var(--text-2); font-size: 15px; }
+.keys.expanded #keys-toggle { color: var(--accent-text); }
 
 /* These buttons hold an SVG rather than a glyph; centre it like the others and
    let it inherit the same grey text colour through currentColor. */
@@ -922,7 +933,7 @@ a.item-title { color: var(--accent); }
 #paste,
 #copy { display: inline-flex; align-items: center; justify-content: center; }
 
-.keys button:active { background: #39404e; }
+.keys button:active { background: var(--surface-5); }
 .keys button.sticky-on { background: var(--accent); color: var(--on-accent); }
 
 
@@ -952,7 +963,7 @@ body.sheet-open {
 .sheet {
   width: 100%;
   max-width: 520px;
-  background: var(--card);
+  background: var(--surface-3);
   border-radius: 16px 16px 0 0;
   padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
   /* A bottom sheet grows upward; without a ceiling, a tall body (a long
@@ -972,11 +983,11 @@ body.sheet-open {
 .sheet-name {
   margin: 0 0 10px;
   font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--accent);
+  color: var(--accent-text);
   overflow-wrap: anywhere;
 }
 
-.sheet-warn { margin: 0 0 12px; color: var(--dim); font-size: 14px; }
+.sheet-warn { margin: 0 0 12px; color: var(--text-2); font-size: 14px; }
 
 .sheet .preview { max-height: 40vh; overflow-y: auto; }
 
@@ -988,12 +999,12 @@ body.sheet-open {
   padding: 14px 16px;
   border: 0;
   border-radius: 10px;
-  background: #2a2f3a;
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   font-size: 16px;
 }
 
-.btn.danger { background: #b3413c; color: #fff; }
+.btn.danger { background: var(--danger); color: var(--on-accent); }
 .btn:disabled { opacity: 0.6; }
 
 /* ---- create session ---- */
@@ -1019,8 +1030,8 @@ header .new:active { opacity: 0.7; }
   border: 0;
   border-radius: 999px;
   padding: 7px 12px;
-  background: #2a2f3a;
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   font-size: 13px;
   max-width: 100%;
   overflow: hidden;
@@ -1037,8 +1048,8 @@ header .new:active { opacity: 0.7; }
   border: 0;
   border-radius: 8px;
   padding: 6px 10px;
-  background: #2a2f3a;
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   font-size: 13px;
 }
 
@@ -1052,10 +1063,10 @@ header .new:active { opacity: 0.7; }
   overflow-wrap: anywhere;
 }
 
-.crumb-lead { color: var(--dim); }
+.crumb-lead { color: var(--text-2); }
 
 .crumb-leaf {
-  color: var(--fg);
+  color: var(--text-1);
   font-size: 15px;
   font-weight: 600;
 }
@@ -1065,14 +1076,14 @@ header .new:active { opacity: 0.7; }
   height: 44px;
   margin-bottom: 10px;
   padding: 0 12px;
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border-2);
   border-radius: 10px;
-  background: #1b1e25;
-  color: var(--fg);
+  background: var(--surface-2);
+  color: var(--text-1);
   font-size: 16px; /* iOS zooms the page for anything smaller. */
 }
 
-.field:focus { outline: none; border-color: var(--accent); }
+.field:focus { outline: none; border-color: var(--accent-text); }
 
 /* Tall enough to be worth scrolling, short enough to leave the keyboard room. */
 .dir-list {
@@ -1086,16 +1097,16 @@ header .new:active { opacity: 0.7; }
   display: block;
   width: 100%;
   border: 0;
-  border-bottom: 1px solid #22262f;
+  border-bottom: 1px solid var(--border-1);
   padding: 12px 4px;
   background: none;
-  color: var(--fg);
+  color: var(--text-1);
   font-size: 15px;
   text-align: left;
 }
 
-.dir-row:active { background: #22262f; }
-.dir-empty { margin: 12px 4px; color: var(--dim); font-size: 14px; }
+.dir-row:active { background: var(--surface-5); }
+.dir-empty { margin: 12px 4px; color: var(--text-2); font-size: 14px; }
 
 /* Screen two of the sheet is nothing but the conversation list, so it gets the
    room. It still scrolls on its own within the capped sheet. */
@@ -1108,15 +1119,15 @@ header .new:active { opacity: 0.7; }
   border: 0;
   border-radius: 8px;
   padding: 11px;
-  background: #2a2f3a;
-  color: var(--accent);
+  background: var(--surface-4);
+  color: var(--accent-text);
   font-size: 14px;
 }
-.resume-entry:active { background: #22262f; }
+.resume-entry:active { background: var(--surface-5); }
 .sheet-back {
   border: 0;
   background: none;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 15px;
   padding: 2px 0;
   margin-bottom: 10px;
@@ -1128,19 +1139,19 @@ header .new:active { opacity: 0.7; }
   gap: 10px;
   width: 100%;
   border: 0;
-  border-bottom: 1px solid #22262f;
+  border-bottom: 1px solid var(--border-1);
   padding: 10px 4px;
   background: none;
-  color: var(--fg);
+  color: var(--text-1);
   text-align: left;
 }
 
 .hist-title { flex: 1 1 auto; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hist-time { flex: 0 0 auto; color: var(--dim); font-size: 12px; }
-.hist-row:active { background: #22262f; }
+.hist-time { flex: 0 0 auto; color: var(--text-2); font-size: 12px; }
+.hist-row:active { background: var(--surface-5); }
 /* Picked: this conversation will be resumed. */
-.hist-row.on { background: rgba(122, 162, 247, 0.16); }
-.hist-row.on .hist-title { color: var(--accent); font-weight: 600; }
+.hist-row.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.hist-row.on .hist-title { color: var(--accent-text); font-weight: 600; }
 
 /* Roomy enough to be a comfortable tap target on a phone. */
 .check {
@@ -1152,12 +1163,12 @@ header .new:active { opacity: 0.7; }
   font-size: 14px;
 }
 
-.check input { width: 18px; height: 18px; accent-color: var(--accent); flex: 0 0 auto; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent-text); flex: 0 0 auto; }
 
 /* Dim rather than alarm-red: a warning shown every time stops being read. */
-.check-warn { margin-left: auto; color: var(--dim); font-weight: 400; font-size: 12px; }
+.check-warn { margin-left: auto; color: var(--text-2); font-weight: 400; font-size: 12px; }
 
-.sheet-error { margin: 0 0 4px; color: #e2706b; font-size: 14px; min-height: 18px; }
+.sheet-error { margin: 0 0 4px; color: var(--danger); font-size: 14px; min-height: 18px; }
 .btn.primary { background: var(--accent); color: var(--on-accent); }
 
 /* 长按弹出的可选择文字层：把当前屏幕做成普通 HTML，交给系统原生选择/复制 */
@@ -1179,8 +1190,8 @@ header .new:active { opacity: 0.7; }
   max-height: 82vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  border: 1px solid #2a2f3a;
+  background: var(--surface-1);
+  border: 1px solid var(--border-2);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -1189,8 +1200,8 @@ header .new:active { opacity: 0.7; }
   flex: 0 0 auto;
   padding: 0.65rem 0.85rem;
   font-size: 13px;
-  color: #8b919c;
-  border-bottom: 1px solid #22262f;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border-1);
 }
 
 .copy-text {
@@ -1199,7 +1210,7 @@ header .new:active { opacity: 0.7; }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #e6e8ec;
+  color: var(--text-1);
   /* Wrap instead of scrolling sideways: on a phone, horizontal-scrolling to
      select a long line is miserable. Wrapping is only visual — the copied text
      keeps its real line breaks, and long unbroken tokens (a URL) break too. */
@@ -1212,7 +1223,7 @@ header .new:active { opacity: 0.7; }
 /* ---- header chrome ---- */
 
 /* The back link on the create page. */
-header .back { color: var(--accent); text-decoration: none; font-size: 15px; font-weight: 400; }
+header .back { color: var(--accent-text); text-decoration: none; font-size: 15px; font-weight: 400; }
 header .back:active { opacity: 0.7; }
 
 /* The notification bell, in the right-hand cluster of the header. */
@@ -1224,8 +1235,8 @@ header .hbell {
   justify-content: center;
   border: 0;
   border-radius: 10px;
-  background: #2a2f3a;
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   align-self: center;
   text-decoration: none;
 }
@@ -1237,7 +1248,7 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 /* ---- pin ---- */
 
 /* Pinned marker on a list card, and the vertical action menu behind ⋯. */
-.pin { color: var(--accent); display: inline-flex; flex: 0 0 auto; }
+.pin { color: var(--accent-text); display: inline-flex; flex: 0 0 auto; }
 .pin svg { display: block; }
 
 .sheet-menu { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
@@ -1249,7 +1260,7 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 0.5rem;
-  border-bottom: 1px solid #22262f;
+  border-bottom: 1px solid var(--border-1);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1259,16 +1270,16 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   display: block;
   width: 100%;
   text-align: left;
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border-2);
   border-radius: 8px;
   padding: 0.55rem 0.7rem;
-  background: #1b1e25;
-  color: var(--accent);
+  background: var(--surface-2);
+  color: var(--accent-text);
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
   overflow-wrap: anywhere;
 }
-.copy-link:active { background: #22262f; }
-.copy-link.copied { color: var(--idle); border-color: var(--idle); }
+.copy-link:active { background: var(--surface-5); }
+.copy-link.copied { color: var(--ok); border-color: var(--ok); }
 
 /* restore banner: bring back Claude sessions whose tmux died */
 .restore-banner {
@@ -1278,9 +1289,9 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   margin: 0 12px 12px;
   padding: 12px 14px;
   border-radius: 12px;
-  background: #1c2836;
-  border: 1px solid #2a3a52;
-  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text-1);
   font-size: 14px;
 }
 .restore-banner span { flex: 1; }
@@ -1321,10 +1332,10 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   min-width: 48px;
   height: 44px;
   padding: 0 12px;
-  border: 1px solid #3a4050;
+  border: 1px solid var(--border-2);
   border-radius: 12px;
-  background: #2a2f3a;
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   font-family: var(--mono, ui-monospace, Menlo, Consolas, monospace);
   font-size: 14px;
   cursor: grab;
@@ -1378,13 +1389,13 @@ body.no-select {
   padding: 11px;
   border: 1px solid transparent;
   border-radius: 10px;
-  background: #2a2f3a;
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   text-align: left;
   font: inherit;
 }
 
-.theme-opt.on { border-color: var(--accent); }
+.theme-opt.on { border-color: var(--accent-text); }
 
 /* The filled state is drawn with a radial gradient rather than a nested
    element, so the row stays two nodes deep and the ring never drifts. */
@@ -1393,12 +1404,12 @@ body.no-select {
   width: 17px;
   height: 17px;
   margin-top: 3px;
-  border: 2px solid #565f70;
+  border: 2px solid var(--border-2);
   border-radius: 50%;
 }
 
 .theme-opt.on .theme-radio {
-  border-color: var(--accent);
+  border-color: var(--accent-text);
   background: radial-gradient(var(--accent) 0 38%, transparent 42%);
 }
 
@@ -1419,7 +1430,7 @@ body.no-select {
   overflow: hidden;
 }
 
-.sheet-note { margin: 0 0 12px; color: var(--dim); font-size: 12.5px; }
+.sheet-note { margin: 0 0 12px; color: var(--text-2); font-size: 12.5px; }
 
 /* Offered in place of "no matching directory": by then the name is already
    typed in the filter box, so this turns the dead end into the action. */
@@ -1432,7 +1443,7 @@ body.no-select {
   border: 1px dashed var(--accent);
   border-radius: 8px;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   text-align: left;
 }
@@ -1447,7 +1458,7 @@ body.no-select {
   display: flex;
   gap: 6px;
   margin: 8px 0 0;
-  color: var(--fg);
+  color: var(--text-1);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -1460,7 +1471,7 @@ body.no-select {
   overflow-wrap: anywhere;
 }
 
-.task-mark { flex: 0 0 auto; color: var(--accent); font-weight: 600; }
+.task-mark { flex: 0 0 auto; color: var(--accent-text); font-weight: 600; }
 
 /* With a task line present the preview becomes supporting detail, so it steps
    back rather than competing. */
@@ -1473,14 +1484,14 @@ body.no-select {
 .agent-chip {
   flex: 0 0 auto;
   padding: 6px 12px;
-  border: 1px solid #3a4050;
+  border: 1px solid var(--border-2);
   border-radius: 999px;
   background: transparent;
-  color: var(--dim);
+  color: var(--text-2);
   font: 13px/1 -apple-system, system-ui, sans-serif;
 }
 
-.agent-chip.on { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.agent-chip.on { border-color: var(--accent-text); background: var(--accent); color: var(--on-accent); }
 
 .agent-chip.missing { opacity: 0.4; text-decoration: line-through; }
 
@@ -1489,7 +1500,7 @@ body.no-select {
   margin: 14px 0 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--dim);
+  color: var(--text-2);
 }
 .sheet-sub:first-of-type { margin-top: 4px; }
 
@@ -1503,7 +1514,7 @@ body.no-select {
   gap: 2px;
   padding: 3px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
 }
 
 .hseg-item {
@@ -1514,7 +1525,7 @@ body.no-select {
   width: 36px;
   height: 30px;
   border-radius: 8px;
-  color: var(--dim);
+  color: var(--text-2);
   text-decoration: none;
 }
 
@@ -1522,11 +1533,11 @@ body.no-select {
 
 /* The page you are on. A span, so there is nothing to tap. */
 .hseg-item.on {
-  background: color-mix(in srgb, var(--fg) 14%, var(--bg));
-  color: var(--fg);
+  background: color-mix(in srgb, var(--text-1) 14%, var(--surface-1));
+  color: var(--text-1);
 }
 
-.hseg-item:not(.on):active { color: var(--fg); }
+.hseg-item:not(.on):active { color: var(--text-1); }
 
 /* Only the active segment carries one, so it widens to fit rather than
    squeezing the icon. */
@@ -1535,7 +1546,7 @@ body.no-select {
 .hseg-item .count {
   font-size: 12px;
   font-weight: 400;
-  color: var(--dim);
+  color: var(--text-2);
   white-space: nowrap;
 }
 
@@ -1570,7 +1581,7 @@ header .htitle { font-size: 17px; font-weight: 600; }
   flex-direction: column;
   gap: 10px;
   padding: 12px;
-  background: var(--card);
+  background: var(--surface-3);
 }
 
 /* Record, its cancel, the status, and send — one row. Cancel used to sit on a
@@ -1591,16 +1602,16 @@ header .htitle { font-size: 17px; font-weight: 600; }
   border: 0;
   border-radius: 50%;
   background: var(--accent);
-  color: var(--bg);
+  color: var(--surface-1);
   font-size: 20px;
   line-height: 1;
 }
 .voice-rec:disabled { opacity: 0.4; }
-.voice-rec[data-state="recording"] { background: var(--term-red, var(--accent)); }
+.voice-rec[data-state="recording"] { background: var(--danger); }
 .voice-rec:active { opacity: 0.7; }
 
 .voice-hint {
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -1609,7 +1620,7 @@ header .htitle { font-size: 17px; font-weight: 600; }
 }
 
 .voice-note {
-  color: var(--dim);
+  color: var(--text-2);
   font-size: 14px;
   text-align: center;
   margin: 0;
@@ -1623,8 +1634,8 @@ header .htitle { font-size: 17px; font-weight: 600; }
   border: 0;
   border-radius: 8px;
   padding: 10px;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--surface-1);
+  color: var(--text-1);
   font: inherit;
   font-size: 16px; /* under 16px iOS zooms the page on focus */
 }
@@ -1635,7 +1646,7 @@ header .htitle { font-size: 17px; font-weight: 600; }
   max-width: 560px;
   max-height: 80vh;
   overflow-y: auto;
-  background: var(--card);
+  background: var(--surface-3);
   border-radius: 14px 14px 0 0;
   padding: 16px 16px 20px;
 }
@@ -1660,7 +1671,7 @@ header .htitle { font-size: 17px; font-weight: 600; }
   gap: 10px;
   padding: 8px 10px;
   border-radius: 8px;
-  background: var(--raised);
+  background: var(--surface-4);
 }
 
 .detail-label {
@@ -1674,7 +1685,7 @@ header .htitle { font-size: 17px; font-weight: 600; }
 
 /* 能点的那行画成链接色；不能点的保持正文色，两者一眼可分。 */
 a.detail-label {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: none;
 }
 a.detail-label:hover {
@@ -1684,22 +1695,22 @@ a.detail-label:hover {
 .detail-state {
   flex: 0 0 auto;
   font-size: 11px;
-  color: var(--dim);
+  color: var(--text-2);
 }
 
-.detail-state.ok { color: var(--idle); }
-.detail-state.warn { color: var(--term-red); }
-.detail-state.dim { color: var(--dim); }
+.detail-state.ok { color: var(--ok); }
+.detail-state.warn { color: var(--danger); }
+.detail-state.dim { color: var(--text-2); }
 
 .sheet-close {
   display: block;
   width: 100%;
   margin-top: 14px;
-  border: 1px solid var(--edge);
+  border: 1px solid var(--border-1);
   border-radius: 8px;
   padding: 10px;
-  background: var(--raised);
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   font-size: 14px;
   cursor: pointer;
 }
@@ -1712,7 +1723,7 @@ a.detail-label:hover {
   border-radius: 8px;
   padding: 5px 12px;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 13px;
   cursor: pointer;
 }
@@ -1721,17 +1732,17 @@ a.detail-label:hover {
   width: 100%;
   box-sizing: border-box;
   margin-top: 12px;
-  border: 1px solid var(--edge);
+  border: 1px solid var(--border-1);
   border-radius: 8px;
   padding: 10px 12px;
-  background: var(--raised);
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   font-size: 16px; /* 低于 16px 时 iOS Safari 会在聚焦时缩放整页 */
 }
 
 .sheet-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--accent-text);
 }
 
 .sheet-create {
@@ -1773,18 +1784,18 @@ a.detail-label:hover {
   gap: 10px;
   width: 100%;
   text-align: left;
-  border: 1px solid var(--edge);
+  border: 1px solid var(--border-1);
   border-radius: 8px;
   padding: 10px 12px;
-  background: var(--raised);
-  color: var(--fg);
+  background: var(--surface-4);
+  color: var(--text-1);
   font-size: 14px;
   cursor: pointer;
 }
 
 /* 当前已经挂着的那一行仍然可点，只是标出来——藏掉会让人以为自己记错了。 */
 .pick-row.current {
-  border-color: var(--accent);
+  border-color: var(--accent-text);
 }
 
 .pick-label {
@@ -1798,7 +1809,7 @@ a.detail-label:hover {
 .pick-note {
   flex: 0 0 auto;
   font-size: 12px;
-  color: var(--dim);
+  color: var(--text-2);
 }
 
 .pick-row:disabled {
@@ -1808,7 +1819,7 @@ a.detail-label:hover {
 
 /* 带明细的 chip 是个按钮，得看出来能点。 */
 .facet.has-detail {
-  border: 1px solid var(--edge);
+  border: 1px solid var(--border-1);
   cursor: pointer;
 }
 
@@ -1941,7 +1952,7 @@ a.detail-label:hover {
        一个只为凑 alpha 的值同样会被扫到，往豁免名单里加它等于把守卫的口子越开
        越大。用主题变量，既满足不透明，也不新增字面量。（那条扫描不剥注释，所以
        连在注释里举例都会红——这句话本身就是那么改出来的。） */
-    mask-image: linear-gradient(to bottom, var(--fg) calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to bottom, var(--text-1) calc(100% - 24px), transparent);
   }
 
   /* 自带横向内边距的整行元素，抵掉容器那 12px，好让它们的左边缘跟窄屏时
@@ -1968,16 +1979,16 @@ a.detail-label:hover {
     padding: 10px 14px 12px;
     /* 跟 body 之间要有一道线：上面是"它在干什么"，下面是"我能拿它怎么办"，
        两者之间没有分隔的话，按钮读起来像是终端输出的一部分。 */
-    border-top: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--text-1) 8%, transparent);
   }
 
   .card-act {
     flex: 0 0 auto;
-    border: 1px solid var(--edge);
+    border: 1px solid var(--border-1);
     border-radius: 999px;
     padding: 4px 12px;
-    background: var(--raised);
-    color: var(--dim);
+    background: var(--surface-4);
+    color: var(--text-2);
     font-size: 12px;
     text-decoration: none;
     cursor: pointer;
@@ -1988,7 +1999,7 @@ a.detail-label:hover {
   .card-act.primary {
     border-color: transparent;
     background: color-mix(in srgb, var(--accent) 16%, transparent);
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 600;
   }
 
@@ -1997,7 +2008,7 @@ a.detail-label:hover {
      不是最后一道闸。 */
   .card-act.danger {
     margin-left: auto;
-    color: var(--term-red);
+    color: var(--danger);
   }
 
   /* 会话卡片的两行元信息改成可换行。卡片在网格里被 overflow:hidden 裁住之后，
@@ -2058,8 +2069,8 @@ a.detail-label:hover {
     position: sticky;
     top: 0;
     z-index: 5;
-    background: var(--bg);
-    border-bottom: 1px solid var(--edge);
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border-1);
   }
 
   /* 构建号跟着内容列的右边缘走，而不是贴在离内容一米远的屏幕角上。仍然是
@@ -2135,14 +2146,14 @@ a.detail-label:hover {
   .resume-entry:hover,
   .hist-row:hover,
   .restore-row:hover {
-    background: color-mix(in srgb, var(--card) 86%, var(--fg));
+    background: color-mix(in srgb, var(--surface-3) 86%, var(--text-1));
   }
 
   header .hbell:not(.on):hover,
   .term-kill:hover,
   .term-rename:hover {
-    background: var(--raised);
-    color: var(--fg);
+    background: var(--surface-4);
+    color: var(--text-1);
   }
 
   header .new:hover,
@@ -2156,7 +2167,7 @@ a.detail-label:hover {
     opacity: 0.8;
   }
 
-  .hseg-item:not(.on):hover { color: var(--fg); }
+  .hseg-item:not(.on):hover { color: var(--text-1); }
 
   /* 终端页的软键盘条：有物理键盘时三行全部摊开，展开箭头收起来。
 

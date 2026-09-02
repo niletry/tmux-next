@@ -8,7 +8,7 @@
  * and the network, and is only ever run by a browser.
  */
 
-import { themeVars, DEFAULT_THEME } from "./themes.js";
+import { themeVars, uiVars, DEFAULT_THEME } from "./themes.js";
 import { url } from "./root.js";
 
 /**
@@ -25,11 +25,17 @@ const CACHE_KEY = "termTheme";
 
 /**
  * Writes a theme's colours onto :root. Everything else derives from these.
+ *
+ * 两组：`--term-*` 是终端的调色板（xterm 从同一份数据建 ITheme，所以页面和终端
+ * 不会漂移），`--surface-* / --text-* / …` 是页面 chrome 的角色色，由 uiVars 从
+ * 同一套主题算出来。分成两个函数而不是一个，是因为它们的受众不同：终端那组是
+ * 对 xterm 的承诺，chrome 那组是对样式表的承诺，改其中一组不该惊动另一组。
+ *
  * @param {string} name
  */
 export function applyTheme(name) {
   const root = document.documentElement;
-  for (const [key, value] of Object.entries(themeVars(name))) {
+  for (const [key, value] of Object.entries({ ...themeVars(name), ...uiVars(name) })) {
     root.style.setProperty(key, value);
   }
   root.dataset.theme = name;
