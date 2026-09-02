@@ -157,3 +157,13 @@ test("dev 缓存里是失败结果时，只是没有 PR 维度", () => {
   expect(dims(got)["jira.prs"]).toBeUndefined();
   expect(dims(got)["jira.status"]).toBe("In Progress");
 });
+
+test("有 assignee 就给一个维度", () => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue({ assignee: "李雷" } as Partial<Issue>)]]), new Map());
+  expect(dims(got)["jira.assignee"]).toBe("李雷");
+});
+
+test("没有 assignee 就不给这个维度", () => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue({ assignee: null } as Partial<Issue>)]]), new Map());
+  expect(dims(got)["jira.assignee"]).toBeUndefined();
+});

@@ -35,6 +35,8 @@ export type Issue = {
    * 判断层级用它而不是用类型名：名字每个实例都能改，层级不能。名字只负责显示。
    */
   hierarchy: number;
+  /** 负责人的展示名，未分配是 null——不是空字符串，也不是 "Unassigned"。 */
+  assignee: string | null;
 };
 
 export type IssuesResult =
@@ -44,7 +46,7 @@ export type IssuesResult =
 /** Jira 挂了不能把页面吊死。 */
 const TIMEOUT_MS = 8000;
 
-const FIELDS = "summary,status,updated,issuetype,parent";
+const FIELDS = "summary,status,updated,issuetype,parent,assignee";
 
 /**
  * 一行搜索结果 → 一个 Issue，认不出就是 null。
@@ -95,6 +97,9 @@ export function toIssue(row: unknown): Issue | null {
     type: typeof t.name === "string" ? t.name : "",
     hierarchy,
     parent,
+    // 未分配时 Jira 给的是 null（不是缺字段），displayName 缺了同样当未分配——
+    // "没有负责人"和"负责人是空字符串"不是一回事，别把后者渲染出来。
+    assignee: typeof f.assignee?.displayName === "string" ? f.assignee.displayName : null,
   };
 }
 

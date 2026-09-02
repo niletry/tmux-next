@@ -58,6 +58,7 @@ test("成功时把响应裁成渲染要用的形状", async () => {
         type: "Bug",
         hierarchy: 0,
         parent: { key: "EXAMPLE-100", summary: "登录体验", hierarchy: 1 },
+        assignee: null,
       },
     ],
   });
@@ -217,4 +218,31 @@ test("单条与列表用同一套解析——两处各写一份必然会飘", as
 test("单条：404 报查询有误，401 报凭据无效", async () => {
   expect(await fetchIssue(CONFIG, "EXAMPLE-9", fakeFetch(404, {}))).toEqual({ ok: false, reason: "query" });
   expect(await fetchIssue(CONFIG, "EXAMPLE-9", fakeFetch(401, {}))).toEqual({ ok: false, reason: "auth" });
+});
+
+// ---- 负责人 -------------------------------------------------------------
+
+test("请求里带上 assignee 字段，否则负责人永远是空的", async () => {
+  // CONFIG.jql 本身就含 "assignee"（assignee = currentUser()），直接找子串
+  // 认不出 fields 参数是否真的带了它——这里单独取出 fields 参数来断言。
+  let seen: Request | undefined;
+  await fetchIssues(CONFIG, fakeFetch(200, OK_BODY, (r) => (seen = r)));
+  const fields = new URL(seen!.url).searchParams.get("fields") ?? "";
+  expect(fields.split(",")).toContain("assignee");
+});
+
+test("assignee.displayName 被解析进 Issue.assignee", async () => {
+  const body = {
+    issues: [
+      { id: "1", key: "EXAMPLE-1", fields: { assignee: { displayName: "李雷" } } },
+    ],
+  };
+  const res = await fetchIssues(CONFIG, fakeFetch(200, body));
+  expect(res.ok && res.issues[0]!.assignee).toBe("李雷");
+});
+
+test("未分配时 assignee 是 null，不抛", async () => {
+  const body = { issues: [{ id: "1", key: "EXAMPLE-1", fields: { assignee: null } }] };
+  const res = await fetchIssues(CONFIG, fakeFetch(200, body));
+  expect(res.ok && res.issues[0]!.assignee).toBeNull();
 });

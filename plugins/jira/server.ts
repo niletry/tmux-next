@@ -160,6 +160,11 @@ export function facetsFor(
   if (issue.parent && issue.parent.hierarchy >= 1) {
     facets.push({ dim: "jira.epic", value: issue.parent.summary || issue.parent.key });
   }
+  // 未分配是 null，不产出维度——"没有负责人"和"负责人是某个空值"是两回事，
+  // 混成一个维度会让卡片上出现一个读不出意思的 chip。
+  if (issue.assignee) {
+    facets.push({ dim: "jira.assignee", value: issue.assignee });
+  }
 
   const got = dev.get(issue.id);
   if (got?.ok) {

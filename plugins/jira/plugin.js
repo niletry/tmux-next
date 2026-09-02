@@ -19,9 +19,9 @@ export default {
   // 不用维护一张 provider→插件名的表。
   provides: ["jira"],
   // 单卡片上的维度 chips：内核没有"哪个插件有哪些维度"的表，dim 就是 i18n 键，
-  // 跟着数据一起来。src/i18n.test.ts 单独认这个数组字面量，只把这四个键当成
+  // 跟着数据一起来。src/i18n.test.ts 单独认这个数组字面量，只把这几个键当成
   // 有真实使用点（跟 titleKey 一样，它也不长成 t()/tr()/data-i18n 的样子）。
-  facetDims: ["jira.status", "jira.epic", "jira.prs", "jira.checks"],
+  facetDims: ["jira.status", "jira.epic", "jira.prs", "jira.checks", "jira.assignee"],
   i18n: {
     zh: {
       "jira.title": "工单",
@@ -57,6 +57,7 @@ export default {
       "jira.epic": "史诗",
       "jira.prs": "PR",
       "jira.checks": "检查",
+      "jira.assignee": "负责人",
     },
     en: {
       "jira.title": "Issues",
@@ -92,6 +93,7 @@ export default {
       "jira.epic": "Epic",
       "jira.prs": "PRs",
       "jira.checks": "Checks",
+      "jira.assignee": "Assignee",
     },
   },
 };
