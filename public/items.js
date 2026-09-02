@@ -106,7 +106,7 @@ const ITEM_DIM_LABEL = {
  * tone 决定颜色。是 CI 检查还是别的，只有给出它的插件知道。
  */
 function openDetailSheet(title, rows) {
-  const back = el("div", "sheet-back");
+  const back = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
   const close = () => back.remove();
 
@@ -145,6 +145,97 @@ function openDetailSheet(title, rows) {
   });
   back.append(sheet);
   document.body.append(back);
+}
+
+/**
+ * 新建一张本地单：只要一个标题。
+ *
+ * 单只有标题是够的——单是工作单元，目录、标签这些是它之后长出来的东西，开会话时
+ * 各自会选。开一个只有一格输入的浮层，而不是跳一个页面：这是个两秒钟的动作，跳页
+ * 会把当前的分组和筛选丢掉，回来还得重新找到刚才看的地方。
+ *
+ * @param {() => void} onDone 建成之后重画列表
+ */
+function openNewItemSheet(onDone) {
+  const back = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet");
+  const close = () => back.remove();
+
+  sheet.append(el("h2", "sheet-title", tr("items.newItem")));
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "sheet-input";
+  input.placeholder = tr("items.newItemPlaceholder");
+  input.maxLength = 200;
+  sheet.append(input);
+
+  const err = el("p", "sheet-error", "");
+  err.hidden = true;
+  sheet.append(err);
+
+  const row = el("div", "sheet-actions");
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "sheet-close";
+  cancel.textContent = tr("items.cancel");
+  cancel.addEventListener("click", close);
+
+  const create = document.createElement("button");
+  create.type = "button";
+  create.className = "sheet-create";
+  create.textContent = tr("items.create");
+  create.disabled = true;
+
+  // 空标题的建单请求服务端会 400，与其让人点了才知道，不如按不下去。
+  input.addEventListener("input", () => {
+    create.disabled = !input.value.trim();
+  });
+
+  let busy = false;
+  const submit = async () => {
+    const title = input.value.trim();
+    if (!title || busy) return;
+    busy = true;
+    create.disabled = true;
+    create.textContent = tr("items.creating");
+    err.hidden = true;
+    try {
+      const res = await fetch(url("api/items"), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      close();
+      onDone();
+      return;
+    } catch {
+      // 浮层留着、输入留着：失败之后最不该做的事是把人刚打的字扔掉。
+      err.textContent = tr("items.createFailed");
+      err.hidden = false;
+      busy = false;
+      create.disabled = false;
+      create.textContent = tr("items.create");
+    }
+  };
+  create.addEventListener("click", submit);
+  // 打完字直接回车，不用去够按钮——手机上这是唯一顺手的提交方式。
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submit();
+    else if (e.key === "Escape") close();
+  });
+
+  row.append(cancel);
+  row.append(create);
+  sheet.append(row);
+
+  back.addEventListener("click", (e) => {
+    if (e.target === back) close();
+  });
+  back.append(sheet);
+  document.body.append(back);
+  input.focus();
 }
 
 function facetChip(facet) {
@@ -583,6 +674,16 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   // 同步 / 显示已归档 / 分组，三个控件并成第一行。状态文案不进这一行——它可能很长
   // （"只同步了前 200 条"那种），挤进来只会被截断，而那恰恰是不能被悄悄吞掉的话。
   const actions = el("div", "toolbar-actions");
+  const newBtn = document.createElement("button");
+  newBtn.type = "button";
+  newBtn.id = "new-item";
+  newBtn.className = "new-item-btn";
+  newBtn.textContent = tr("items.newItem");
+  // 这里不能用 onChange（它只拿已经拉到的数据重画一遍，新建的单不在里面），
+  // 要 render() 重新去问一次服务端。
+  newBtn.addEventListener("click", () => openNewItemSheet(() => render()));
+  actions.append(newBtn);
+
   const syncBtn = document.createElement("button");
   syncBtn.type = "button";
   syncBtn.id = "sync-items";
@@ -790,7 +891,16 @@ async function render(fromSync = false) {
   // open 为空也不等于没东西可看：还有「显示已归档」这个开关能把它们叫回来，
   // 而那个开关画在 draw() 里的工具条上，在这里短路掉就永远够不到它。
   if (!items.length && !loose.length) {
+    // 一张单都没有时，新建按钮平时待的那条工具条不会画出来——而这正是最需要它
+    // 的时刻。跟上面那条注释同一类坑：在这里短路掉，入口就永远够不到。
     renderEmpty(tr("items.empty"), tr("items.emptyHint"));
+    const first = document.createElement("button");
+    first.type = "button";
+    first.id = "new-item";
+    first.className = "new-item-btn";
+    first.textContent = tr("items.newItem");
+    first.addEventListener("click", () => openNewItemSheet(() => render()));
+    root.append(first);
     return;
   }
 

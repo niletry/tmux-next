@@ -71,6 +71,9 @@ const saved = new Map<string, unknown>();
 /** 页面发出去的写请求，供断言用。每次 mount 清空。 */
 let posted: Array<{ url: string; method: string; body: string }> = [];
 
+/** 设了它之后，下一次 GET /api/items 换成这份——用来演"建完单再拉一次"。 */
+let nextBody: unknown = null;
+
 /** POST /api/items/sync 的应答，个别测试改它；mount() 之间不清也不影响别的测试
  * 用不到它的分支——不涉及同步的测试根本不会打这条路由。 */
 let syncReply: { created: number; updated: number; total: number; truncated: boolean } =
@@ -120,6 +123,7 @@ function patch(shims: Record<string, unknown>) {
  */
 async function mount(body: unknown, store: Record<string, string> = {}, enabledIds: string[] = ["jira"]) {
   posted = [];
+  nextBody = null;
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
   const doc = win.document;
   doc.body.innerHTML = '<header id="header"></header><main id="items"></main>';
@@ -142,7 +146,7 @@ async function mount(body: unknown, store: Record<string, string> = {}, enabledI
         if (href.includes("api/items/sync")) return new Response(JSON.stringify(syncReply));
         return new Response(JSON.stringify({}));
       }
-      if (href.includes("api/items")) return new Response(JSON.stringify(body));
+      if (href.includes("api/items")) return new Response(JSON.stringify(nextBody ?? body));
       if (href.includes("api/plugins")) return new Response(JSON.stringify(enabledIds));
       if (href.includes("api/language")) return new Response(JSON.stringify({ lang: "en" }));
       return new Response("{}");
@@ -739,12 +743,12 @@ test("关闭按钮收起浮层", async () => {
   root.querySelector("button.facet.has-detail")
     ?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
   await new Promise((r) => setTimeout(r, 30));
-  expect(document.querySelector(".sheet-back")).not.toBeNull();
+  expect(document.querySelector(".sheet-backdrop")).not.toBeNull();
 
   document.querySelector(".sheet-close")
     ?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
   await new Promise((r) => setTimeout(r, 30));
-  expect(document.querySelector(".sheet-back")).toBeNull();
+  expect(document.querySelector(".sheet-backdrop")).toBeNull();
 });
 
 
@@ -777,4 +781,136 @@ test("带链接的明细行画成新窗口打开的链接", async () => {
   // 没链接的那行仍然是静态文字，不是一个 href 为空的链接。
   expect(document.querySelectorAll("a.detail-label").length).toBe(1);
   expect(document.querySelectorAll(".detail-row").length).toBe(2);
+});
+
+/**
+ * 新建本地单：只要一个标题。
+ *
+ * 这是首页上唯一一个"从无到有"的动作——在它之前，本地单只能用 curl 建。
+ */
+
+const click = (node: { dispatchEvent: (e: any) => unknown } | null) =>
+  node?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+
+const type = (input: HTMLInputElement, value: string) => {
+  input.value = value;
+  input.dispatchEvent(new (globalThis as any).window.Event("input", { bubbles: true }));
+};
+
+test("新建单按钮开出一个只要标题的浮层", async () => {
+  const root = await mount(payload());
+  click(root.ownerDocument.getElementById("new-item"));
+  await new Promise((r) => setTimeout(r, 20));
+
+  expect(document.querySelector(".sheet-backdrop")).not.toBeNull();
+  expect(document.querySelector(".sheet-input")).not.toBeNull();
+  // 目录、标签都不问——单是工作单元，那些是它之后长出来的东西。
+  expect(document.querySelectorAll(".sheet-input").length).toBe(1);
+});
+
+// 空标题服务端会 400。与其点了才知道，不如按不下去。
+test("标题为空时建立按钮按不下去", async () => {
+  const root = await mount(payload());
+  click(root.ownerDocument.getElementById("new-item"));
+  await new Promise((r) => setTimeout(r, 20));
+
+  const create = document.querySelector(".sheet-create") as HTMLButtonElement;
+  expect(create.disabled).toBe(true);
+
+  const input = document.querySelector(".sheet-input") as HTMLInputElement;
+  type(input, "   ");
+  expect(create.disabled).toBe(true);
+
+  type(input, "修登录页");
+  expect(create.disabled).toBe(false);
+});
+
+test("建单发出 POST，标题去掉首尾空白", async () => {
+  const root = await mount(payload());
+  click(root.ownerDocument.getElementById("new-item"));
+  await new Promise((r) => setTimeout(r, 20));
+
+  type(document.querySelector(".sheet-input") as HTMLInputElement, "  修登录页  ");
+  click(document.querySelector(".sheet-create"));
+  await new Promise((r) => setTimeout(r, 60));
+
+  const req = posted.find((p) => p.url.includes("api/items") && p.method === "POST");
+  expect(req).toBeDefined();
+  expect(JSON.parse(req!.body)).toEqual({ title: "修登录页" });
+});
+
+// 建完必须重新去问一次服务端。只拿手上已有的数据重画，新建的单不在里面——
+// 页面会看起来什么都没发生。
+test("建完重新拉一次列表，新单出现在页面上", async () => {
+  const root = await mount(payload());
+  nextBody = payload({ items: [item({ id: "it-9", title: "刚建的单" })] });
+
+  click(root.ownerDocument.getElementById("new-item"));
+  await new Promise((r) => setTimeout(r, 20));
+  type(document.querySelector(".sheet-input") as HTMLInputElement, "刚建的单");
+  click(document.querySelector(".sheet-create"));
+  await new Promise((r) => setTimeout(r, 120));
+
+  expect(document.querySelector(".sheet-backdrop")).toBeNull();
+  expect(root.textContent).toContain("刚建的单");
+});
+
+// 失败之后最不该做的事是把人刚打的字扔掉。
+test("建单失败时浮层留着、输入留着", async () => {
+  const root = await mount(payload());
+  click(root.ownerDocument.getElementById("new-item"));
+  await new Promise((r) => setTimeout(r, 20));
+
+  const input = document.querySelector(".sheet-input") as HTMLInputElement;
+  type(input, "会失败的单");
+  // 让这次 POST 返回 500
+  const real = globalThis.fetch;
+  (globalThis as any).fetch = async (u: unknown, init?: RequestInit) =>
+    init?.method === "POST" && String(u).includes("api/items")
+      ? new Response("boom", { status: 500 })
+      : real(u as any, init);
+
+  click(document.querySelector(".sheet-create"));
+  await new Promise((r) => setTimeout(r, 60));
+  (globalThis as any).fetch = real;
+
+  expect(document.querySelector(".sheet-backdrop")).not.toBeNull();
+  expect((document.querySelector(".sheet-input") as HTMLInputElement).value).toBe("会失败的单");
+  const err = document.querySelector(".sheet-error") as HTMLElement;
+  expect(err.hidden).toBe(false);
+  expect(err.textContent).toBe(tr("items.createFailed"));
+  // 还能再试一次，不是按死了
+  expect((document.querySelector(".sheet-create") as HTMLButtonElement).disabled).toBe(false);
+});
+
+// 手机上打完字直接回车是唯一顺手的提交方式。
+test("回车提交，Esc 关掉", async () => {
+  const root = await mount(payload());
+  click(root.ownerDocument.getElementById("new-item"));
+  await new Promise((r) => setTimeout(r, 20));
+  const input = document.querySelector(".sheet-input") as HTMLInputElement;
+  type(input, "回车建的单");
+  input.dispatchEvent(new (globalThis as any).window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  expect(posted.some((p) => p.method === "POST" && JSON.parse(p.body).title === "回车建的单")).toBe(true);
+
+  click(root.ownerDocument.getElementById("new-item"));
+  await new Promise((r) => setTimeout(r, 20));
+  (document.querySelector(".sheet-input") as HTMLInputElement)
+    .dispatchEvent(new (globalThis as any).window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(document.querySelector(".sheet-backdrop")).toBeNull();
+});
+
+// 上面几条走的是"一张单都没有"那条分支（空状态里那个按钮）。有单的时候按钮在
+// 工具条上，是另一段代码——两条路都得有入口，否则总有一头够不到。
+test("已经有单时新建按钮在工具条上", async () => {
+  const root = await mount(payload({ items: [item()] }));
+  const btn = root.ownerDocument.getElementById("new-item");
+  expect(btn).not.toBeNull();
+  expect(btn?.closest(".toolbar-actions")).not.toBeNull();
+
+  click(btn);
+  await new Promise((r) => setTimeout(r, 20));
+  expect(document.querySelector(".sheet-input")).not.toBeNull();
 });
