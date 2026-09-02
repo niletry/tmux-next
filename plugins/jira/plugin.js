@@ -21,7 +21,7 @@ export default {
   // 单卡片上的维度 chips：内核没有"哪个插件有哪些维度"的表，dim 就是 i18n 键，
   // 跟着数据一起来。src/i18n.test.ts 单独认这个数组字面量，只把这几个键当成
   // 有真实使用点（跟 titleKey 一样，它也不长成 t()/tr()/data-i18n 的样子）。
-  facetDims: ["jira.status", "jira.epic", "jira.prs", "jira.checks", "jira.assignee"],
+  facetDims: ["jira.type", "jira.status", "jira.epic", "jira.prs", "jira.checks", "jira.assignee"],
   i18n: {
     zh: {
       "jira.title": "工单",
@@ -53,6 +53,7 @@ export default {
       "jira.dead": "已停止",
       "jira.unbind": "解除绑定",
       "jira.open": "进入",
+      "jira.type": "类型",
       "jira.status": "状态",
       "jira.epic": "史诗",
       "jira.prs": "PR",
@@ -89,6 +90,7 @@ export default {
       "jira.dead": "Stopped",
       "jira.unbind": "Unbind",
       "jira.open": "Open",
+      "jira.type": "Type",
       "jira.status": "Status",
       "jira.epic": "Epic",
       "jira.prs": "PRs",

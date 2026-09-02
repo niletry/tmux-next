@@ -159,6 +159,44 @@ function checkFacetTone(state: string): "ok" | "warn" | "dim" {
   return "ok";
 }
 
+/**
+ * 工单类型 → 一组 SVG 路径。
+ *
+ * 内核不认识 epic，也不该认识：类型是 Jira 的概念，而且是开放集合（每个实例都能
+ * 自己造类型）。所以形状由插件给，内核只套外壳——跟顶栏标签的 `plugin.icon` 同源。
+ *
+ * 形状跟工单页 public/jira.js 的 typeIcon() 一致：同一个东西在两个页面上不该长得
+ * 不一样。那边额外用了填充实心的画法（史诗的闪电、缺陷的圆点），这里一律走描边，
+ * 因为内核的外壳是统一的 fill="none"——把填充也做成可配置，等于让每个插件都能改
+ * 内核的图标语言，那正是这个外壳存在的理由的反面。
+ */
+const TYPE_ICONS: Record<string, string> = {
+  // 闪电，Jira 已经把所有人训练成看到它就想到史诗。
+  epic: '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>',
+  // 箭头拐进一个方块：这东西挂在别的东西下面。
+  sub: '<path d="M4 5v6a2 2 0 0 0 2 2h5"/><path d="m9 10 3 3-3 3"/><rect x="13" y="9" width="7" height="8" rx="1.5"/>',
+  bug: '<circle cx="12" cy="12" r="7"/>',
+  story: '<path d="M6 3h12v18l-6-4.5L6 21z"/>',
+  task: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>',
+};
+
+/**
+ * 归一化到 TYPE_ICONS 的键。
+ *
+ * 层级优先：`hierarchy` 是 Jira 自己给的结构，改不掉；而类型**名字**是每个实例
+ * 自己定的，可以被改成任何东西（这个实例上就有中文的"任务"）。名字只在层级说
+ * 不出话时才用来猜，而且猜不中就返回空——少画一个图标，好过画错一个。
+ */
+function typeKey(issue: Issue): string {
+  if (issue.hierarchy >= 1) return "epic";
+  if (issue.hierarchy <= -1) return "sub";
+  const name = issue.type.trim().toLowerCase();
+  if (/^bugs?$|^缺陷$/.test(name)) return "bug";
+  if (/^(story|stories|用户故事|故事)$/.test(name)) return "story";
+  if (/^(task|tasks|任务)$/.test(name)) return "task";
+  return "";
+}
+
 export function facetsFor(
   item: ItemRef,
   issues: Map<string, Issue>,
@@ -169,6 +207,16 @@ export function facetsFor(
   if (!issue) return []; // 缓存没命中：少给几个维度，不阻塞、不给陈旧值
 
   const facets: Facet[] = [
+    {
+      // 类型放在第一位：先说"这是什么"，再说"它到什么程度了"。
+      //
+      // 首页的单列表在此之前完全看不出一张单是史诗、缺陷还是子任务——只有工单号
+      // 和一排状态 chip，而工单号本身不带类型。工单页早就按类型画了不同形状，
+      // 首页没有，于是同一个东西在两个页面上长得不一样。
+      dim: "jira.type",
+      value: issue.type,
+      icon: TYPE_ICONS[typeKey(issue)],
+    },
     {
       dim: "jira.status",
       value: issue.status,

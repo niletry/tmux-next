@@ -208,3 +208,66 @@ test("问不到检查的 PR 仍然列在 PR 明细里", () => {
   expect(got.find((f) => f.dim === "jira.prs")!.detail!.length).toBe(1);
   expect(dims(got)["jira.checks"]).toBeUndefined();
 });
+
+/**
+ * 工单类型这一维。
+ *
+ * 首页的单列表在此之前完全看不出一张单是史诗、缺陷还是子任务——只有工单号和一排
+ * 状态 chip，而工单号本身不带类型。工单页早就按类型画了不同形状，首页没有，于是
+ * 同一个东西在两个页面上长得不一样。
+ *
+ * 形状由插件给（一串 SVG 路径），不是图标名：内核不认识 epic，也不该认识——类型
+ * 是 Jira 的概念，而且是开放集合。内核只套外壳并过一道白名单，见
+ * src/plugin-enrich.test.ts。
+ */
+test("类型是第一个维度：先说这是什么，再说它到哪一步了", () => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map());
+  expect(got[0]!.dim).toBe("jira.type");
+  expect(got[0]!.value).toBe("Task");
+});
+
+/**
+ * 层级优先于名字。
+ *
+ * `hierarchy` 是 Jira 自己给的结构，改不掉；类型**名字**是每个实例自己定的，可以
+ * 被改成任何东西（这个实例上就有中文的"任务"）。拿名字当主判据的话，一个把史诗
+ * 改名叫 "Initiative" 的实例上，所有史诗都会掉成普通工单。
+ */
+test.each([
+  [{ hierarchy: 1, type: "Initiative" }, "史诗按层级认，不按名字"],
+  [{ hierarchy: 1, type: "史诗" }, "改成中文也认"],
+])("%o：%s", (over) => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue(over as never)]]), new Map());
+  const type = got.find((f) => f.dim === "jira.type")!;
+  expect(type.icon).toBe('<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>');
+});
+
+test("子任务有自己的形状", () => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue({ hierarchy: -1 })]]), new Map());
+  const type = got.find((f) => f.dim === "jira.type")!;
+  expect(type.icon).toContain("<rect");
+});
+
+test.each([
+  ["Bug", "circle"],
+  ["Story", "M6 3h12v18"],
+  ["Task", "<rect"],
+  ["任务", "<rect"],
+])("%s 有自己的形状", (name, mark) => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue({ type: name })]]), new Map());
+  expect(got.find((f) => f.dim === "jira.type")!.icon).toContain(mark);
+});
+
+/**
+ * 认不出来的类型不画图标，但仍然给出维度。
+ *
+ * 少画一个图标好过画错一个：一个实例可以有 "Spike"、"Chore"、"技术债" 这类自定义
+ * 类型，随便挑一个形状套上去，等于告诉人一件不成立的事。而类型这个**词**本身
+ * 永远是对的，所以 chip 照出。
+ */
+test("认不出来的类型：有维度，没形状", () => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue({ type: "Spike" })]]), new Map());
+  const type = got.find((f) => f.dim === "jira.type")!;
+  expect(type.value).toBe("Spike");
+  expect(type.icon).toBeUndefined();
+});

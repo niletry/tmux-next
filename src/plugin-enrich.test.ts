@@ -256,3 +256,52 @@ test("非 http/https 的链接被丢掉，但那一行还在", async () => {
   expect(rows.every((r) => r.url === undefined)).toBe(true);
   expect(rows[0]!.label).toBe("坏的");
 });
+
+
+/**
+ * chip 图标：插件给形状，内核套外壳。
+ *
+ * 传的是 SVG 路径而不是图标名，因为内核不认识 epic——史诗和缺陷的区别是 Jira 的
+ * 概念，issue 类型还是个开放集合。跟顶栏标签的 plugin.icon 同源。
+ *
+ * 但这个字段最终会进 innerHTML，而 collectFacets 对插件给的每一个别的字段都做了
+ * 净化（文本限长、tone 白名单、url 只认 http）。留一个字段直通，会让下一个读这段
+ * 代码的人搞不清这里到底管不管，所以它也过一道白名单——下面钉住那道白名单。
+ */
+const withIcon = (icon: unknown): PluginEnricher =>
+  async () => ({ "it-1": [{ dim: "jira.type", value: "Epic", icon } as unknown as Facet] });
+
+test("chip 图标：几何图元原样通过", async () => {
+  const paths = '<path d="M13 2 4 14h6l-1 8 9-12h-6z"/>';
+  const got = await collectFacets(items, { p: withIcon(paths) });
+  expect(got["it-1"]![0]!.icon).toBe(paths);
+});
+
+test("chip 图标：多个图元也通过", async () => {
+  const paths = '<rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="3"/>';
+  const got = await collectFacets(items, { p: withIcon(paths) });
+  expect(got["it-1"]![0]!.icon).toBe(paths);
+});
+
+// 白名单是按"整串必须由自闭合的图元标签组成"写的，不是逐个黑名单去堵——所以
+// script、事件属性、乃至一个多出来的裸文本节点，在语法上就进不来。
+test.each([
+  ['<script>alert(1)</script>', "script 标签"],
+  ['<path d="M0 0" onload="alert(1)"/>', "事件属性"],
+  ['<path d="M0 0"/><script src="x"/>', "夹带一个 script"],
+  ['<image href="javascript:alert(1)"/>', "不在白名单里的元素"],
+  ['<path d="M0 0"/>裸文本', "尾巴上挂文本"],
+  ["", "空串"],
+  [42, "根本不是字符串"],
+])("chip 图标：%s 一律当没给", async (bad) => {
+  const got = await collectFacets(items, { p: withIcon(bad) });
+  expect(got["it-1"]![0]!.icon).toBeUndefined();
+  // 图标被丢掉，facet 本身还在——一个画不出来的图标不该连带把这条维度也吞了。
+  expect(got["it-1"]![0]!.value).toBe("Epic");
+});
+
+test("chip 图标：过长的一律当没给", async () => {
+  const huge = '<path d="' + "M0 0".repeat(600) + '"/>';
+  const got = await collectFacets(items, { p: withIcon(huge) });
+  expect(got["it-1"]![0]!.icon).toBeUndefined();
+});

@@ -726,6 +726,15 @@ a.item-title { color: var(--accent-text); }
 
 .facet .f-dim { opacity: 0.75; }
 
+/* 插件贴在 chip 上的形状。跟字段名一样淡——它是同一句话的图形版，不该比它说的
+   那个词更响。 */
+.facet .f-icon {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
 /* 颜色只从主题变量派生，跟 .note-ok/.note-warn/.note-dim 同一套——
    src/themes.test.ts 要查的就是这条。 */
 .facet.ok { color: var(--ok); }

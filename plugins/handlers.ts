@@ -82,6 +82,40 @@ export const MAX_FACETS_PER_ITEM = 6;
 /** 一个维度底下最多能展开几行明细。一个坏插件不能靠 detail 撑爆浮层。 */
 export const MAX_DETAIL_ROWS = 20;
 
+/** 一个 chip 图标的路径长度上限。够画一个图元组合，不够塞进一整幅图。 */
+const MAX_ICON = 2000;
+
+/**
+ * chip 图标只放行几何图元。
+ *
+ * 这段字符串最终会进 innerHTML。本仓库的插件是编译期常量（没有运行时加载，见
+ * CLAUDE.md），所以这不是在防一个能往里塞代码的攻击者——顶栏的 `plugin.icon`
+ * 一直就是这么渲染的，威胁模型没变。它防的是另一件事：collectFacets 这个函数
+ * 对插件给的**每一个**字段都做了净化（文本限长、tone 白名单、url 只认 http），
+ * 唯独放一个字段直通 innerHTML，会让下一个读这段代码的人搞不清这里到底管不管。
+ * 一条正则把边界说死，比一句"插件是可信的"注释可靠。
+ *
+ * 整串必须由自闭合的图元标签组成，**元素名和属性名都是白名单**，属性值里不许出现
+ * 尖括号或引号。第一版只白名单了元素名、属性名放任意 `[a-zA-Z-]+`，结果
+ * `<path d="M0 0" onload="alert(1)"/>` 语法完全合法地通过了——是 src/plugin-enrich
+ * .test.ts 那条用例把它逼出来的。所以属性也得逐个列，列的都是几何和描边属性，
+ * 没有任何一个能执行代码。
+ */
+const ICON_SHAPES = new RegExp(
+  "^(?:<(?:path|circle|rect|line|polyline|polygon|ellipse)" +
+    '(?:\\s+(?:d|cx|cy|r|rx|ry|x|y|x1|y1|x2|y2|width|height|points|transform|' +
+    'fill|fill-rule|clip-rule|stroke|stroke-width|stroke-linecap|stroke-linejoin|opacity)' +
+    '="[^"<>]*")*\\s*/>)+$',
+);
+
+/** 通过就原样返回，否则当作没给图标。 */
+function safeIconPaths(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const compact = value.trim();
+  if (!compact || compact.length > MAX_ICON) return undefined;
+  return ICON_SHAPES.test(compact) ? compact : undefined;
+}
+
 function trim(value: unknown, max: number): string {
   return typeof value === "string" ? value.slice(0, max) : "";
 }
@@ -171,11 +205,13 @@ export async function collectFacets(
                 });
               }
             }
+            const iconPaths = safeIconPaths(f?.icon);
             facets.push({
               dim,
               value,
               ...(tone ? { tone } : {}),
               ...(detail.length ? { detail } : {}),
+              ...(iconPaths ? { icon: iconPaths } : {}),
             });
           }
           if (facets.length) clean[id] = facets;

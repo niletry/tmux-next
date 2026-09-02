@@ -4,7 +4,7 @@ import { renderHeader } from "./nav.js";
 import { url } from "./root.js";
 import { dimensionsOf, valuesOf, groupItems, filterItems, pruneSelection } from "./facet-view.js";
 import { openPicker } from "./pick-sheet.js";
-import { icon } from "./icons.js";
+import { icon, svgShell } from "./icons.js";
 import { PLUGINS } from "../plugins/registry.js";
 
 // Before anything renders: paints the cached theme synchronously, then
@@ -255,6 +255,15 @@ function facetChip(facet) {
     chip.type = "button";
     chip.className = facet.tone ? `facet has-detail ${facet.tone}` : "facet has-detail";
     chip.addEventListener("click", () => openDetailSheet(`${label}: ${value}`, rows));
+  }
+  // 插件可以给这个 chip 一个形状。内核不问它是什么意思——史诗和缺陷的区别是
+  // Jira 的概念，内核一旦认识 epic 就等于认识了一个插件。它只负责套上跟全站
+  // 一致的外壳，形状本身已经在服务端被限过长、过滤过标签（见 handlers.ts 的
+  // safeIconPaths）。
+  if (facet.icon) {
+    const mark = el("span", "f-icon");
+    mark.innerHTML = svgShell(facet.icon, 13);
+    chip.append(mark);
   }
   chip.append(el("span", "f-dim", label));
   chip.append(el("span", "f-value", value));
