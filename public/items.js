@@ -262,11 +262,14 @@ function itemCard(item, sessions, facets, claimed, onChange) {
 
   for (const session of sessions) card.append(sessionRow(session));
 
-  card.append(itemActions(item, claimed, onChange));
-
+  // 三个动作并成一行：开会话是主动作（保留 accent 底色），刷新和归档是维护动作，
+  // 都收成小按钮靠右。之前它们占了三行——两个半宽按钮加一条整宽的开会话——在
+  // 一屏几十张卡片的列表里，光是卡片自己的操作区就吃掉了大半屏。
+  const actions = itemActions(item, claimed, onChange);
   const more = el("a", "item-new", sessions.length ? tr("items.newSession") : tr("items.firstSession"));
   more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
-  card.append(more);
+  actions.prepend(more);
+  card.append(actions);
   return card;
 }
 
@@ -517,6 +520,8 @@ function filterField(dim, facets, selected, onToggleValue, onRemove) {
 function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   const bar = el("div", "toolbar");
 
+  // 同步 / 显示已归档 / 分组，三个控件并成第一行。状态文案不进这一行——它可能很长
+  // （"只同步了前 200 条"那种），挤进来只会被截断，而那恰恰是不能被悄悄吞掉的话。
   const actions = el("div", "toolbar-actions");
   const syncBtn = document.createElement("button");
   syncBtn.type = "button";
@@ -526,8 +531,6 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   syncBtn.disabled = syncing;
   syncBtn.addEventListener("click", doSync);
   actions.append(syncBtn);
-  if (syncMessage) actions.append(el("span", "sync-status", syncMessage));
-  bar.append(actions);
 
   const archivedWrap = el("label", "show-archived-wrap");
   const archivedToggle = document.createElement("input");
@@ -540,7 +543,7 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   });
   archivedWrap.append(archivedToggle);
   archivedWrap.append(el("span", "toolbar-label", tr("items.showArchived")));
-  bar.append(archivedWrap);
+  actions.append(archivedWrap);
 
   const groupWrap = el("label", "group-by-wrap");
   groupWrap.append(el("span", "toolbar-label", tr("items.groupBy")));
@@ -562,7 +565,11 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
     onChange();
   });
   groupWrap.append(select);
-  bar.append(groupWrap);
+  actions.append(groupWrap);
+
+  bar.append(actions);
+  // 状态文案自己一行，有内容才画。
+  if (syncMessage) bar.append(el("p", "sync-status", syncMessage));
 
   if (!dims.length) return bar;
 

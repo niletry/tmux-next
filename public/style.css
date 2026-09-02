@@ -397,35 +397,45 @@ header .count {
 /* 工具条跟下面的列表之间要有一道边：筛选区本身就是一堆圆角小块，不隔开的话
    它和卡片会糊成一片，扫视时分不清哪里是控件、哪里是内容。
 
-   两列网格而不是自由换行：左列放标签，右列放控件，于是「分组」「筛选」这些
-   同级标签真的对齐在一条竖线上。之前是 flex-wrap，每一行的左边缘由这一行第一个
-   元素自己决定——有背景的按钮、带浏览器默认 margin 的复选框、纯文字标签，三者
-   各差几个像素，看着就是没对齐。 */
+   纵向堆行，每行自己横排：这样每一行的左边缘都是容器内边距，跟"这一行第一个
+   元素恰好是什么"无关。之前是 flex-wrap 自由换行，行首分别是有背景的按钮、带
+   浏览器默认 margin 的复选框、纯文字标签，三者各差几像素，看着就是没对齐。 */
 .toolbar {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
   padding: 10px 12px 12px;
   margin-bottom: 12px;
   border-bottom: 1px solid var(--edge);
 }
 
-/* 整行独占的那些：同步那一行、以及"显示已归档"。 */
-.toolbar-actions,
-.show-archived-wrap {
-  grid-column: 1 / -1;
+/* 第一行：同步 / 显示已归档 / 分组。窄屏放不下时换行，行内仍然左对齐。 */
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
 }
 
-/* 让内部的 label/控件直接落进网格的两列里，标签因此跟别行的标签同列。 */
-.group-by-wrap,
-.filter-row {
-  display: contents;
+.show-archived-wrap,
+.group-by-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* 浏览器给复选框的默认 margin 会把它顶离左边缘几个像素，跟上下两行错开。 */
 .show-archived-wrap input {
   margin: 0;
+}
+
+/* 筛选那一行：标签在左，字段块在右并可换行。 */
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
 }
 
 /* 同步按钮 + 它的状态文案，一整行独占——truncated 的提示可能比较长，跟别的
@@ -455,7 +465,9 @@ header .count {
   cursor: default;
 }
 
+/* 独立一行，不跟按钮抢宽度——"只同步了前 N 条"这类话被截断等于没说。 */
 .sync-status {
+  margin: 0;
   color: var(--dim);
   font-size: 12px;
 }
@@ -492,6 +504,7 @@ header .count {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  flex: 1 1 0;
   min-width: 0;
 }
 
@@ -693,21 +706,26 @@ a.item-title { color: var(--accent); }
 
 /* 刷新/归档：跟 .item-new 一样是卡片底部的按钮行，但两个动作横排而不是各占
    一整行——它们不是"下一步"，是维护动作，不该抢 .item-new 的视觉分量。 */
+/* 一行装下三个动作，靠右——卡片的主角是标题、维度和会话，操作区不该跟它们抢
+   分量。之前两个半宽按钮加一条整宽横幅共占三行，一屏里全是按钮。 */
 .item-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
 }
 
 .item-refresh,
 .item-archive {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   border: 1px solid var(--edge);
-  border-radius: 8px;
-  padding: 8px;
+  border-radius: 999px;
+  padding: 4px 12px;
   background: var(--raised);
-  color: var(--fg);
-  font-size: 13px;
+  color: var(--dim);
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -717,17 +735,18 @@ a.item-title { color: var(--accent); }
   cursor: default;
 }
 
+/* 主动作：跟另外两个同高同形，只靠 accent 底色区分主次，并排在最左。 */
 .item-new {
-  display: block;
-  margin-top: 10px;
-  text-align: center;
-  padding: 8px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  margin-right: auto;
+  padding: 4px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .unassigned {
