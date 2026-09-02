@@ -1024,11 +1024,14 @@ test("工具条的新建和同步都带图标", async () => {
 });
 
 /**
- * 「只看没开工的」。
+ * 按「开没开工」筛：全部 / 没开工 / 在跑。
  *
- * 这条本来就能从筛选行挑出来（item.agent 选「无会话」），做成开关是因为它是这份
- * 列表最常用的一次筛选——「接下来该干哪张」。
+ * 这条本来就能从筛选行挑出来（item.agent 选那几个取值），单拎出来是因为它是这份
+ * 列表最常用的两次筛选。做成三态而不是复选框：复选框只能问"是不是没开工"，反过来
+ * 那一半问不出来，而那一半是同样常用的一问。
  */
+
+const KEY = "tmux-next.items.sessionFilter";
 
 const idlePair = () => payload({
   items: [item(), item({ id: "it-2", title: "在跑的" })],
@@ -1038,32 +1041,63 @@ const idlePair = () => payload({
   },
 });
 
-test("开关关着时两张单都在", async () => {
+test("默认「全部」，两张单都在", async () => {
   const root = await mount(idlePair());
   expect(root.querySelectorAll(".item-card").length).toBe(2);
 });
 
-test("开关开着只剩没有会话的那张", async () => {
-  const root = await mount(idlePair(), { "tmux-next.items.idleOnly": "1" });
+test("选「没开工」只剩没有会话的那张", async () => {
+  const root = await mount(idlePair(), { [KEY]: "none" });
   const cards = [...root.querySelectorAll(".item-card")];
   expect(cards.length).toBe(1);
   expect(cards[0]!.textContent).toContain("修登录页");
 });
 
-test("勾上开关立刻生效并记住", async () => {
+// 反过来这一半，正是复选框做不到的那一半。
+test("选「在跑」只剩有会话的那张", async () => {
+  const root = await mount(idlePair(), { [KEY]: "active" });
+  const cards = [...root.querySelectorAll(".item-card")];
+  expect(cards.length).toBe(1);
+  expect(cards[0]!.textContent).toContain("在跑的");
+});
+
+test("改选立刻生效并记住", async () => {
   const store: Record<string, string> = {};
   const root = await mount(idlePair(), store);
-  const toggle = root.ownerDocument.getElementById("idle-only") as unknown as HTMLInputElement;
-  toggle.checked = true;
-  toggle.dispatchEvent(new (globalThis as any).window.Event("change", { bubbles: true }));
+  const select = root.ownerDocument.getElementById("session-filter") as unknown as HTMLSelectElement;
+  // 三个选项都在，"全部"排头
+  expect([...select.options].map((o) => o.value)).toEqual(["", "none", "active"]);
+
+  select.value = "active";
+  select.dispatchEvent(new (globalThis as any).window.Event("change", { bubbles: true }));
   await new Promise((r) => setTimeout(r, 30));
 
   expect(root.querySelectorAll(".item-card").length).toBe(1);
-  expect(store["tmux-next.items.idleOnly"]).toBe("1");
+  expect(store[KEY]).toBe("active");
 });
 
-// 跟筛选行是"与"，不是替代——两个都开就是"没会话、且状态是 X"。
-test("开关跟 facet 筛选叠加，不是互相取代", async () => {
+test("回到「全部」把筛掉的那张放回来", async () => {
+  const store: Record<string, string> = { [KEY]: "none" };
+  const root = await mount(idlePair(), store);
+  expect(root.querySelectorAll(".item-card").length).toBe(1);
+
+  const select = root.ownerDocument.getElementById("session-filter") as unknown as HTMLSelectElement;
+  select.value = "";
+  select.dispatchEvent(new (globalThis as any).window.Event("change", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(root.querySelectorAll(".item-card").length).toBe(2);
+});
+
+// 存的东西可能来自旧版本，也可能被人手改过。筛空的列表比全部更让人摸不着头脑。
+test("存着的值认不出来就当「全部」", async () => {
+  const root = await mount(idlePair(), { [KEY]: "1" });
+  expect(root.querySelectorAll(".item-card").length).toBe(2);
+  const select = root.ownerDocument.getElementById("session-filter") as unknown as HTMLSelectElement;
+  expect(select.value).toBe("");
+});
+
+// 跟筛选行是"与"，不是替代——两个都设就是"没会话、且状态是 X"。
+test("开工筛选跟 facet 筛选叠加，不是互相取代", async () => {
   const body = payload({
     items: [item(), item({ id: "it-2", title: "没会话但状态不同" })],
     facets: {
@@ -1072,7 +1106,7 @@ test("开关跟 facet 筛选叠加，不是互相取代", async () => {
     },
   });
   const root = await mount(body, {
-    "tmux-next.items.idleOnly": "1",
+    [KEY]: "none",
     "tmux-next.items.filter": JSON.stringify({ "jira.status": ["Doing"] }),
   });
   const cards = [...root.querySelectorAll(".item-card")];
@@ -1080,9 +1114,9 @@ test("开关跟 facet 筛选叠加，不是互相取代", async () => {
   expect(cards[0]!.textContent).toContain("修登录页");
 });
 
-// 计数数的是屏幕上真能数出来的卡片数，开关生效时也不能例外。
-test("开关生效时头部计数跟着变", async () => {
-  await mount(idlePair(), { "tmux-next.items.idleOnly": "1" });
+// 计数数的是屏幕上真能数出来的卡片数，这条筛选生效时也不能例外。
+test("开工筛选生效时头部计数跟着变", async () => {
+  await mount(idlePair(), { [KEY]: "none" });
   expect(document.getElementById("count")?.textContent).toBe(tr("items.count", { n: 1 }));
 });
 

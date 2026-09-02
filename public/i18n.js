@@ -94,7 +94,10 @@ const zh = {
   "items.archive": "归档",
   "items.unarchive": "取消归档",
   "items.showArchived": "显示已归档",
-  "items.idleOnly": "只看没开工的",
+  "items.sessionFilter": "开工",
+  "items.sessionAll": "全部",
+  "items.sessionNone": "没开工",
+  "items.sessionActive": "在跑",
 
   // 内核维度的字面量映射——跟 list.js:52 附近同一招：facet.dim 是动态查的，
   // src/i18n.test.ts 的死键扫描只认字符串字面量，拼出来的键名它看不见，会把这
@@ -335,7 +338,10 @@ const en = {
   "items.archive": "Archive",
   "items.unarchive": "Unarchive",
   "items.showArchived": "Show archived",
-  "items.idleOnly": "Not started only",
+  "items.sessionFilter": "Work",
+  "items.sessionAll": "All",
+  "items.sessionNone": "Not started",
+  "items.sessionActive": "In progress",
 
   "item.agent": "Agent",
   "item.sessions": "Sessions",
