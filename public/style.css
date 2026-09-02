@@ -1330,7 +1330,8 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 12px 12px;
+  /* Sits after the last session section, so the gap it needs is above it. */
+  margin: 12px;
   padding: 12px 14px;
   border-radius: 12px;
   background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));

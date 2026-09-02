@@ -706,13 +706,16 @@ async function render() {
     setCount(sessions.length ? tr("list.count", { n: sessions.length }) : "");
     setTabWaiting(sessions.filter((s) => s.idle).length);
 
-    const children = [];
-    if (restorable.length) children.push(restoreBanner(restorable));
-    children.push(
+    // The banner goes last: restorable records are dead sessions from a past
+    // boot, and the live ones are what the page is for. Above the list it
+    // pushed the actual work down the screen for a count that never needs
+    // acting on right now.
+    const children = [
       ...(sessions.length
         ? sections(sessions, itemsById)
         : [el("p", "empty", tr("list.noSessions"))]),
-    );
+    ];
+    if (restorable.length) children.push(restoreBanner(restorable));
     listEl.replaceChildren(...children);
   } catch {
     setCount("");

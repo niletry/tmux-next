@@ -352,6 +352,16 @@ test("the restore banner offers a picker rather than restoring outright", async 
   expect(posted.filter((p) => p.url.includes("api/restore"))).toHaveLength(0);
 });
 
+test("the restore banner sits below the sessions, not above them", async () => {
+  // Restorable records are dead sessions from a past boot; the live ones are
+  // what the page is for. Putting the banner first pushed the actual work
+  // down the screen for a count that is only ever informational.
+  const root = await mount([session()], {}, RESTORABLE);
+  const classes = [...root.children].map((e) => e.className);
+  expect(classes.filter((c) => c.includes("restore-banner"))).toHaveLength(1);
+  expect(classes[classes.length - 1]).toContain("restore-banner");
+});
+
 test("the picker lists every restorable session, grouped by directory", async () => {
   const root = await mount([session()], {}, RESTORABLE);
   await openPicker(root as unknown as Element);
