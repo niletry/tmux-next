@@ -160,10 +160,12 @@ export async function renderHeader(current) {
     location.href = url("new.html");
   });
 
-  const [{ initNotifyToggle }, { openThemeSheet }] = await Promise.all([
-    import("./push.js"),
-    import("./theme-sheet.js"),
-  ]);
-  gear.addEventListener("click", openThemeSheet);
+  // 设置是一整页，不是浮层了：配置只会越来越多，而底部浮层每多一节就把上一节推出
+  // 屏幕。跟 ＋ 一样，这是链接的活。带上 from=<当前页>，好让那边的返回知道来路。
+  gear.addEventListener("click", () => {
+    location.href = url(`settings.html?from=${encodeURIComponent(current)}`);
+  });
+
+  const { initNotifyToggle } = await import("./push.js");
   initNotifyToggle(bell);
 }

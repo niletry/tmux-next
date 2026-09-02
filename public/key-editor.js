@@ -1,14 +1,11 @@
-import { THEMES, THEME_ORDER, ANSI_NAMES } from "./themes.js";
-import { setTheme, cachedTheme } from "./theme-apply.js";
-import { LANGS, LANG_LABELS } from "./i18n.js";
-import { setLang, lang as currentLang, tr } from "./i18n-apply.js";
-import {
-  ROWS,
-  USAGE_OF,
-  readLayout,
-  writeLayout,
-  clearLayout,
-} from "./key-layout.js";
+// 虚拟按键的重排编辑器。
+//
+// 从 theme-sheet.js 拆出来：配置从一个浮层变成一整页之后，那个文件里只剩下这一块
+// 还是浮层——按键要拖着排序，得占满屏幕，塞进设置页里反而挤。所以它留作浮层，从
+// 设置页打开，返回时回到设置页而不是再开一个浮层。
+
+import { tr } from "./i18n-apply.js";
+import { USAGE_OF, readLayout, writeLayout } from "./key-layout.js";
 import { url } from "./root.js";
 
 function el(tag, className, text) {
@@ -16,162 +13,6 @@ function el(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-/** The slots worth showing as swatches: the six hues plus the secondary grey. */
-const SWATCH_SLOTS = [1, 2, 3, 4, 5, 6, 8];
-
-/**
- * A miniature of what the theme actually looks like in use.
- *
- * A row of swatches shows the palette but not the result. This reproduces the
- * shapes Claude Code actually draws — the dim status line, the prompt, a diff
- * line — because those are what a person is really choosing between, and the
- * dim grey in particular is invisible in a swatch strip yet decides whether the
- * theme is comfortable to read.
- */
-function preview(theme) {
-  const box = el("div", "theme-prev");
-  box.style.background = theme.background;
-  const line = (colour, text) => {
-    const span = el("span", null, text);
-    span.style.color = colour;
-    return span;
-  };
-  const [, red, green, , , magenta] = theme.ansi;
-  box.append(
-    line(theme.ansi[8], "  ⏵⏵ don't ask on\n"),
-    line(theme.ansi[7], "❯ "),
-    line(theme.foreground, "fix the hook\n"),
-    line(magenta, "✻"),
-    line(theme.foreground, " Cogitated 1m21s\n"),
-    line(theme.ansi[8], "  ⎿ "),
-    line(green, "+ list-panes -a\n"),
-    line(theme.ansi[8], "    "),
-    line(red, "- display-message"),
-  );
-  return box;
-}
-
-/**
- * The appearance picker.
- *
- * Colours only. Font size stays on the terminal toolbar, because it is a
- * property of the screen you are holding rather than of the machine — the two
- * are stored differently for the same reason.
- */
-export function openThemeSheet() {
-  const backdrop = el("div", "sheet-backdrop");
-  const sheet = el("div", "sheet");
-  sheet.append(el("h2", null, tr("settings.title")));
-
-  // Language sits above the palette: it changes the words the rest of this
-  // sheet is written in, so choosing it first is the order that makes sense.
-  const langRow = el("div", "agent-row");
-  for (const code of LANGS) {
-    const btn = el("button", "agent-chip", LANG_LABELS[code]);
-    btn.type = "button";
-    if (code === currentLang()) btn.classList.add("on");
-    btn.addEventListener("click", async () => {
-      if (code === currentLang()) return;
-      await setLang(code);
-      // The sheet is built from strings in the old language, so rebuild it
-      // rather than trying to patch each node.
-      backdrop.remove();
-      openThemeSheet();
-    });
-    langRow.append(btn);
-  }
-  sheet.append(el("h3", "sheet-sub", tr("settings.language")), langRow);
-  sheet.append(el("h3", "sheet-sub", tr("settings.theme")));
-
-  const list = el("div", "theme-list");
-  const close = () => backdrop.remove();
-
-  let current = document.documentElement.dataset.theme || cachedTheme();
-
-  for (const name of THEME_ORDER) {
-    const theme = THEMES[name];
-    const row = el("button", "theme-opt");
-    row.type = "button";
-    if (name === current) row.classList.add("on");
-    row.setAttribute("aria-pressed", String(name === current));
-
-    const radio = el("span", "theme-radio");
-    const body = el("div", "theme-body");
-    body.append(el("b", null, theme.label));
-
-    const swatches = el("div", "theme-swatches");
-    for (const i of SWATCH_SLOTS) {
-      const chip = el("i");
-      chip.style.background = theme.ansi[i];
-      chip.title = ANSI_NAMES[i];
-      swatches.append(chip);
-    }
-    body.append(swatches, preview(theme));
-    row.append(radio, body);
-
-    row.addEventListener("click", async () => {
-      if (name === current) return close();
-      // Paint first: the whole sheet recolours under the finger, which is the
-      // point of choosing here rather than on a settings page.
-      current = name;
-      for (const other of list.children) {
-        const on = other === row;
-        other.classList.toggle("on", on);
-        other.setAttribute("aria-pressed", String(on));
-      }
-      const stored = await setTheme(name);
-      if (!stored) {
-        // The page is already correct; only the machine-wide record failed.
-        note.textContent = tr("settings.saveFailed");
-        return;
-      }
-      close();
-    });
-
-    list.append(row);
-  }
-
-  const note = el("p", "sheet-note", tr("settings.note"));
-
-  // Virtual keys: which toolbar keys sit where. Per device, like font size.
-  const keysHead = el("h3", "sheet-sub", tr("settings.keys"));
-  const keysActions = el("div", "agent-row");
-  const keysEdit = el("button", "btn", tr("settings.keysEdit"));
-  const keysReset = el("button", "btn", tr("settings.keysReset"));
-  keysEdit.addEventListener("click", () => {
-    close();
-    openKeyEditor();
-  });
-  keysReset.addEventListener("click", () => {
-    clearLayout();
-    const done = tr("settings.keysResetDone");
-    keysReset.textContent = done;
-    keysReset.disabled = true;
-    setTimeout(() => {
-      keysReset.textContent = tr("settings.keysReset");
-      keysReset.disabled = false;
-    }, 1500);
-  });
-  keysActions.append(keysEdit, keysReset);
-  sheet.append(
-    keysHead,
-    keysActions,
-    el("p", "sheet-note", tr("settings.keysNote")),
-  );
-
-  const cancel = el("button", "btn", tr("common.close"));
-  cancel.addEventListener("click", close);
-  const actions = el("div", "sheet-actions");
-  actions.append(cancel);
-
-  sheet.append(list, note, actions);
-  backdrop.append(sheet);
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) close();
-  });
-  document.body.append(backdrop);
 }
 
 // --- virtual-key editor ----------------------------------------------------
@@ -217,10 +58,8 @@ export function openKeyEditor() {
   const sheet = el("div", "sheet");
   const head = el("div", "agent-row");
   const back = el("button", "btn", tr("settings.keysBack"));
-  back.addEventListener("click", () => {
-    backdrop.remove();
-    openThemeSheet();
-  });
+  // 关掉就行：设置页一直在底下，不像原来那样需要再把上一个浮层开回来。
+  back.addEventListener("click", () => backdrop.remove());
   head.append(back);
   sheet.append(el("h2", null, tr("settings.keys")), head);
 

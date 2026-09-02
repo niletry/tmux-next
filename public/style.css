@@ -711,7 +711,7 @@ a.item-title { color: var(--accent-text); }
 }
 
 /* 值可以被截断，字段名不行。两个都 shrink 的时候先被压扁的是字段名——史诗那颗
-   chip 会缩成「E… QBO → Orbit Ledger in-pl…」，读的人既不知道这是哪个维度，也
+   chip 会缩成「E… 迁移账套到新总账 in-pl…」，读的人既不知道这是哪个维度，也
    没读全取值，两头都没落着。字段名是这颗 chip 里最短、也最不能丢的一半。 */
 .facet .f-dim {
   flex: 0 0 auto;
@@ -2230,4 +2230,62 @@ a.detail-label:hover {
      居中，三行合起来读作一条工具条。 */
   .keys { flex-direction: row; flex-wrap: wrap; justify-content: center; }
   .keys button { flex: 0 0 auto; }
+}
+
+/* --- 设置页 ------------------------------------------------------------- */
+
+/* 配置从底部浮层搬成一整页：浮层每多一节就把上一节推出屏幕，而配置只会越来越多。
+   一节一个标题，往下加就是了。 */
+.settings-page main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 12px calc(24px + env(safe-area-inset-bottom));
+}
+
+.settings-page header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.settings-back {
+  flex: 0 0 auto;
+  color: var(--accent-text);
+  text-decoration: none;
+  font-size: 15px;
+}
+
+.settings-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* 节与节的间距在这里统一给，不靠每节内部各写各的 margin——那样加一节就得记得
+   补一次，而漏掉的那次只在某个特定顺序下才看得出来。 */
+.settings-section {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.settings-section:last-child {
+  border-bottom: 0;
+}
+
+.settings-head {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.settings-note {
+  margin: 10px 0 0;
+  color: var(--text-2);
+  font-size: 12.5px;
 }
