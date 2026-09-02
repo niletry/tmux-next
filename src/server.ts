@@ -5,7 +5,7 @@ import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
-import { SERVERS, enabledPlugins, collectFacets } from "../plugins/handlers";
+import { SERVERS, enabledPlugins, collectFacets, runSync, refreshFromSource } from "../plugins/handlers";
 import type { Facet } from "../plugins/types";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
@@ -358,6 +358,25 @@ export function startServer(
         const found = live.find((s) => s.name === session);
         if (!found) return new Response("no such session", { status: 404 });
         await bindSession(session, id, found.sessionId);
+        return Response.json({ ok: true });
+      }
+
+      // 必须排在下面的 ^/api/items/([^/]+)$ 之前，否则 "sync" 会被那条正则
+      // 当成一个 item id 吞掉——同一个坑，/api/items/bind 已经踩过一次。
+      if (url.pathname === "/api/items/sync" && req.method === "POST") {
+        return Response.json(await runSync());
+      }
+
+      // 三种情况都归到同一个 404：单不存在、单没有来源、来源没人认领。页面
+      // 用这个 404 决定不画刷新按钮，而不是画一个注定失败的按钮——所以三种
+      // 情况必须收敛成同一个响应，不能分出更细的状态码。
+      const itemRefresh = url.pathname.match(/^\/api\/items\/([^/]+)\/refresh$/);
+      if (itemRefresh && req.method === "POST") {
+        const id = decodeURIComponent(itemRefresh[1]!);
+        const found = (await readItems()).find((i) => i.id === id);
+        if (!found?.source) return new Response("no source", { status: 404 });
+        const ok = await refreshFromSource(found.source.provider, found.source.ref);
+        if (!ok) return new Response("no source", { status: 404 });
         return Response.json({ ok: true });
       }
 

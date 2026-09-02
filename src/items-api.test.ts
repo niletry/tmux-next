@@ -180,3 +180,36 @@ test("/api/sessions 带上 items 与每条会话的 itemId", async () => {
   expect(Array.isArray(body.items)).toBe(true);
   for (const s of body.sessions) expect(s.itemId).toBeNull();
 });
+
+test("同步返回汇总形状", async () => {
+  const res = await json("/api/items/sync", "POST", {});
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as Record<string, unknown>;
+  expect(Object.keys(body).sort()).toEqual(["created", "total", "truncated", "updated"]);
+});
+
+// sync 必须排在 /api/items/:id 之前，否则会被当成一个 item id。
+test("sync 不会被当成 item id", async () => {
+  const res = await json("/api/items/sync", "POST", {});
+  expect(res.status).toBe(200);
+});
+
+test("刷新不存在的单给 404", async () => {
+  const res = await json("/api/items/it-nope/refresh", "POST", {});
+  expect(res.status).toBe(404);
+});
+
+// 没有来源就没有可刷的东西。
+test("刷新一张没有来源的本地单给 404", async () => {
+  const created = await makeItem("本地的活");
+  const res = await json(`/api/items/${created.id}/refresh`, "POST", {});
+  expect(res.status).toBe(404);
+});
+
+test("刷新一张来源无人认领的单给 404", async () => {
+  const created = await (
+    await json("/api/items", "POST", { title: "外星来源", source: { provider: "nobody", ref: "x" } })
+  ).json() as { id: string };
+  const res = await json(`/api/items/${created.id}/refresh`, "POST", {});
+  expect(res.status).toBe(404);
+});
