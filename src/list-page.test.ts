@@ -45,14 +45,15 @@ function session(over: Record<string, unknown> = {}) {
 }
 
 /** Bodies the page POSTed, so a test can assert on what it asked the server for. */
-let posted: { url: string; body: string }[] = [];
+let posted: { url: string; body: string; method: string }[] = [];
 
 function stubFetch(sessions: unknown[], restorable: unknown[] = [], items: unknown[] = []) {
   return (async (u: unknown, init?: RequestInit) => {
     const url = String(u);
-    if (init?.method === "POST") {
-      posted.push({ url, body: String(init.body ?? "") });
+    if (init?.method && init.method !== "GET") {
+      posted.push({ url, body: String(init.body ?? ""), method: init.method });
       if (url.includes("api/restore")) return new Response(JSON.stringify({ restored: 1 }));
+      if (url.includes("/bind")) return new Response(JSON.stringify({ ok: true }));
     }
     // 新形状：{ sessions, items }。裸数组那条兼容分支留在 list.js 里，因为装成 PWA
     // 的旧页面会打到新服务器，反过来也会。
@@ -122,9 +123,14 @@ async function mount(
     // and keep the process from exiting.
     setInterval: () => 0,
   };
+  // 一个测试里 mount 两次时，globalThis 上放着的是**上一层 shim**；把它存进 saved
+  // 就等于让 afterEach 把假 fetch 当原值还原，之后整个进程里所有文件的 fetch 都是
+  // 假的。只有第一层才记录原值。（items-page.test.ts 踩过这个坑，全量红 97 个而
+  // 单文件全绿。）
+  const first = !patched;
   patched = true;
   for (const key of PATCHED) {
-    if (key in globalThis) saved.set(key, (globalThis as Record<string, unknown>)[key]);
+    if (first && key in globalThis) saved.set(key, (globalThis as Record<string, unknown>)[key]);
     Object.defineProperty(globalThis, key, {
       value: shims[key], writable: true, configurable: true,
     });
@@ -439,4 +445,108 @@ test("list.js 的源码里不出现任何具体插件的 id", async () => {
   const source = await Bun.file(new URL("../public/list.js", import.meta.url).pathname).text();
   expect(source).not.toContain("jira");
   expect(source).not.toContain("gallery");
+});
+
+/**
+ * 方向二：把一个会话挂到某张单下。
+ *
+ * 反方向在首页（src/items-page.test.ts 的「卡片上的关联按钮」几条），两边打的是
+ * 同一个接口——所以这里盯的是**这一页有没有入口、请求的形状对不对**。
+ */
+
+const clickIt = (n: unknown) =>
+  (n as { dispatchEvent: (e: unknown) => void } | null)?.dispatchEvent(
+    new (globalThis as any).window.Event("click", { bubbles: true }),
+  );
+
+const workItem = (over: Record<string, unknown> = {}) => ({
+  id: "it-1",
+  title: "修登录页",
+  source: null,
+  tags: [],
+  createdAt: NOW,
+  closedAt: null,
+  ...over,
+});
+
+async function openMenu(root: { querySelector(s: string): unknown }) {
+  clickIt(root.querySelector(".more"));
+  await new Promise((r) => setTimeout(r, 20));
+}
+
+test("⋯ 菜单里有挂到单下", async () => {
+  const root = await mount([session()], {}, [], [workItem()]);
+  await openMenu(root as never);
+  const labels = [...document.querySelectorAll(".sheet-menu .btn")].map((b) => b.textContent);
+  expect(labels).toContain("Link to a work item");
+});
+
+test("选一张单就 POST 到那张单的 bind 上，带的是这个会话名", async () => {
+  const root = await mount([session({ name: "orbit" })], {}, [], [workItem()]);
+  await openMenu(root as never);
+  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  await new Promise((r) => setTimeout(r, 20));
+
+  clickIt(document.querySelector(".pick-row"));
+  await new Promise((r) => setTimeout(r, 60));
+
+  const req = posted.find((p) => p.url.includes("/bind"));
+  expect(req?.method).toBe("POST");
+  expect(req?.url).toContain("api/items/it-1/bind");
+  expect(JSON.parse(req!.body)).toEqual({ session: "orbit" });
+});
+
+// 已经挂着的会话，菜单上的字要变——「挂到单下」在这时候是句错话。
+test("已经挂着时菜单说的是改挂，并且给解除", async () => {
+  const root = await mount([session({ itemId: "it-1" })], {}, [], [workItem()]);
+  await openMenu(root as never);
+  const labels = [...document.querySelectorAll(".sheet-menu .btn")].map((b) => b.textContent);
+  expect(labels).toContain("Move to another item");
+
+  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(document.querySelector(".pick-row")?.className).toContain("current");
+  expect(document.querySelector(".btn.danger")?.textContent).toBe("Unlink");
+});
+
+test("解除关联走 DELETE，按会话名", async () => {
+  const root = await mount([session({ name: "orbit", itemId: "it-1" })], {}, [], [workItem()]);
+  await openMenu(root as never);
+  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  await new Promise((r) => setTimeout(r, 20));
+  clickIt(document.querySelector(".btn.danger"));
+  await new Promise((r) => setTimeout(r, 60));
+
+  const req = posted.find((p) => p.method === "DELETE");
+  expect(req?.url).toContain("api/items/bind?session=orbit");
+});
+
+// 没挂东西的时候画一个"解除"按钮，等于让人怀疑自己是不是记错了。
+test("没挂着的时候不画解除", async () => {
+  const root = await mount([session()], {}, [], [workItem()]);
+  await openMenu(root as never);
+  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(document.querySelector(".btn.danger")).toBeNull();
+});
+
+// 归档的单不该出现在候选里——挂上去等于把活会话塞进一个已经收起来的抽屉。
+test("归档的单不列为候选", async () => {
+  const root = await mount([session()], {}, [], [
+    workItem(),
+    workItem({ id: "it-2", title: "旧的", closedAt: NOW }),
+  ]);
+  await openMenu(root as never);
+  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  await new Promise((r) => setTimeout(r, 20));
+  const labels = [...document.querySelectorAll(".pick-label")].map((n) => n.textContent);
+  expect(labels).toEqual(["修登录页"]);
+});
+
+test("一张单都没有时说清楚，而不是给一张空白纸", async () => {
+  const root = await mount([session()], {}, [], []);
+  await openMenu(root as never);
+  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(document.querySelector(".sheet-warn")?.textContent).toBe("No work items yet");
 });

@@ -3,6 +3,7 @@ import { initLang, tr } from "./i18n-apply.js";
 import { renderHeader } from "./nav.js";
 import { url } from "./root.js";
 import { dimensionsOf, valuesOf, groupItems, filterItems, pruneSelection } from "./facet-view.js";
+import { openPicker } from "./pick-sheet.js";
 import { PLUGINS } from "../plugins/registry.js";
 
 // Before anything renders: paints the cached theme synchronously, then
@@ -321,8 +322,45 @@ async function claimedProviders() {
  * @param {Set<string>} claimed
  * @param {() => Promise<void>} onChange
  */
-function itemActions(item, claimed, onChange) {
+function itemActions(item, claimed, onChange, link) {
   const wrap = el("div", "item-actions");
+
+  // 把一个已经跑着的会话挂到这张单下。后端按会话名覆盖写，所以选一个已经挂在
+  // 别处的会话就是"改挂"——这正是想要的语义，一个会话同时属于两张单说不通。
+  const linkBtn = document.createElement("button");
+  linkBtn.type = "button";
+  linkBtn.className = "item-link";
+  linkBtn.textContent = tr("items.linkSession");
+  linkBtn.addEventListener("click", () => {
+    openPicker({
+      title: tr("items.linkSession"),
+      options: link.sessions.map((s) => {
+        const holder = link.itemOf.get(s.name);
+        return {
+          id: s.name,
+          label: s.name,
+          note:
+            holder && holder !== item.id
+              ? tr("items.boundTo", { title: link.titleOf.get(holder) ?? holder })
+              : undefined,
+          current: holder === item.id,
+        };
+      }),
+      emptyText: tr("items.noSessions"),
+      cancelText: tr("items.cancel"),
+      failedText: tr("items.linkFailed"),
+      onPick: async (name) => {
+        const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}/bind`), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ session: name }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        await onChange();
+      },
+    });
+  });
+  wrap.append(linkBtn);
 
   if (item.source && claimed.has(item.source.provider)) {
     const refresh = document.createElement("button");
@@ -383,7 +421,7 @@ function itemActions(item, claimed, onChange) {
  *
  * 「再开一个会话」永远在，不是「打开」——一张单多个会话是常态，不是边角情况。
  */
-function itemCard(item, sessions, facets, claimed, onChange) {
+function itemCard(item, sessions, facets, claimed, onChange, link) {
   const card = el("article", "item-card");
 
   const head = el("div", "item-head");
@@ -416,7 +454,7 @@ function itemCard(item, sessions, facets, claimed, onChange) {
   // 三个动作并成一行：开会话是主动作（保留 accent 底色），刷新和归档是维护动作，
   // 都收成小按钮靠右。之前它们占了三行——两个半宽按钮加一条整宽的开会话——在
   // 一屏几十张卡片的列表里，光是卡片自己的操作区就吃掉了大半屏。
-  const actions = itemActions(item, claimed, onChange);
+  const actions = itemActions(item, claimed, onChange, link);
   const more = el("a", "item-new", sessions.length ? tr("items.newSession") : tr("items.firstSession"));
   more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
   actions.prepend(more);
@@ -875,6 +913,14 @@ async function render(fromSync = false) {
     else mine.set(b.itemId, [found]);
   }
 
+  // 「关联已有会话」用的候选表：所有会话，外加每个会话此刻挂在哪张单下，
+  // 好在选项上标出来。只算一次，别在每张卡片里重建。
+  const link = {
+    sessions,
+    itemOf: new Map(bindings.filter((b) => b.live).map((b) => [b.session, b.itemId])),
+    titleOf: new Map(items.map((i) => [i.id, i.title])),
+  };
+
   const open = items.filter((i) => !i.closedAt);
   // 未归单——不是某个维度的取值，是待归类区：不参与分组也不参与筛选，
   // 永远在最后画。
@@ -960,13 +1006,13 @@ async function render(fromSync = false) {
         const section = el("section");
         section.append(el("h2", "group-name", groupLabel(groupBy, group.value)));
         for (const item of group.items) {
-          section.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], claimed, render));
+          section.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], claimed, render, link));
         }
         root.append(section);
       }
     } else {
       for (const item of filtered) {
-        root.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], claimed, render));
+        root.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], claimed, render, link));
       }
     }
 

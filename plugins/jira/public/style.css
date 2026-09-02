@@ -600,3 +600,65 @@ button.jira-session-status.ask:active { opacity: 0.6; }
   color: var(--dim);
   font-size: 12px;
 }
+
+
+/* ---- 宽屏 ----------------------------------------------------------------
+
+   断点必须跟内核样式表写同一个 900px。原生 CSS 的 @media 里用不了自定义属性，
+   所以这个字面量在每张样式表里各写一遍，由 src/responsive.test.ts 跨文件盯住
+   取值集合——三个文件在三个不同宽度换布局，只在某个特定窗口宽度现形，靠读代码
+   发现不了。
+
+   内核那边宽屏把 .card 的 margin 清零、改由网格容器给间距。工单卡片不是 .card，
+   所以那条规则够不到这里，得自己来——这是对的：内核不该认识 .jira-card。 */
+@media (min-width: 900px) {
+  #issues {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 12px;
+    padding-inline: 12px;
+  }
+
+  /* 卡片之外的一切横跨整行。反过来逐个列出工具条、空状态、横幅，以后新加一种
+     行就会悄悄变成一个格子坐在第一张卡片旁边，而那是没人会去检查的失败方式。 */
+  #issues > * { grid-column: 1 / -1; }
+  #issues > .jira-card { grid-column: auto; margin: 0; }
+
+  /* 自带横向内边距的整行元素抵掉容器那 12px，左边缘跟窄屏时保持一致。 */
+  #issues > .jira-toolbar,
+  #issues > .empty { margin-inline: -12px; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .jira-session-link,
+  .jira-unbind,
+  .jira-start,
+  .jira-refresh,
+  .jira-pr-main,
+  button.jira-ci,
+  .jira-again,
+  a.jira-key,
+  a.jira-parent,
+  a.jira-check,
+  button.jira-session-status.ask {
+    cursor: pointer;
+  }
+
+  .jira-unbind:hover,
+  .jira-start:hover,
+  .jira-again:hover,
+  button.jira-ci:hover {
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  .jira-session-link:hover,
+  .jira-refresh:hover,
+  .jira-pr-main:hover,
+  a.jira-key:hover,
+  a.jira-parent:hover,
+  a.jira-check:hover,
+  button.jira-session-status.ask:hover {
+    opacity: 0.8;
+  }
+}

@@ -160,8 +160,7 @@ header .count {
   white-space: nowrap;
 }
 
-/* The first heading sits directly under the nav and needs no extra air. */
-.group:first-child /* The restore picker. Long by nature — one row per recoverable conversation —
+/* The restore picker. Long by nature — one row per recoverable conversation —
    so the list scrolls inside the sheet while the action stays reachable. */
 .restore-list {
   max-height: 50vh;
@@ -718,6 +717,7 @@ a.item-title { color: var(--accent); }
 }
 
 .item-refresh,
+.item-link,
 .item-archive {
   flex: 0 0 auto;
   border: 1px solid var(--edge);
@@ -730,6 +730,7 @@ a.item-title { color: var(--accent); }
 }
 
 .item-refresh:disabled,
+.item-link:disabled,
 .item-archive:disabled {
   opacity: 0.6;
   cursor: default;
@@ -1741,8 +1742,282 @@ a.detail-label:hover {
   margin-top: 0;
 }
 
+/* 选择浮层里的一列候选：一行一个，长名字截断而不是把状态挤出去。 */
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.pick-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--raised);
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* 当前已经挂着的那一行仍然可点，只是标出来——藏掉会让人以为自己记错了。 */
+.pick-row.current {
+  border-color: var(--accent);
+}
+
+.pick-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-note {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.pick-row:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* 带明细的 chip 是个按钮，得看出来能点。 */
 .facet.has-detail {
   border: 1px solid var(--edge);
   cursor: pointer;
+}
+
+
+/* ==========================================================================
+   宽屏与精确指针
+   ==========================================================================
+
+   这个文件在此之前只有一套布局：手机。所有规则都假设单列铺满、拇指点击、
+   刘海屏内边距。下面两组查询是补上另一半，并且刻意分成两个正交的判断：
+
+     (min-width)                      —— 宽不宽，管布局
+     (hover: hover) and (pointer:fine)—— 有没有精确指针，管交互
+
+   不能合成一个开关，因为两边的反例都真实存在：iPad 横屏是宽的但没有鼠标，
+   把软键盘条绑在宽度上，那台设备就失去 Esc / Tab / 方向键——而它恰恰最需要
+   这几个键；反过来，把窗口拖窄一半的 Mac 有鼠标但不宽，把 hover 绑在宽度上，
+   鼠标反馈就凭空消失。
+
+   断点只允许 900px 这一个值，内核和每个插件样式表都写它。原生 CSS 的 @media
+   里用不了自定义属性，没有任何机制阻止第二个人写 768px、第三个人写 1024px，
+   于是三个文件在三个不同宽度换布局——那种 bug 只在某个特定窗口宽度现形。
+   src/responsive.test.ts 跨文件盯住这个取值集合。
+
+   指针查询必须带 pointer: fine：带触摸屏的 Windows 笔记本 hover 和 pointer
+   两项都会报 true，只查 hover 会把它误判成纯鼠标设备。
+   ========================================================================== */
+
+@media (min-width: 900px) {
+  /* 内容列，不是铺满。一行文本超过 ~90 个字符就难读，卡片标题横穿 1440px
+     只会让眼睛在行末找不到下一行的行首。 */
+  .list-page > main {
+    max-width: 1200px;
+    margin-inline: auto;
+  }
+
+  /* 卡片网格。auto-fill + minmax 而不是写死列数：900px 得到两列、1440px 三列、
+     超宽屏四列，不必为每一档再加一个断点——而每加一个断点就多一处会漂移的
+     字面量。340px 是下限，卡片里有标题、facet chips 和会话行，再窄就开始逐个
+     截断了。
+
+     单列表（#items）的卡片有时直接挂在 main 上、有时包在分组 section 里，
+     会话列表（#list）的卡片一律在 .group 里，所以三个容器都要成为网格。 */
+  #items,
+  #items > section,
+  #list .group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 12px;
+    padding-inline: 12px;
+    /* 每张卡按自己的内容取高，不跟同一行里最高的那张对齐。默认的 stretch 会把
+       一张只有两行的卡撑到隔壁那张的高度，多出来的是一块什么都没有的色块——
+       看着像内容加载失败了。 */
+    align-items: start;
+  }
+
+  /* 默认横跨整行，卡片才是唯一进入网格的东西。反过来写（逐个列出工具条、
+     标题、空状态、恢复横幅……）意味着以后新加一种行就会悄悄变成一个格子，
+     坐在第一张卡片旁边——那是没人会想到去检查的失败方式。 */
+  #items > *,
+  #items > section > *,
+  #list .group > * {
+    grid-column: 1 / -1;
+  }
+  #items > .item-card,
+  #items > section > .item-card,
+  #list .group > .card {
+    grid-column: auto;
+  }
+
+  /* 卡片的横向留白改由容器的 padding 给，纵向间距改由 gap 给；留着原来的
+     margin 会和 gap 叠加成一道宽窄不一的沟。 */
+  .card,
+  .item-card {
+    margin: 0;
+  }
+
+  /* 自带横向内边距的整行元素，抵掉容器那 12px，好让它们的左边缘跟窄屏时
+     一致——工具条的下边框尤其要通到两端，否则它看着像半截。 */
+  #items > .toolbar,
+  #list .group > .group-head,
+  #items > .empty {
+    margin-inline: -12px;
+  }
+
+  /* 单标题在窄卡片里换行，不再省略号截断。窄屏时它必须是一行——一屏就那么高，
+     一个三行的标题会把下面的卡片全推下去；宽屏是横向紧、纵向松，反过来了，
+     而截断掉的恰恰是这张卡唯一说得清"这是什么"的那句话。 */
+  .item-title {
+    white-space: normal;
+    overflow: visible;
+  }
+
+  /* 工具条：窄屏纵向堆行是因为放不下，宽屏放得下。动作在左、筛选在右，
+     两块之间留一道明显比行内间距大的沟，免得读成一整片控件。 */
+  .toolbar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: 24px;
+  }
+  .toolbar-actions { flex: 0 0 auto; }
+  .filter-row { flex: 1 1 320px; }
+  /* 窄屏一个字段独占一行，宽屏让它们并排——字段块本身很矮，竖着排会把工具条
+     拉得比第一张卡片还高。 */
+  .filter-field { flex: 1 1 220px; }
+
+  /* 页头粘顶。桌面窗口高，滚下去几屏之后没有任何东西能切回另一个标签页。 */
+  .list-page > header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
+    border-bottom: 1px solid var(--edge);
+  }
+
+  /* 构建号跟着内容列的右边缘走，而不是贴在离内容一米远的屏幕角上。仍然是
+     fixed：它在窄屏就是个不参与布局的角标，让一个装饰元素在两种宽度下换两套
+     定位方式，是拿复杂度换一个没人会注意的对齐。 */
+  .ver {
+    right: max(8px, calc((100% - 1200px) / 2 + 8px));
+  }
+
+  /* 浮层：从下缘长出来的东西在桌面上没有语义——那个手势和那半截圆角都是在
+     说"从屏幕底下拉上来的"，而桌面既没有底缘手势也没有拇指。改成居中卡片。
+
+     .sheet 在本文件里定义了两次（确认框一处、明细浮层一处，后者胜出，两份的
+     max-width 和圆角还不一样）。那是既有的债，这次不重构它，但下面这条覆盖
+     必须同时压住两份，否则会出现"确认框居中了、明细浮层还贴着底"的分裂。 */
+  .sheet-backdrop {
+    align-items: center;
+  }
+  .sheet {
+    border-radius: 14px;
+    padding-bottom: 20px;
+    max-height: min(80dvh, 640px);
+  }
+
+  /* 新建页那类"进去做一件事就走"的页面：窄屏时 520px 的上限已经在生效，
+     宽屏只需要把底部那圈 safe-area 补白去掉。 */
+  .page-body {
+    padding-bottom: 20px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  /* 全站在此之前只有 :active。鼠标划过任何东西都毫无反馈，光标还是箭头——
+     一张卡片看不出能点。下面按现有的每一处 :active 配一份 hover。
+
+     颜色一律用 color-mix 从主题变量派生，跟 --card / --raised 自己的做法一致。
+     这里绝不能出现颜色字面量：src/themes.test.ts 会拦，而且字面量会从对比度
+     测试里隐身。 */
+  .card-main,
+  .more,
+  .keys button,
+  header .hbell,
+  header .new,
+  header .back,
+  .term-back,
+  .term-kill,
+  .term-rename,
+  .status-relogin,
+  .copy-link,
+  .dir-row,
+  .resume-entry,
+  .hist-row,
+  .voice-rec,
+  .hseg-item:not(.on),
+  .sheet-close,
+  .sheet-create:not(:disabled),
+  .sync-btn:not(:disabled),
+  .new-item-btn,
+  .restore-btn:not(:disabled),
+  .item-refresh,
+  .item-link,
+  .item-archive {
+    cursor: pointer;
+  }
+
+  .card-main:hover,
+  .more:hover,
+  .keys button:hover,
+  .copy-link:hover,
+  .dir-row:hover,
+  .resume-entry:hover,
+  .hist-row:hover,
+  .restore-row:hover {
+    background: color-mix(in srgb, var(--card) 86%, var(--fg));
+  }
+
+  header .hbell:not(.on):hover,
+  .term-kill:hover,
+  .term-rename:hover {
+    background: var(--raised);
+    color: var(--fg);
+  }
+
+  header .new:hover,
+  header .back:hover,
+  .term-back:hover,
+  .status-relogin:hover,
+  .voice-rec:not(:disabled):hover,
+  .sync-btn:not(:disabled):hover,
+  .restore-btn:not(:disabled):hover,
+  header .hbell.on:hover {
+    opacity: 0.8;
+  }
+
+  .hseg-item:not(.on):hover { color: var(--fg); }
+
+  /* 终端页的软键盘条：有物理键盘时三行全部摊开，展开箭头收起来。
+
+     纯 CSS 覆盖那两条 display 规则，JS 那边继续加减 .expanded 类，视觉上是空
+     操作——所以不会出现 aria-expanded 说一套、屏幕显示另一套：那个按钮本身
+     已经不在了。
+
+     为什么不干脆整条藏掉：里面的图片上传、文件上传、粘贴、复制、字号加减在
+     桌面上一样有用，物理键盘替代得了的只有 Esc / Tab / 方向键。藏一半留一半
+     需要 JS 分辨，那是另一轮的事。 */
+  .keys-more { display: flex; }
+  #keys-toggle { display: none; }
+
+  /* 按钮不再平分整个桌面宽度——那会变成一排巨大的色块。改成按内容取宽、
+     居中，三行合起来读作一条工具条。 */
+  .keys { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+  .keys button { flex: 0 0 auto; }
 }

@@ -1,6 +1,7 @@
 import { initTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
 import { renderHeader } from "./nav.js";
+import { openPicker } from "./pick-sheet.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
@@ -166,16 +167,18 @@ function pinBadge() {
  * The ⋯ menu: pin to the top, or end the session. Pinning is one tap; ending
  * still goes through its own confirming dialog.
  */
-function openActions(session) {
+function openActions(session, itemsById) {
   const dialog = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
   sheet.append(el("p", "sheet-name", session.name));
 
   const menu = el("div", "sheet-menu");
   const pinBtn = el("button", "btn", tr(session.pinned ? "list.unpin" : "list.pin"));
+  // 挂到一张单下。反方向（在单上挑会话）在首页，两边打的是同一个接口。
+  const linkBtn = el("button", "btn", tr(session.itemId ? "list.relinkItem" : "list.linkItem"));
   const endBtn = el("button", "btn danger", tr("list.endSession"));
   const cancel = el("button", "btn", tr("list.cancel"));
-  menu.append(pinBtn, endBtn, cancel);
+  menu.append(pinBtn, linkBtn, endBtn, cancel);
   sheet.append(menu);
   dialog.append(sheet);
   document.body.append(dialog);
@@ -199,6 +202,48 @@ function openActions(session) {
     }
     close();
     render();
+  });
+
+  linkBtn.addEventListener("click", () => {
+    close();
+    const items = [...(itemsById?.values() ?? [])].filter((i) => !i.closedAt);
+    openPicker({
+      title: tr("list.linkItem"),
+      options: items.map((i) => ({
+        id: i.id,
+        label: i.title,
+        current: i.id === session.itemId,
+      })),
+      emptyText: tr("list.noItems"),
+      cancelText: tr("list.cancel"),
+      failedText: tr("list.linkFailed"),
+      onPick: async (id) => {
+        const res = await fetch(`api/items/${encodeURIComponent(id)}/bind`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ session: session.name }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        render();
+      },
+      // 只有已经挂着的时候才给"解除"——没挂的时候画一个不做事的按钮，
+      // 等于让人怀疑自己是不是记错了。
+      ...(session.itemId
+        ? {
+            clear: {
+              label: tr("list.unlinkItem"),
+              onPick: async () => {
+                const res = await fetch(
+                  `api/items/bind?session=${encodeURIComponent(session.name)}`,
+                  { method: "DELETE" },
+                );
+                if (!res.ok) throw new Error(String(res.status));
+                render();
+              },
+            },
+          }
+        : {}),
+    });
   });
 
   endBtn.addEventListener("click", () => {
@@ -293,7 +338,7 @@ function card(session, itemsById) {
     // The button sits on top of the card link; do not follow it.
     e.preventDefault();
     e.stopPropagation();
-    openActions(session);
+    openActions(session, itemsById);
   });
 
   wrapper.append(link, more);

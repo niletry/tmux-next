@@ -137,3 +137,31 @@
 .viewer-nav.prev { left: 8px; }
 .viewer-nav.next { right: 8px; }
 .viewer-nav:active { background: rgba(20, 22, 26, 0.85); }
+
+
+/* ---- 宽屏 ----------------------------------------------------------------
+
+   断点跟内核样式表同一个 900px；src/responsive.test.ts 跨文件盯住这个取值。
+
+   缩略图格子本来就是 auto-fill 网格，宽屏只需要把下限抬上去：140px 的格子在
+   手机上一行放三个刚好，在 1200px 的内容列里会排出八列指甲盖，看不清是什么。 */
+@media (min-width: 900px) {
+  .gal-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .gal-cell,
+  .gal-upload-btn,
+  .viewer-close,
+  .viewer-nav { cursor: pointer; }
+
+  .gal-cell:hover { background: color-mix(in srgb, var(--card) 86%, var(--fg)); }
+  .gal-upload-btn:hover,
+  .viewer-dl:hover { opacity: 0.85; }
+  .viewer-close:hover { background: var(--raised); }
+  /* 翻页键平时半透明地压在图上，鼠标停上去就该实起来——这跟它的 :active 是
+     同一个终点，只是提前到悬停。 */
+  .viewer-nav:hover { background: var(--card); }
+}

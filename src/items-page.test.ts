@@ -914,3 +914,65 @@ test("已经有单时新建按钮在工具条上", async () => {
   await new Promise((r) => setTimeout(r, 20));
   expect(document.querySelector(".sheet-input")).not.toBeNull();
 });
+
+/**
+ * 方向一：在单上挂一个已经跑着的会话。
+ *
+ * 反方向在会话列表（src/list-page.test.ts），两边打的是同一个接口。
+ */
+
+test("卡片上的关联按钮列出所有会话，并标出别人已经占着的", async () => {
+  const root = await mount(payload({
+    items: [item(), item({ id: "it-2", title: "改搜索" })],
+    sessions: [session({ name: "甲" }), session({ name: "乙" })],
+    bindings: [{ session: "乙", itemId: "it-2", live: true }],
+  }));
+
+  click(root.querySelector(".item-link"));
+  await new Promise((r) => setTimeout(r, 20));
+
+  const rows = [...document.querySelectorAll(".pick-row")];
+  expect(rows.map((r) => r.querySelector(".pick-label")?.textContent)).toEqual(["甲", "乙"]);
+  // 已经挂在别处的要说明白挂在哪——否则选下去就是一次看不见的改挂。
+  expect(rows[1]!.querySelector(".pick-note")?.textContent).toContain("改搜索");
+  expect(rows[0]!.querySelector(".pick-note")).toBeNull();
+});
+
+test("选一个会话就 POST 到这张单的 bind 上", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    sessions: [session({ name: "甲" })],
+  }));
+
+  click(root.querySelector(".item-link"));
+  await new Promise((r) => setTimeout(r, 20));
+  click(document.querySelector(".pick-row"));
+  await new Promise((r) => setTimeout(r, 60));
+
+  const req = posted.find((p) => p.url.includes("/bind"));
+  expect(req?.method).toBe("POST");
+  expect(req?.url).toContain("api/items/it-1/bind");
+  expect(JSON.parse(req!.body)).toEqual({ session: "甲" });
+});
+
+// 挂在自己名下的那个要标出来，不是藏起来：藏掉会让人以为自己记错了。
+test("已经挂在本单下的会话标成当前项", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    sessions: [session({ name: "甲" })],
+    bindings: [{ session: "甲", itemId: "it-1", live: true }],
+  }));
+
+  click(root.querySelector(".item-link"));
+  await new Promise((r) => setTimeout(r, 20));
+  const row = document.querySelector(".pick-row")!;
+  expect(row.className).toContain("current");
+  expect(row.querySelector(".pick-note")).toBeNull();
+});
+
+test("一个会话都没有时说清楚", async () => {
+  const root = await mount(payload({ items: [item()], sessions: [] }));
+  click(root.querySelector(".item-link"));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(document.querySelector(".sheet-warn")?.textContent).toBe(tr("items.noSessions"));
+});
