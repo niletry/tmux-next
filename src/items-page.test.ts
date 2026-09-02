@@ -104,7 +104,14 @@ function patch(shims: Record<string, unknown>) {
   }
 }
 
-async function mount(body: unknown, store: Record<string, string> = {}) {
+/**
+ * `enabledIds` 是 /api/plugins 该答出来的启用插件 id 列表——默认 `["jira"]`，
+ * 跟真实部署的默认状态一致（jira 插件默认是启用的）。刷新按钮该不该画，现在
+ * 要看这份列表跟每个插件清单自己声明的 `provides` 的交集，不再只看
+ * `item.source` 存不存在，所以大多数测试不用管这个参数；只有故意测
+ * "没人认领这个来源"的那条会传空数组。
+ */
+async function mount(body: unknown, store: Record<string, string> = {}, enabledIds: string[] = ["jira"]) {
   posted = [];
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
   const doc = win.document;
@@ -129,7 +136,7 @@ async function mount(body: unknown, store: Record<string, string> = {}) {
         return new Response(JSON.stringify({}));
       }
       if (href.includes("api/items")) return new Response(JSON.stringify(body));
-      if (href.includes("api/plugins")) return new Response(JSON.stringify([]));
+      if (href.includes("api/plugins")) return new Response(JSON.stringify(enabledIds));
       if (href.includes("api/language")) return new Response(JSON.stringify({ lang: "en" }));
       return new Response("{}");
     }) as typeof fetch,
@@ -530,6 +537,15 @@ test("有来源的单画刷新按钮", async () => {
 // 没有来源就没有可刷的东西——画一个必然失败的按钮比不画更糟。
 test("没有来源的本地单不画刷新按钮", async () => {
   const root = await mount(payload({ items: [item()] }));
+  expect(root.querySelector(".item-refresh")).toBeNull();
+});
+
+// 有来源，但没有任何启用的插件声明 provides 里含这个 provider——TMUX_NEXT_
+// DISABLE_PLUGINS=jira 就是这个状况：/api/plugins 答不出 "jira"，点了就是一次
+// 必然 404 的请求。这是这条 review 里的 Important 1：按钮不该画出来，而不是
+// 画出来再让点击去发现打不通。
+test("有来源，但没有启用的插件认领这个 provider 时不画刷新按钮", async () => {
+  const root = await mount(payload({ items: [withSource()] }), {}, []);
   expect(root.querySelector(".item-refresh")).toBeNull();
 });
 

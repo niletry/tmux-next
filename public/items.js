@@ -3,6 +3,7 @@ import { initLang, tr } from "./i18n-apply.js";
 import { renderHeader } from "./nav.js";
 import { url } from "./root.js";
 import { dimensionsOf, valuesOf, groupItems, filterItems } from "./facet-view.js";
+import { PLUGINS } from "../plugins/registry.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
@@ -15,7 +16,9 @@ initLang().then(async () => {
   // both resolve in the same tick, and whichever settles first decides whether
   // #count exists yet. Losing the race meant setCount() silently wrote to a
   // node that didn't exist, and it never got a text node created after the
-  // fact — the count stayed permanently blank with nothing to say so.
+  // fact — worst case was a blank count for up to one 5-second poll interval
+  // (see setInterval(refresh, 5000) below), not "permanently blank" as an
+  // earlier version of this comment claimed.
   await renderHeader("items");
   render();
 });
@@ -124,7 +127,39 @@ function sessionRow(session) {
 }
 
 /**
- * 单张单的动作：刷新（有来源才画）、归档/取消归档（永远画）。
+ * 服务端到底认领了哪些 source.provider。
+ *
+ * `item.source` 单独一件事只说明这张单**有**来源，不说明**有谁能刷它**——
+ * /api/plugins 只答启用的插件 id，从来不答它们的 provides，浏览器手上唯一能
+ * 拼出"这个 provider 被谁认领了"这件事的数据，是同构的 registry.js（跟 nav.js
+ * 画 tab 用的是同一份 import），拿它跟 /api/plugins 的启用 id 取交集。
+ *
+ * 问不到就当没人认领：画一个几乎必然 404 的按钮，比不画更糟——TMUX_NEXT_DISABLE_
+ * PLUGINS 关掉一个插件时，它的刷新入口也该跟着它的 tab、它的 /api/<id> 一起消失，
+ * 而不是留在页面上等着点了才报错。
+ *
+ * @returns {Promise<Set<string>>}
+ */
+async function claimedProviders() {
+  try {
+    const res = await fetch(url("api/plugins"));
+    if (!res.ok) throw new Error(String(res.status));
+    const ids = await res.json();
+    const enabled = new Set(Array.isArray(ids) ? ids : []);
+    const out = new Set();
+    for (const p of PLUGINS) {
+      if (!enabled.has(p.id)) continue;
+      for (const provider of p.provides ?? []) out.add(provider);
+    }
+    return out;
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * 单张单的动作：刷新（有来源、且有启用的插件认领那个来源才画）、归档/取消归档
+ * （永远画）。
  *
  * 两个动作都是"点了就打一次接口，成功了就整页重新 render()"——不在本地拼装
  * 变化后的状态，因为服务端才是真相（尤其刷新，它可能把标题、状态都换了）。
@@ -132,12 +167,13 @@ function sessionRow(session) {
  * "操作失败"的通用键，没有必要为这两个动作各造一个新键。
  *
  * @param {*} item
+ * @param {Set<string>} claimed
  * @param {() => Promise<void>} onChange
  */
-function itemActions(item, onChange) {
+function itemActions(item, claimed, onChange) {
   const wrap = el("div", "item-actions");
 
-  if (item.source) {
+  if (item.source && claimed.has(item.source.provider)) {
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "item-refresh";
@@ -196,7 +232,7 @@ function itemActions(item, onChange) {
  *
  * 「再开一个会话」永远在，不是「打开」——一张单多个会话是常态，不是边角情况。
  */
-function itemCard(item, sessions, facets, onChange) {
+function itemCard(item, sessions, facets, claimed, onChange) {
   const card = el("article", "item-card");
 
   const head = el("div", "item-head");
@@ -226,7 +262,7 @@ function itemCard(item, sessions, facets, onChange) {
 
   for (const session of sessions) card.append(sessionRow(session));
 
-  card.append(itemActions(item, onChange));
+  card.append(itemActions(item, claimed, onChange));
 
   const more = el("a", "item-new", sessions.length ? tr("items.newSession") : tr("items.firstSession"));
   more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
@@ -400,7 +436,7 @@ async function doSync() {
   } finally {
     syncing = false;
   }
-  await render();
+  await render(true);
 }
 
 /** 维度显示名：内核维度走字面量表，插件维度走通用字典查找，理由同 facetChip。 */
@@ -623,12 +659,24 @@ function setTabWaiting(count) {
   if (link) link.href = count ? "favicon-alert.svg" : "favicon.svg";
 }
 
-async function render() {
+/**
+ * @param {boolean} [fromSync] 这次 render() 是不是 doSync() 结束后触发的那一次。
+ *
+ * syncMessage 是模块级的，不会自己过期——不传或传 false（归档/刷新单张之后的
+ * onChange、定时轮询的 refresh()）就清掉它。不清的话，同步一次之后随手归档一张
+ * 单，工具条会继续显示一小时前那次同步的结果，像是刚刚才同步过。
+ */
+async function render(fromSync = false) {
+  if (!fromSync) syncMessage = "";
   let body;
+  let claimed;
   try {
     const res = await fetch(url("api/items"));
     if (!res.ok) throw new Error(String(res.status));
     body = await res.json();
+    // claimedProviders() 自己兜住失败、从不抛，跟 fetch("api/items") 并发问没有
+    // 意义——两次请求彼此独立，串起来只是白等一次往返。
+    claimed = await claimedProviders();
   } catch {
     renderEmpty(tr("items.offline"));
     return;
@@ -682,14 +730,9 @@ async function render() {
     const showArchived = loadShowArchived();
     const visible = showArchived ? items : open;
 
-    // 头部计数跟卡片渲染同一份集合——数的是实际画出来的东西，不是后端给了
-    // 多少条。之前它读的是 items.length：归档一张单之后这个数字纹丝不动，
-    // 跟卡片数对不上，看着像页面没反应过来。
-    setCount(tr("items.count", { n: visible.length }));
-
-    // 分组/筛选的选项也要限定在同一份集合上：facets 是按全部 items（含归档）
-    // 算的，选项摊开时就可能出现一个只有归档单才有的取值——点上去正好落进
-    // "没有符合筛选的单"，而屏幕上一张归档单都看不见，用户搞不清哪里出的错。
+    // 分组/筛选的选项要限定在"看得见"的这份集合上：facets 是按全部 items（含
+    // 归档）算的，选项摊开时就可能出现一个只有归档单才有的取值——点上去正好
+    // 落进"没有符合筛选的单"，而屏幕上一张归档单都看不见，用户搞不清哪里出的错。
     const visibleFacets = {};
     for (const it of visible) if (facets[it.id]) visibleFacets[it.id] = facets[it.id];
     const dims = dimensionsOf(visibleFacets);
@@ -697,6 +740,12 @@ async function render() {
     const groupBy = loadGroupBy(dims);
     const selected = loadFilter();
     const filtered = filterItems(visible, visibleFacets, selected);
+
+    // 头部计数数的是筛完之后真正画出来的那些卡片，不是 visible.length——facet
+    // 筛选生效时两者会不一样：filtered 是用户此刻在屏幕上能数出来的数字，
+    // visible 还包含被筛掉、根本没画出来的单。之前读 visible.length，筛选一开
+    // 数字就跟卡片数对不上，看着像页面没反应过来。
+    setCount(tr("items.count", { n: filtered.length }));
 
     root.replaceChildren();
     root.append(buildToolbar(dims, visibleFacets, groupBy, selected, showArchived, draw));
@@ -710,13 +759,13 @@ async function render() {
         const section = el("section");
         section.append(el("h2", "group-name", groupLabel(groupBy, group.value)));
         for (const item of group.items) {
-          section.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], render));
+          section.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], claimed, render));
         }
         root.append(section);
       }
     } else {
       for (const item of filtered) {
-        root.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], render));
+        root.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], claimed, render));
       }
     }
 
