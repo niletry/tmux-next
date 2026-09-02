@@ -144,7 +144,11 @@ export function renderNewSession(root) {
   let home = "";
   let current = null;
   let entries = [];
-  let history = []; // past conversations for `current`
+  // 不叫 history：这个函数里还要用 window.history 改地址栏和后退，同名的局部变量
+  // 会把它整个遮掉。曾经就是这样——syncUrl 第一行的 `typeof history?.replaceState`
+  // 打在这个数组上恒为假，整个地址栏同步从来没生效过，而两个 history.back() 打在
+  // 数组上直接抛。
+  let pastRuns = []; // past conversations for `current`
   let busy = false;
 
   // Leaving is the browser's back, not a close button — the directory you are
@@ -201,6 +205,13 @@ export function renderNewSession(root) {
       const value = incoming.get(key);
       if (value) params.set(key, value);
     }
+    // 单号也要带上，否则中途刷新一次就丢了：会话照样建得出来，只是不挂在任何单
+    // 下，而首页是按单画的——它会看着像凭空消失。
+    //
+    // 取模块作用域的 itemId 而不是再从 URL 里读一遍：URL 正是这个函数在改写的
+    // 东西，漏带过一次就再也捡不回来；itemId 是进这个页面那一刻定下的，只要页面
+    // 还活着它就是对的。
+    if (itemId) params.set("item", itemId);
     const url = `new.html?${params}`;
     if (url === location.pathname.slice(1) + location.search) return;
     try {
@@ -344,7 +355,7 @@ export function renderNewSession(root) {
   // Fetches the directory's past conversations so screen 2 can show them, and
   // reveals the entry button only when there is something to resume.
   async function refreshHistory(dir) {
-    history = [];
+    pastRuns = [];
     resumeEntry.style.display = "none";
     let conversations;
     try {
@@ -356,14 +367,14 @@ export function renderNewSession(root) {
     }
     // A later browse() may have moved on while this was in flight.
     if (dir !== current || !conversations || !conversations.length) return;
-    history = conversations;
-    resumeEntry.textContent = tr("new.resumeEntryCount", { n: history.length });
+    pastRuns = conversations;
+    resumeEntry.textContent = tr("new.resumeEntryCount", { n: pastRuns.length });
     resumeEntry.style.display = "";
   }
 
   function renderHistory() {
     historyBox.replaceChildren();
-    for (const c of history) {
+    for (const c of pastRuns) {
       const row = el("button", "hist-row");
       row.append(el("span", "hist-title", c.title || c.id.slice(0, 8)));
       row.append(el("span", "hist-time", relativeTime(c.mtime)));

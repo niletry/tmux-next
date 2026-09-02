@@ -918,7 +918,9 @@ async function render(fromSync = false) {
   const link = {
     sessions,
     itemOf: new Map(bindings.filter((b) => b.live).map((b) => [b.session, b.itemId])),
-    titleOf: new Map(items.map((i) => [i.id, i.title])),
+    // 认单认的是单号，不是标题——所以"现挂在某单下"优先报单号，没有来源的本地单
+    // 才退回标题。
+    titleOf: new Map(items.map((i) => [i.id, i.source?.ref || i.title])),
   };
 
   const open = items.filter((i) => !i.closedAt);

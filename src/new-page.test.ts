@@ -84,8 +84,11 @@ async function mount(fetchImpl = stubFetch(), path = "/new.html") {
     localStorage: { getItem: () => null, setItem: () => {} },
     fetch: fetchImpl,
   };
+  // 一个测试里 mount 两次时 globalThis 上放着的是上一层 shim，把它存进 saved 会让
+  // afterEach 把假 fetch 当原值还原，之后整个进程所有文件的 fetch 都是假的。
+  const first = saved.size === 0;
   for (const key of PATCHED) {
-    if (key in globalThis) saved.set(key, (globalThis as Record<string, unknown>)[key]);
+    if (first && key in globalThis) saved.set(key, (globalThis as Record<string, unknown>)[key]);
     Object.defineProperty(globalThis, key, {
       value: shims[key], writable: true, configurable: true,
     });
@@ -197,4 +200,40 @@ test("没有 item 参数时，创建成功不会尝试绑定", async () => {
   await new Promise((r) => setTimeout(r, 100));
 
   expect(calls.some((u) => u.includes("/bind"))).toBe(false);
+});
+
+/**
+ * 单号必须扛得住这个页面自己改写 URL。
+ *
+ * syncUrl 每次浏览目录都会重写一遍 query，而它原来只把 `name` 和 `return` 带过去。
+ * 它那条注释写明了存在的理由就是"中途刷新还知道自己要去哪"——那么漏掉 `item` 时，
+ * 刷新之后会话照样建得出来，只是不挂在任何单下；首页是按单画的，看着像凭空消失。
+ * 不刷新则碰巧没事，因为 itemId 是模块加载时读一次存在内存里的，所以这个 bug 只在
+ * 刷新那一下现形。
+ */
+test("浏览目录后 URL 仍然带着 item", async () => {
+  await mount(stubFetch(), "/new.html?item=it-1&name=%E7%94%B2");
+  // 页面初始化时就会同步一次 URL（step/dir 都要落进去）。
+  expect(location.search).toContain("item=it-1");
+
+  const row = document.querySelector(".dir-row") as unknown as HTMLElement | null;
+  row?.click();
+  await new Promise((r) => setTimeout(r, 60));
+
+  const params = new URLSearchParams(location.search);
+  // 先证明 syncUrl 真的跑了：dir 只可能由它写进去。少了这一条，"item 还在"就可能
+  // 只是因为 syncUrl 压根没执行、初始 URL 原封不动——那正是这个函数被局部变量
+  // 遮蔽时的样子，测试会为了错误的理由变绿。
+  expect(params.get("dir")).toBe("/tmp");
+  expect(params.get("item")).toBe("it-1");
+  // 原来就带得住的那两个不能因为这次改动坏掉。
+  expect(params.get("name")).toBe("甲");
+});
+
+test("没有 item 时不会凭空写一个空的进去", async () => {
+  await mount(stubFetch(), "/new.html");
+  const row = document.querySelector(".dir-row") as unknown as HTMLElement | null;
+  row?.click();
+  await new Promise((r) => setTimeout(r, 60));
+  expect(location.search).not.toContain("item=");
 });

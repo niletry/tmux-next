@@ -209,11 +209,18 @@ function openActions(session, itemsById) {
     const items = [...(itemsById?.values() ?? [])].filter((i) => !i.closedAt);
     openPicker({
       title: tr("list.linkItem"),
-      options: items.map((i) => ({
-        id: i.id,
-        label: i.title,
-        current: i.id === session.itemId,
-      })),
+      // 单号单独显示：标题是人话（"Gate the remaining ungated queries"），单号才是
+      // 在 Jira、分支名、PR 标题里到处出现的那个标识——挑单的时候认的是它。
+      // 标题里已经含着单号就不重复画一遍。
+      options: items.map((i) => {
+        const ref = i.source?.ref;
+        return {
+          id: i.id,
+          label: i.title,
+          note: ref && !i.title.includes(ref) ? ref : undefined,
+          current: i.id === session.itemId,
+        };
+      }),
       emptyText: tr("list.noItems"),
       cancelText: tr("list.cancel"),
       failedText: tr("list.linkFailed"),

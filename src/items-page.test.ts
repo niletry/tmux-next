@@ -976,3 +976,25 @@ test("一个会话都没有时说清楚", async () => {
   await new Promise((r) => setTimeout(r, 20));
   expect(document.querySelector(".sheet-warn")?.textContent).toBe(tr("items.noSessions"));
 });
+
+// 「现挂在某单下」报单号而不是标题：认单认的是单号。没有来源的本地单才退回标题。
+test("会话现挂在哪张单下，优先用单号说", async () => {
+  const root = await mount(payload({
+    items: [
+      item(),
+      item({ id: "it-2", title: "Gate the queries", source: { provider: "jira", ref: "EXAMPLE-45943" } }),
+      item({ id: "it-3", title: "本地随手记" }),
+    ],
+    sessions: [session({ name: "甲" }), session({ name: "乙" })],
+    bindings: [
+      { session: "甲", itemId: "it-2", live: true },
+      { session: "乙", itemId: "it-3", live: true },
+    ],
+  }));
+
+  click(root.querySelector(".item-link"));
+  await new Promise((r) => setTimeout(r, 20));
+  const notes = [...document.querySelectorAll(".pick-note")].map((n) => n.textContent);
+  expect(notes[0]).toContain("EXAMPLE-45943");
+  expect(notes[1]).toContain("本地随手记");
+});

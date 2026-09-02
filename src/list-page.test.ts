@@ -550,3 +550,35 @@ test("一张单都没有时说清楚，而不是给一张空白纸", async () =>
   await new Promise((r) => setTimeout(r, 20));
   expect(document.querySelector(".sheet-warn")?.textContent).toBe("No work items yet");
 });
+
+/**
+ * 挑单的时候认的是单号。
+ *
+ * 标题是人话（"Gate the remaining ungated queries"），单号才是在 Jira、分支名、
+ * PR 标题里到处出现的那个标识。
+ */
+test("候选单上带出 jira 单号", async () => {
+  const root = await mount([session()], {}, [], [
+    workItem({ id: "it-1", title: "Gate the queries", source: { provider: "jira", ref: "EXAMPLE-45943" } }),
+    workItem({ id: "it-2", title: "本地随手记", source: null }),
+  ]);
+  await openMenu(root as never);
+  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  await new Promise((r) => setTimeout(r, 20));
+
+  const rows = [...document.querySelectorAll(".pick-row")];
+  expect(rows[0]!.querySelector(".pick-note")?.textContent).toBe("EXAMPLE-45943");
+  // 本地单没有来源，不该硬挤一个空的出来。
+  expect(rows[1]!.querySelector(".pick-note")).toBeNull();
+});
+
+// 标题本身就以单号开头时再画一遍是噪音。
+test("标题里已经含单号就不重复显示", async () => {
+  const root = await mount([session()], {}, [], [
+    workItem({ title: "[EXAMPLE-45943] Gate the queries", source: { provider: "jira", ref: "EXAMPLE-45943" } }),
+  ]);
+  await openMenu(root as never);
+  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(document.querySelector(".pick-note")).toBeNull();
+});
