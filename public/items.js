@@ -566,8 +566,11 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
 
   if (!dims.length) return bar;
 
+  // filter-row 在样式里是 display:contents——它自己不成盒子，标签落进网格左列、
+  // filter-body 落进右列，这样「筛选」跟「分组」两个标签才在同一条竖线上。
   const filters = el("div", "filter-row");
   filters.append(el("span", "toolbar-label", tr("items.filter")));
+  const body = el("div", "filter-body");
 
   // 存下来的原样 vs 现在画得出来的：一个暂时不在数据里的字段不画，但留在存储里，
   // 所以增删都改 stored，渲染只看 shown。
@@ -598,11 +601,11 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
       onChange();
     });
     addWrap.append(add);
-    filters.append(addWrap);
+    body.append(addWrap);
   }
 
   for (const dim of shown) {
-    filters.append(
+    body.append(
       filterField(
         dim,
         facets,
@@ -630,6 +633,7 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   }
 
 
+  filters.append(body);
   bar.append(filters);
   return bar;
 }
