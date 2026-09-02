@@ -1862,6 +1862,11 @@ a.detail-label:hover {
   #items > section > .item-card,
   #list .group > .card {
     grid-column: auto;
+    /* 网格项默认 min-width:auto，撑不下的内容会把整条轨道顶宽；卡片里有好几行
+       是 white-space:nowrap 的（状态、时间、会话 id），一行放不下就会画到隔壁
+       卡片上去——单列时那只是溢出到屏幕边缘，多列时它糊住的是另一张卡的内容。 */
+    min-width: 0;
+    overflow: hidden;
   }
 
   /* 卡片的横向留白改由容器的 padding 给，纵向间距改由 gap 给；留着原来的
@@ -1877,6 +1882,15 @@ a.detail-label:hover {
   #list .group > .group-head,
   #items > .empty {
     margin-inline: -12px;
+  }
+
+  /* 会话卡片的两行元信息改成可换行。卡片在网格里被 overflow:hidden 裁住之后，
+     放不下的东西不再画到隔壁卡片上，但也就被切掉了——「waiting 5m」被切成
+     「wait」，而那恰恰是这张卡最该说清楚的一件事。换行是唯一两头都顾得上的解法：
+     窄屏一行放得下，宽屏放不下就落到下一行，没有任何信息消失。 */
+  .name-row,
+  .meta-row {
+    flex-wrap: wrap;
   }
 
   /* 单标题在窄卡片里换行，不再省略号截断。窄屏时它必须是一行——一屏就那么高，

@@ -622,7 +622,9 @@ button.jira-session-status.ask:active { opacity: 0.6; }
   /* 卡片之外的一切横跨整行。反过来逐个列出工具条、空状态、横幅，以后新加一种
      行就会悄悄变成一个格子坐在第一张卡片旁边，而那是没人会去检查的失败方式。 */
   #issues > * { grid-column: 1 / -1; }
-  #issues > .jira-card { grid-column: auto; margin: 0; }
+  /* min-width:0 + overflow:hidden 的理由跟内核那边一样：网格项默认撑得开轨道，
+     而卡片里有整行 nowrap 的内容，一行放不下就画到隔壁卡片上。 */
+  #issues > .jira-card { grid-column: auto; margin: 0; min-width: 0; }
 
   /* 自带横向内边距的整行元素抵掉容器那 12px，左边缘跟窄屏时保持一致。 */
   #issues > .jira-toolbar,
