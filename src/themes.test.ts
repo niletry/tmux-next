@@ -290,6 +290,119 @@ test.each(THEME_ORDER)("%s: 角色色和终端调色板互不重叠", (name) => 
   expect(shared).toEqual(["--on-accent"]);
 });
 
+/**
+ * 深色主题的角色令牌逐键钉住，防止 uiVars 的推导方式变了却没人发现。
+ *
+ * 上面那些断言只查对比度是否过线，不查具体色值——推导方式一换，只要新算出来
+ * 的颜色仍然过线，所有断言照样全绿。Task 3 就踩过这个坑：把 `uiVars()` 里
+ * 「朝端点推到过线为止」的构造从按主题深浅各写一遍改成按极性统一取端点，
+ * Nord 的 `--danger` 从 `#cb868e` 悄悄变成了 `#ce878e`，靠的是人工复算才发现，
+ * 不是测试报的。这条断言就是补那个缺口。
+ *
+ * 这次漂移本身是裁定过的、可接受的例外，原样记在这里而不是回避：
+ * Nord 的 `ansi[9]`（#bf616a）对 `--surface-4` 只有 2.108:1，不到 MARK_FLOOR
+ * （3.0）——是四套深色主题 × 三个语义色槽位一共 12 个里，唯一第一步就不过线、
+ * 必须真的朝端点插值的那个。端点从旧的 `ansi[15]` 换成统一的 `far`（纯白）之后，
+ * 落点从 #cb868e 变成 #ce878e：对比度从 3.0142 提到 3.0720，变好，肉眼不可辨。
+ * 其余 11 个第一步就过线，pushTo 直接返回起点，所以字节不变——「逐字节不变」
+ * 是这 11 个的巧合，不是这个函数的性质，Nord 的 --danger 才是真正测到分支的那个。
+ * 这条断言钉的就是裁定之后的新值：#ce878e。
+ *
+ * 这条清单变红时，第一反应不是把数字改回来配合断言——先问「这次改动本来就该
+ * 改这个颜色吗」。如果答案是"改了实现，颜色确实该变"，才更新这里的期望值，
+ * 并把理由记下来，就像这段注释记录 Nord 的例外一样。
+ *
+ * 只钉四套深色主题（tokyo-night / catppuccin-mocha / one-dark / nord）。浅色
+ * 主题还在开发中——Task 4 还要再加两套——现在钉死只会让浅色主题的每次调整都
+ * 变成一次无意义的返工，等浅色主题定稿了再补。
+ */
+test("深色主题的角色令牌逐键钉住", () => {
+  const darkThemes = ["tokyo-night", "catppuccin-mocha", "one-dark", "nord"];
+  const actual = Object.fromEntries(darkThemes.map((name) => [name, uiVars(name)]));
+  expect(actual).toEqual({
+    "tokyo-night": {
+      "--surface-1": "#1a1b26",
+      "--surface-2": "#21222e",
+      "--surface-3": "#292b39",
+      "--surface-4": "#313443",
+      "--surface-5": "#3a3c4d",
+      "--border-1": "#353747",
+      "--border-2": "#4f5368",
+      "--accent": "#7aa2f7",
+      "--accent-hover": "#8daff8",
+      "--accent-text": "#7aa2f7",
+      "--accent-alt-text": "#bb9af7",
+      "--on-accent": "#1a1b26",
+      "--text-1": "#c0caf5",
+      "--text-2": "#959dc0",
+      "--text-3": "#797f9c",
+      "--ok": "#9ece6a",
+      "--warn": "#e0af68",
+      "--danger": "#f7768e",
+    },
+    "catppuccin-mocha": {
+      "--surface-1": "#1e1e2e",
+      "--surface-2": "#252536",
+      "--surface-3": "#2e2f40",
+      "--surface-4": "#37384a",
+      "--surface-5": "#3f4154",
+      "--border-1": "#3a3b4e",
+      "--border-2": "#56596d",
+      "--accent": "#89b4fa",
+      "--accent-hover": "#9ec2fb",
+      "--accent-text": "#89b4fa",
+      "--accent-alt-text": "#f5c2e7",
+      "--on-accent": "#1e1e2e",
+      "--text-1": "#cdd6f4",
+      "--text-2": "#9da3be",
+      "--text-3": "#7f849c",
+      "--ok": "#a6e3a1",
+      "--warn": "#f9e2af",
+      "--danger": "#f38ba8",
+    },
+    "one-dark": {
+      "--surface-1": "#282c34",
+      "--surface-2": "#2d313a",
+      "--surface-3": "#343841",
+      "--surface-4": "#3a3f47",
+      "--surface-5": "#41454e",
+      "--border-1": "#3d414a",
+      "--border-2": "#525760",
+      "--accent": "#61afef",
+      "--accent-hover": "#7abcf2",
+      "--accent-text": "#6aafe9",
+      "--accent-alt-text": "#b2a3c7",
+      "--on-accent": "#282c34",
+      "--text-1": "#abb2bf",
+      "--text-2": "#a4abb8",
+      "--text-3": "#828994",
+      "--ok": "#98c379",
+      "--warn": "#e5c07b",
+      "--danger": "#e06c75",
+    },
+    "nord": {
+      "--surface-1": "#2e3440",
+      "--surface-2": "#353b47",
+      "--surface-3": "#3d434f",
+      "--surface-4": "#464c58",
+      "--surface-5": "#4e5460",
+      "--border-1": "#494f5b",
+      "--border-2": "#646a76",
+      "--accent": "#81a1c1",
+      "--accent-hover": "#93aeca",
+      "--accent-text": "#abbed4",
+      "--accent-alt-text": "#c7b8cc",
+      "--on-accent": "#2e3440",
+      "--text-1": "#d8dee9",
+      "--text-2": "#b8bec9",
+      "--text-3": "#959ba6",
+      "--ok": "#a3be8c",
+      "--warn": "#ebcb8b",
+      "--danger": "#ce878e", // 裁定接受的漂移：旧值 #cb868e，见上方注释。
+    },
+  });
+});
+
 // --- 颜色字面量 -------------------------------------------------------------
 
 /**
