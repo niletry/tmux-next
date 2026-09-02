@@ -2426,3 +2426,90 @@ a.detail-label:hover {
   min-height: 0;
   padding: 8px 20px;
 }
+
+/* --- 可点目标的尺寸下限 ---------------------------------------------------
+
+   量过一轮：这一版之前每个可点元素都是 17–23px 高（11–13px 字 + 2–5px 内边距），
+   而这是个手机优先的界面。
+
+   底线取 WCAG 2.5.8「目标尺寸（最小）」的 **24×24 CSS px**，不是 2.5.5 的 44×44。
+   理由跟 themes.test.ts 对比度只卡 AA 不卡 AAA 是同一条：44px 会把这份列表赖以
+   成立的密度整个吃掉——一屏几十张卡片，每张上面五六个 chip，全按 44px 就再也不是
+   一份能扫的列表。所以密集行按 AA 的 24，而**独立控件按 44**，因为那里多几像素
+   不牺牲任何东西。
+
+   不动纯静态的元素：不带明细的 .facet 和没有 url 的 .item-source 是 <span>，
+   本来就点不了，给它们加高只是白占地方。 */
+
+/* 密集行里的可点 chip：24px 下限。line-height 而不是内边距——.filter-chip 是
+   inline-block（那是为了让 text-overflow 生效，见上面那段注释），内边距撑高会让
+   文字贴着上沿。 */
+.facet.has-detail,
+.filter-chip {
+  min-height: 24px;
+  line-height: 16px;
+  box-sizing: border-box;
+}
+
+/* chip 之间也留够：WCAG 那条对小目标有「间距足够」的例外，而挨得太近时手指点错
+   邻居的代价是改错一个筛选，不是看不清。 */
+.facets,
+.field-values {
+  gap: 8px;
+}
+
+/* 卡片上的动作 pill。28px 而不是 44：它们一张卡片一行，44 会让每张卡片长高
+   一大截——而"卡片别占这么多地方"正是这一行当初收成小按钮的原因。 */
+.item-new,
+.item-link,
+.item-refresh,
+.item-archive {
+  min-height: 28px;
+  box-sizing: border-box;
+}
+
+/* 工具条的控件一页只有一行，长高的代价只付一次，所以给到 32px。 */
+.new-item-btn,
+.sync-btn,
+.field-btn,
+#group-by,
+#session-filter,
+#field-picker {
+  min-height: 32px;
+  box-sizing: border-box;
+}
+
+/* 单号徽标只有能点的那颗要够大；不能点的那颗仍是 <span>，不受这条影响。 */
+a.item-source.is-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  box-sizing: border-box;
+}
+
+/* 浮层里的按钮是独立动作，没有密度包袱，直接给 44px。 */
+.sheet-close,
+.sheet-create,
+.field-remove,
+.pick-row {
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+/* --- 长文本的断行 --------------------------------------------------------
+
+   `text-wrap: pretty` 让浏览器多看几行来避免孤字——单标题动辄一整句话，末行只剩
+   一个词是这份列表里最常见的难看。不支持的浏览器直接忽略这条，没有回退成本。 */
+.item-title,
+.detail-label,
+.pick-label,
+.settings-hint,
+.sheet-warn {
+  text-wrap: pretty;
+}
+
+/* 标题字号随视口走：手机上 16px 刚好，宽屏上还留在 16px 就显得散。clamp 的上下
+   界都是实测过的，不是"能大就大"——再大就会把一张卡片顶成两屏。 */
+.item-title {
+  font-size: clamp(16px, 1.1vw + 12px, 19px);
+}
