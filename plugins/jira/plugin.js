@@ -22,13 +22,39 @@ export default {
   // 跟着数据一起来。src/i18n.test.ts 单独认这个数组字面量，只把这几个键当成
   // 有真实使用点（跟 titleKey 一样，它也不长成 t()/tr()/data-i18n 的样子）。
   facetDims: ["jira.type", "jira.status", "jira.epic", "jira.prs", "jira.checks", "jira.assignee"],
+  // 设置页照着这个画表单。内核不知道这些字段是什么意思，也不该知道——它只认
+  // type（怎么画、密钥要不要藏）和 labelKey（叫什么）。值的存取归 server.ts。
+  //
+  // token 和 appPassword 是 secret：读回来只有"设没设过"一个比特，留空表示不改。
+  // 这不是修饰，是这个服务没有认证决定的——配置一个 token 不需要看见它。
+  settings: [
+    { key: "url", type: "url", labelKey: "jira.cfg.url", hintKey: "jira.cfg.urlHint", required: true },
+    { key: "email", type: "text", labelKey: "jira.cfg.email", required: true },
+    { key: "token", type: "secret", labelKey: "jira.cfg.token", hintKey: "jira.cfg.tokenHint", required: true },
+    { key: "jql", type: "text", labelKey: "jira.cfg.jql", hintKey: "jira.cfg.jqlHint" },
+    { key: "onlyKeyedPrs", type: "boolean", labelKey: "jira.cfg.onlyKeyedPrs", hintKey: "jira.cfg.onlyKeyedPrsHint" },
+    { key: "bitbucket.email", type: "text", labelKey: "jira.cfg.bbEmail", hintKey: "jira.cfg.bbHint" },
+    { key: "bitbucket.appPassword", type: "secret", labelKey: "jira.cfg.bbPassword" },
+  ],
   i18n: {
     zh: {
       "jira.title": "工单",
       "jira.count": "{n} 个",
       "jira.empty": "没有分给你的单",
       "jira.unconfigured": "还没配置 Jira",
-      "jira.unconfiguredHint": "把 URL、邮箱、API token 写进 ~/.tmux-next/jira/config.json（权限 0600）",
+      "jira.unconfiguredHint": "到设置页里填 URL、邮箱和 API token",
+      "jira.cfg.url": "Jira 地址",
+      "jira.cfg.urlHint": "例如 https://example.atlassian.net",
+      "jira.cfg.email": "邮箱",
+      "jira.cfg.token": "API token",
+      "jira.cfg.tokenHint": "只写不读：留空表示保持不变",
+      "jira.cfg.jql": "JQL",
+      "jira.cfg.jqlHint": "留空用默认：分给我的、还没做完的",
+      "jira.cfg.onlyKeyedPrs": "只保留带本单单号的 PR",
+      "jira.cfg.onlyKeyedPrsHint": "Jira 的关联很松，提交信息里提过别的单号就会挂过来",
+      "jira.cfg.bbEmail": "Bitbucket 邮箱",
+      "jira.cfg.bbHint": "选填。不填就只列 PR，不问构建状态",
+      "jira.cfg.bbPassword": "Bitbucket 应用密码",
       "jira.authFailed": "凭据无效，请检查邮箱与 API token",
       "jira.queryFailed": "查询有误，请检查 config.json 里的 jql",
       "jira.unreachable": "连不上 Jira",
@@ -65,7 +91,19 @@ export default {
       "jira.count": "{n}",
       "jira.empty": "No issues assigned to you",
       "jira.unconfigured": "Jira is not configured",
-      "jira.unconfiguredHint": "Put the URL, e-mail and API token in ~/.tmux-next/jira/config.json (mode 0600)",
+      "jira.unconfiguredHint": "Fill in the URL, e-mail and API token on the settings page",
+      "jira.cfg.url": "Jira URL",
+      "jira.cfg.urlHint": "e.g. https://example.atlassian.net",
+      "jira.cfg.email": "E-mail",
+      "jira.cfg.token": "API token",
+      "jira.cfg.tokenHint": "Write-only: leave empty to keep the current one",
+      "jira.cfg.jql": "JQL",
+      "jira.cfg.jqlHint": "Empty uses the default: assigned to me, not done",
+      "jira.cfg.onlyKeyedPrs": "Only PRs carrying this issue's key",
+      "jira.cfg.onlyKeyedPrsHint": "Jira links loosely — a commit message mentioning another key pulls that PR in",
+      "jira.cfg.bbEmail": "Bitbucket e-mail",
+      "jira.cfg.bbHint": "Optional. Without it, PRs are listed but build status is not fetched",
+      "jira.cfg.bbPassword": "Bitbucket app password",
       "jira.authFailed": "Invalid credentials — check the e-mail and API token",
       "jira.queryFailed": "Bad query — check `jql` in config.json",
       "jira.unreachable": "Cannot reach Jira",

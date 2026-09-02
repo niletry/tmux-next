@@ -174,15 +174,126 @@ function backLink() {
   return link;
 }
 
+/**
+ * 一个插件的配置表单，照着它清单里的 settings 画。
+ *
+ * 这一页**不知道任何一个字段是什么意思**——只认 type（怎么画、密钥要不要藏）和
+ * labelKey（叫什么）。所以接进来的下一个数据源自动就有配置界面，这一页一行不改。
+ *
+ * @param {{ id: string, titleKey: string, settings: any[] }} plugin
+ * @param {Record<string, unknown>} values 服务端读回来的当前值
+ */
+function pluginSection(plugin, values) {
+  const form = el("div", "settings-form");
+  /** @type {Record<string, () => string | boolean>} */
+  const readers = {};
+
+  for (const field of plugin.settings) {
+    const row = el("label", "settings-field");
+    row.append(el("span", "settings-label", tr(field.labelKey)));
+    const current = values[field.key];
+
+    if (field.type === "boolean") {
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.className = "settings-check";
+      box.checked = current === true;
+      row.prepend(box);
+      row.classList.add("is-check");
+      readers[field.key] = () => box.checked;
+    } else {
+      const input = document.createElement("input");
+      input.className = "settings-input";
+      input.type = field.type === "url" ? "url" : "text";
+      if (field.type === "secret") {
+        input.type = "password";
+        // 密钥读不回来，只知道设没设过。占位符说这件事，输入框留空——回填一串假的
+        // 掩码迟早会被当成真值存回去。
+        input.placeholder = current && current.set ? tr("settings.secretSet") : tr("settings.secretUnset");
+        input.autocomplete = "off";
+      } else if (typeof current === "string") {
+        input.value = current;
+      }
+      row.append(input);
+      readers[field.key] = () => input.value;
+    }
+
+    if (field.hintKey) row.append(el("span", "settings-hint", tr(field.hintKey)));
+    form.append(row);
+  }
+
+  // 自己的类名，不跟 settings-note 混：那个是常驻说明，这个是一次动作的回执，
+  // 两者同名的话"找到那句回执"就得靠位置，而位置是最容易被下一次改动挪走的东西。
+  const note = el("p", "settings-result", "");
+  note.hidden = true;
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "btn primary";
+  save.textContent = tr("settings.save");
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    save.textContent = tr("settings.saving");
+    note.hidden = true;
+    const body = {};
+    for (const [key, read] of Object.entries(readers)) body[key] = read();
+    let ok = false;
+    try {
+      const res = await fetch(url(`api/plugins/${encodeURIComponent(plugin.id)}/settings`), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      ok = res.ok;
+    } catch {
+      ok = false;
+    }
+    // 存成了也要说一句：密钥框存完仍然是空的（它本来就不回填），没有回执的话
+    // 屏幕上看不出刚才那一下有没有生效。
+    note.textContent = ok ? tr("settings.saved") : tr("settings.cfgSaveFailed");
+    note.hidden = false;
+    save.disabled = false;
+    save.textContent = tr("settings.save");
+  });
+
+  const actions = el("div", "settings-actions");
+  actions.append(save);
+  return section(tr(plugin.titleKey), form, actions, note);
+}
+
+/**
+ * 声明了配置的插件，各画一节。
+ *
+ * 值要问服务端（清单是同构的，凭据绝不在里面）。问不到就跳过这一节——那意味着这个
+ * 插件被 TMUX_NEXT_DISABLE_PLUGINS 关掉了，或者服务端答不上来，两种情况下画一个存
+ * 不进去的表单都只是骗人。
+ */
+async function pluginSections() {
+  const out = [];
+  for (const plugin of PLUGINS) {
+    if (!plugin.settings?.length) continue;
+    try {
+      const res = await fetch(url(`api/plugins/${encodeURIComponent(plugin.id)}/settings`));
+      if (!res.ok) continue;
+      out.push(pluginSection(plugin, await res.json()));
+    } catch {
+      // 这一节这次画不出来，别的照常。
+    }
+  }
+  return out;
+}
+
 export function renderSettings(root) {
-  const draw = () => {
+  const draw = async () => {
     document.title = tr("settings.title");
     root.replaceChildren(languageSection(draw), themeSection(), keysSection());
     const header = document.getElementById("header");
     // 顶栏跟着一起重画：换语言之后返回键的文案也变了，只重画正文会留下一句旧话。
     if (header) header.replaceChildren(backLink(), el("h1", "settings-title", tr("settings.title")));
+    // 插件那几节要问服务端，晚一步到：内核自己的三节先画出来，不为一次网络往返
+    // 把整页压住。
+    for (const node of await pluginSections()) root.append(node);
   };
-  draw();
+  void draw();
 }
 
 // 这一页不画顶部标签栏：它是从齿轮进来的，不是「单/会话」的同级，画上去只会多出

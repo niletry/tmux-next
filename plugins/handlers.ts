@@ -1,5 +1,5 @@
 import { PLUGINS } from "./registry.js";
-import type { Facet, FacetDetail, ItemRef, Plugin, PluginEnricher, PluginHandler } from "./types";
+import type { Facet, FacetDetail, ItemRef, Plugin, PluginEnricher, PluginHandler, SettingValue } from "./types";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
 import {
@@ -8,6 +8,8 @@ import {
   start as jiraStart,
   sync as jiraSync,
   refreshItem as jiraRefreshItem,
+  readSettings as jiraReadSettings,
+  writeSettings as jiraWriteSettings,
 } from "./jira/server";
 
 /**
@@ -35,12 +37,30 @@ export type PluginServer = {
    * （比如开机同步一次来源），插件自己在里面 fire-and-forget，不能指望内核帮它 await。
    */
   start?: () => void;
+  /**
+   * 这个插件当前的配置值。**密钥只报 set，不报值**——内核在 pluginSettings() 里
+   * 再兜一层，但第一道闸在这里：值就不该离开插件。
+   */
+  readSettings?: () => Promise<Record<string, SettingValue>>;
+  /**
+   * 写入配置。收到的是清单声明过的键；空字符串的 secret 表示"不改"，由插件解释——
+   * 内核不知道哪个键是密钥的旧值存在哪。抛出即失败，调用方只会知道"没存上"。
+   */
+  writeSettings?: (values: Record<string, string | boolean>) => Promise<void>;
 };
 
 export const SERVERS: Record<string, PluginServer> = {
   gallery: { handle: gallery },
   notifications: { handle: notifications },
-  jira: { handle: jira, enrich: jiraEnrich, start: jiraStart, sync: jiraSync, refreshItem: jiraRefreshItem },
+  jira: {
+    handle: jira,
+    enrich: jiraEnrich,
+    start: jiraStart,
+    sync: jiraSync,
+    refreshItem: jiraRefreshItem,
+    readSettings: jiraReadSettings,
+    writeSettings: jiraWriteSettings,
+  },
 };
 
 /**
@@ -247,6 +267,12 @@ export type SyncResult = { created: number; updated: number; total: number; trun
  */
 export const SOURCE_TIMEOUT_MS = 30_000;
 
+/**
+ * 单个配置值的长度上限。JQL 可以很长，token 也不短，但没有哪一项该到 4KB——
+ * 上限存在是为了让"往这个无认证服务里灌东西"这条路有个尽头，不是为了校验格式。
+ */
+export const MAX_SETTING_LEN = 4096;
+
 async function withTimeout<T>(work: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
   const timeout = new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs));
   try {
@@ -373,4 +399,87 @@ export function startPlugins(
       // 这个插件这次没有启动动作，别的插件照常来。
     }
   }
+}
+
+/**
+ * 一个插件当前的配置值，读不到就是 null。
+ *
+ * 失败语义跟这个文件里其余几条一样只有一种：**拿不到就当没有**。插件没声明
+ * readSettings、抛了、卡住了、被 TMUX_NEXT_DISABLE_PLUGINS 关掉了，对调用方都是
+ * 同一个 null，页面据此不画这一节。分出更细的状态只会让页面替内核解释插件的毛病。
+ *
+ * 密钥在这里再兜一层：清单里声明为 secret 的键，无论插件回了什么，一律压成
+ * `{ set: 布尔 }`。插件那边本来就该这么做，但"值绝不出门"这件事不能只靠一处自觉
+ * ——这个服务没有认证，泄一次就是泄给任何能打开页面的东西。
+ */
+export async function pluginSettings(
+  id: string,
+  servers: Record<string, PluginServer> = SERVERS,
+  plugins: Plugin[] = PLUGINS,
+  timeoutMs = SOURCE_TIMEOUT_MS,
+): Promise<Record<string, SettingValue> | null> {
+  const enabled = new Set(enabledPlugins().map((p) => p.id));
+  if (!isConsidered(id, enabled)) return null;
+  const read = servers[id]?.readSettings;
+  const fields = plugins.find((p) => p.id === id)?.settings;
+  if (!read || !fields) return null;
+
+  const got = await withTimeout(read().catch(() => null), null, timeoutMs);
+  if (!got || typeof got !== "object") return null;
+
+  const out: Record<string, SettingValue> = {};
+  for (const field of fields) {
+    const raw = (got as Record<string, unknown>)[field.key];
+    if (field.type === "secret") {
+      // 只留一个比特。插件回了字符串也当"设过了"，绝不把它带出去。
+      out[field.key] = { set: typeof raw === "string" ? raw.length > 0 : Boolean(raw) };
+    } else if (field.type === "boolean") {
+      out[field.key] = Boolean(raw);
+    } else {
+      out[field.key] = typeof raw === "string" ? raw : "";
+    }
+  }
+  return out;
+}
+
+/**
+ * 写入一个插件的配置。写成了返回 true，其余一切都是 false。
+ *
+ * 只把**清单声明过**的键交给插件：请求体里多出来的字段一律丢掉。否则这个无认证的
+ * 服务就成了一个任意 JSON 写入器，插件那边多一个没料到的键就可能变成一条新配置。
+ * 类型也在这里对齐——boolean 字段收到字符串就按真假归一，不把 "false" 这种东西
+ * 原样传下去。
+ */
+export async function savePluginSettings(
+  id: string,
+  values: unknown,
+  servers: Record<string, PluginServer> = SERVERS,
+  plugins: Plugin[] = PLUGINS,
+  timeoutMs = SOURCE_TIMEOUT_MS,
+): Promise<boolean> {
+  const enabled = new Set(enabledPlugins().map((p) => p.id));
+  if (!isConsidered(id, enabled)) return false;
+  const write = servers[id]?.writeSettings;
+  const fields = plugins.find((p) => p.id === id)?.settings;
+  if (!write || !fields || !values || typeof values !== "object") return false;
+
+  const incoming = values as Record<string, unknown>;
+  const clean: Record<string, string | boolean> = {};
+  for (const field of fields) {
+    if (!(field.key in incoming)) continue;
+    const raw = incoming[field.key];
+    if (field.type === "boolean") clean[field.key] = raw === true || raw === "true";
+    else if (typeof raw === "string") clean[field.key] = raw.slice(0, MAX_SETTING_LEN);
+    // 别的类型（数字、对象、null）直接忽略：清单说了是字符串，来的不是，就是不认。
+  }
+  if (!Object.keys(clean).length) return false;
+
+  return await withTimeout(
+    write(clean).then(
+      () => true,
+      () => false,
+    ),
+    false,
+    timeoutMs,
+  );
 }

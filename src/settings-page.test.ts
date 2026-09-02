@@ -34,7 +34,7 @@ afterEach(() => {
 /** 页面发出去的写请求。 */
 let posted: { url: string; body: string }[] = [];
 
-async function mount(search = "") {
+async function mount(search = "", opts: { settingsStatus?: number } = {}) {
   posted = [];
   const win = new Window({ url: `http://127.0.0.1:7682/settings.html${search}` });
   const doc = win.document;
@@ -56,6 +56,19 @@ async function mount(search = "") {
       if (init?.method && init.method !== "GET") {
         posted.push({ url: href, body: String(init.body ?? "") });
         return new Response(JSON.stringify({ ok: true }));
+      }
+      if (href.includes("/settings")) {
+        if (opts.settingsStatus) return new Response("no", { status: opts.settingsStatus });
+        // 服务端读回来的形状：密钥只有一个比特，别的是原值。
+        return new Response(JSON.stringify({
+          url: "https://example.atlassian.net",
+          email: "me@example.com",
+          token: { set: true },
+          jql: "assignee = currentUser()",
+          onlyKeyedPrs: true,
+          "bitbucket.email": "",
+          "bitbucket.appPassword": { set: false },
+        }));
       }
       if (href.includes("api/language")) return new Response(JSON.stringify({ lang: "zh" }));
       if (href.includes("api/theme")) return new Response(JSON.stringify({ theme: "tokyo-night" }));
@@ -84,12 +97,12 @@ const click = (n: unknown) =>
     new (globalThis as any).window.Event("click", { bubbles: true }),
   );
 
-test("三节配置都画出来了", async () => {
+test("内核自己的三节排在最前", async () => {
   const root = await mount();
   const heads = [...root.querySelectorAll(".settings-head")].map((h) => h.textContent);
-  expect(heads.length).toBe(3);
-  // 语言在最前：它决定这一页其余部分用什么字写。
-  expect(heads[0]).toBe("语言");
+  // 语言在最前：它决定这一页其余部分用什么字写。插件那几节要等一次网络往返，
+  // 追加在后面——所以这里只钉前三个，不钉总数。
+  expect(heads.slice(0, 3)).toEqual(["语言", "配色", "虚拟按键"]);
 });
 
 test("主题一节列出每一款配色", async () => {
@@ -133,4 +146,73 @@ test("认不出来路就回默认页", async () => {
   await mount("?from=%E4%B8%8D%E5%AD%98%E5%9C%A8%E7%9A%84");
   const link = document.querySelector(".settings-back") as HTMLAnchorElement;
   expect(link.getAttribute("href")).toContain("index.html");
+});
+
+/**
+ * 插件配置那几节。
+ *
+ * 这一页照着清单里的 settings 画表单，**不知道任何一个字段是什么意思**——所以这里
+ * 断言的是"照声明画"，不是"Jira 长这样"。
+ */
+
+test("声明了配置的插件各画一节", async () => {
+  const root = await mount();
+  await new Promise((r) => setTimeout(r, 80));
+  const heads = [...root.querySelectorAll(".settings-head")].map((h) => h.textContent);
+  // 内核三节，加上声明了 settings 的那个插件
+  expect(heads.length).toBe(4);
+});
+
+test("密钥画成 password，且输入框是空的", async () => {
+  const root = await mount();
+  await new Promise((r) => setTimeout(r, 80));
+  const secrets = [...root.querySelectorAll('input[type="password"]')] as unknown as HTMLInputElement[];
+  expect(secrets.length).toBe(2);
+  // 值绝不回填：回填一串掩码迟早会被当成真值存回去。
+  for (const input of secrets) expect(input.value).toBe("");
+  // 设过没设过靠占位符说，不靠往框里塞东西。
+  expect(secrets[0]!.getAttribute("placeholder")).toBe("已设置 · 留空则不改");
+  expect(secrets[1]!.getAttribute("placeholder")).toBe("未设置");
+});
+
+test("非密钥字段回填当前值", async () => {
+  const root = await mount();
+  await new Promise((r) => setTimeout(r, 80));
+  const urlInput = root.querySelector('input[type="url"]') as unknown as HTMLInputElement;
+  expect(urlInput.value).toBe("https://example.atlassian.net");
+});
+
+test("保存把整份表单 PUT 上去", async () => {
+  const root = await mount();
+  await new Promise((r) => setTimeout(r, 80));
+  click([...root.querySelectorAll(".settings-actions .btn")][0]);
+  await new Promise((r) => setTimeout(r, 60));
+
+  const req = posted.find((p) => p.url.includes("api/plugins/jira/settings"));
+  expect(req).toBeDefined();
+  const body = JSON.parse(req!.body);
+  // 没动过的密钥送空串——服务端把它解释成"不改"。
+  expect(body.token).toBe("");
+  expect(body.url).toBe("https://example.atlassian.net");
+  expect(body.onlyKeyedPrs).toBe(true);
+});
+
+// 存成了也要说一句：密钥框存完仍然是空的，没有回执的话屏幕上看不出生效没有。
+test("保存后给一句回执", async () => {
+  const root = await mount();
+  await new Promise((r) => setTimeout(r, 80));
+  click([...root.querySelectorAll(".settings-actions .btn")][0]);
+  await new Promise((r) => setTimeout(r, 60));
+  const note = root.querySelector(".settings-result") as unknown as HTMLElement;
+  expect(note.hidden).toBe(false);
+  expect(note.textContent).toBe("已保存");
+});
+
+// 读不到就不画这一节：那意味着插件被关掉了或服务端答不上来，画一个存不进去的
+// 表单只是骗人。
+test("读不到配置就不画那一节", async () => {
+  const root = await mount("", { settingsStatus: 404 });
+  await new Promise((r) => setTimeout(r, 80));
+  expect(root.querySelectorAll(".settings-head").length).toBe(3);
+  expect(root.querySelector(".settings-form")).toBeNull();
 });

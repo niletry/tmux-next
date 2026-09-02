@@ -2289,3 +2289,76 @@ a.detail-label:hover {
   color: var(--text-2);
   font-size: 12.5px;
 }
+
+/* 插件配置表单。字段名在上、输入在下，说明再一行——手机上左右并排会把输入框挤成
+   一条缝，而这里的值（URL、JQL）恰恰都很长。 */
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* 开关那一行反过来：方框在左、字在右，跟别处的复选框一致。 */
+.settings-field.is-check {
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-field.is-check .settings-hint {
+  flex: 1 1 100%;
+}
+
+.settings-label {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.settings-hint {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.settings-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: 16px; /* 低于 16px 时 iOS Safari 会在聚焦时缩放整页 */
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+/* 一次保存的回执，跟常驻说明 .settings-note 分开：同名的话「找到那句回执」就得
+   靠位置，而位置是最容易被下一次改动挪走的东西。 */
+.settings-result {
+  margin: 8px 0 0;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.settings-actions .btn {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 8px 20px;
+}

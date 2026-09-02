@@ -5,7 +5,15 @@ import { sanitiseGeometry } from "./geometry";
 import { imageExtension, uploadName, UPLOAD_DIR, MAX_UPLOAD_BYTES } from "./upload";
 import { saveSessionUpload, MAX_SESSION_UPLOAD_BYTES } from "./upload-file";
 import { recordUsage, readUsage } from "./key-usage";
-import { SERVERS, enabledPlugins, collectFacets, runSync, refreshFromSource } from "../plugins/handlers";
+import {
+  SERVERS,
+  enabledPlugins,
+  collectFacets,
+  runSync,
+  refreshFromSource,
+  pluginSettings,
+  savePluginSettings,
+} from "../plugins/handlers";
 import type { Facet } from "../plugins/types";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
@@ -778,6 +786,30 @@ export function startServer(
       // 否则一个叫 plugins 的插件能把它盖掉（registry.test.ts 禁掉了这个 id）。
       if (url.pathname === "/api/plugins" && req.method === "GET") {
         return Response.json(enabledPlugins().map((p) => p.id));
+      }
+
+      // 插件配置。必须排在下面那个 /api/<id>/* 的分发之前，否则 "plugins" 会先被
+      // 当成插件前缀——跟 /api/items/bind、/api/items/sync 踩过的是同一个坑。
+      //
+      // 读写都收敛成一种失败：读不到就是 404，写不成也是 404。内核不解释是哪一种
+      // "不行"（没这个插件、没声明配置、插件被关掉、写的时候抛了），因为页面拿这个
+      // 只做一个决定——这一节画不画、存没存上。
+      const pluginCfg = url.pathname.match(/^\/api\/plugins\/([^/]+)\/settings$/);
+      if (pluginCfg && req.method === "GET") {
+        const values = await pluginSettings(decodeURIComponent(pluginCfg[1]!));
+        if (!values) return new Response("no settings", { status: 404 });
+        return Response.json(values);
+      }
+      if (pluginCfg && req.method === "PUT") {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return new Response("bad json", { status: 400 });
+        }
+        const ok = await savePluginSettings(decodeURIComponent(pluginCfg[1]!), body);
+        if (!ok) return new Response("not saved", { status: 404 });
+        return Response.json({ ok: true });
       }
 
       // 插件的 API，各自挂在自己的前缀下。前缀由这里校验，插件只管自己认的

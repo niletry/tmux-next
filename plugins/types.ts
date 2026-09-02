@@ -48,7 +48,44 @@ export type Plugin = {
    * 东西，都由清单声明。
    */
   provides?: string[];
+  /**
+   * 这个插件的可配置项。内核照着画表单，但**不认识任何一项是什么意思**。
+   *
+   * 跟 titleKey / facetDims / provides 同一步棋：内核需要知道、又不该写死的东西，
+   * 由清单声明。有了它，接进来的下一个数据源自动就有配置界面，不必再动内核一行。
+   *
+   * 值不在这里——清单是同构的、要被浏览器 import，凭据绝不能进这个文件。存取归
+   * 插件自己（handlers.ts 的 readSettings / writeSettings）。
+   */
+  settings?: SettingField[];
 };
+
+/**
+ * 一个可配置项。
+ *
+ * `secret` 是唯一一个内核要区别对待的类型：它的值**从不出门**，读回来只有"设没
+ * 设过"这一个比特。这不是修饰，是这个服务本身没有认证决定的——把 token 发进浏览器
+ * 等于把它摊在任何能打开这个页面的东西面前，而配置它并不需要看见它。
+ */
+export type SettingField = {
+  /** 存取时用的键。允许一层点号（`bitbucket.email`），插件自己解释它的含义。 */
+  key: string;
+  type: "text" | "url" | "secret" | "boolean";
+  /** 字段名的 i18n 键，跟 titleKey 一样并进两份字典。 */
+  labelKey: string;
+  /** 可选的一行说明，也是 i18n 键。 */
+  hintKey?: string;
+  /** 留空是否算"没填"。secret 永远可留空——留空表示不改。 */
+  required?: boolean;
+};
+
+/**
+ * 读回来的配置值。
+ *
+ * secret 只报 `{ set: boolean }`，别的类型报原值。两者形状不同是故意的：如果密钥
+ * 也用字符串表示"已设置"，那个占位串迟早会被某处当成真值写回去。
+ */
+export type SettingValue = string | boolean | { set: boolean };
 
 /**
  * 插件的服务端入口。只在路径命中 /api/<id> 或 /api/<id>/* 时被调用，

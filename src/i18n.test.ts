@@ -82,6 +82,13 @@ function usedKeys(): Map<string, string[]> {
         found.set(m[1], [...(found.get(m[1]) ?? []), file]);
       }
     }
+    // 清单里的 settings: [...] —— 设置页照着它画表单，字段名走 tr(field.labelKey)，
+    // 同样是扫描器看不见的动态查找。跟 facetDims 完全同一条道理，只是键藏在
+    // labelKey / hintKey 两个属性里，所以按属性名抠而不是抠整个数组里的字符串：
+    // key: "bitbucket.email" 那种存取键不是 i18n 键，混进来会把它误判成"用过了"。
+    for (const m of source.matchAll(/\b(?:labelKey|hintKey):\s*"([A-Za-z0-9_.]+)"/g)) {
+      found.set(m[1], [...(found.get(m[1]) ?? []), file]);
+    }
   }
   return found;
 }
