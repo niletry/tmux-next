@@ -513,12 +513,12 @@ test("添加入口列出数据里有的维度", async () => {
   expect(options).toContain("jira.status");
 });
 
-test("加过的字段各占一块，块里是它自己的取值", async () => {
+test("加过的字段各收成一颗按钮，取值在它的弹层里", async () => {
   const store = { [FIELDS_KEY]: JSON.stringify(["jira.status"]) };
   const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
-  const fields = root.querySelectorAll(".filter-field");
+  const fields = root.querySelectorAll(".filter-menu");
   expect(fields.length).toBe(1);
-  expect(fields[0].querySelector(".field-name")?.textContent).toBeTruthy();
+  expect(fields[0].querySelector(".field-btn-name")?.textContent).toBeTruthy();
   const values = [...fields[0].querySelectorAll(".filter-chip")].map((c) => c.textContent);
   expect(values.sort()).toEqual(["Done", "In Progress"]);
 });
@@ -555,7 +555,7 @@ test("字段块里的取值是 toggle，选中态画出来", async () => {
 test("存的字段在当前数据里没有就不画，但不从存储里抹掉", async () => {
   const store = { [FIELDS_KEY]: JSON.stringify(["gone.dim", "jira.status"]) };
   const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
-  expect(root.querySelectorAll(".filter-field").length).toBe(1);
+  expect(root.querySelectorAll(".filter-menu").length).toBe(1);
   expect(JSON.parse(store[FIELDS_KEY])).toEqual(["gone.dim", "jira.status"]);
 });
 
@@ -1195,4 +1195,96 @@ test("被挡下的 chip 仍然出现在分组选项里", async () => {
   }));
   const options = [...root.ownerDocument.querySelectorAll("#group-by option")].map((o) => o.textContent);
   expect(options).toContain(tr("item.sessions"));
+});
+
+/**
+ * 筛选字段收成按钮 + 弹层。
+ *
+ * 原来每个取值都是常驻 chip：史诗五条长标题、状态七条，两个字段折四行，第一张
+ * 卡片之前先被吃掉 250px——而这些取值绝大多数时候没人要看。
+ */
+
+const fieldStore = () => ({ [FIELDS_KEY]: JSON.stringify(["jira.status"]) });
+
+test("默认收起：取值在页面上不占地方", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), fieldStore());
+  const pop = root.querySelector(".field-pop") as unknown as HTMLElement;
+  expect(pop.hidden).toBe(true);
+  expect((root.querySelector(".field-btn") as unknown as HTMLElement).getAttribute("aria-expanded")).toBe("false");
+});
+
+test("点按钮展开，再点收起", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), fieldStore());
+  const btn = root.querySelector(".field-btn")!;
+  const pop = root.querySelector(".field-pop") as unknown as HTMLElement;
+
+  click(btn);
+  expect(pop.hidden).toBe(false);
+  expect(btn.getAttribute("aria-expanded")).toBe("true");
+
+  click(btn);
+  expect(pop.hidden).toBe(true);
+});
+
+// 没选就只有名字，选了才带个数字。多一个"0"只是噪音，而这一行的全部意义就是把
+// 噪音去掉。
+test("选了才显示数量，并把按钮标成选中态", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), fieldStore());
+  expect(root.querySelector(".field-btn-count")).toBeNull();
+  expect(root.querySelector(".field-btn")!.className).not.toContain("on");
+
+  const withPick = await mount(payload({ items: twoItems, facets: twoDims }), {
+    ...fieldStore(),
+    "tmux-next.items.filter": JSON.stringify({ "jira.status": ["Done"] }),
+  });
+  expect(withPick.querySelector(".field-btn-count")?.textContent).toBe("1");
+  expect(withPick.querySelector(".field-btn")!.className).toContain("on");
+});
+
+/**
+ * 选一个取值会触发整页重绘。弹层如果记的是 DOM 节点，重绘就把它换成关闭态——
+ * 多选于是变成"点开-选一个-再点开"的重复劳动。这条盯的就是那个坑。
+ */
+test("选完一个取值弹层仍然开着", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), fieldStore());
+  click(root.querySelector(".field-btn"));
+  click(root.querySelector(".filter-chip"));
+  await new Promise((r) => setTimeout(r, 40));
+
+  const pop = root.querySelector(".field-pop") as unknown as HTMLElement;
+  expect(pop.hidden).toBe(false);
+  // 而且这一下真的选上了
+  expect(root.querySelector(".field-btn-count")?.textContent).toBe("1");
+});
+
+test("点页面别处收起弹层", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), fieldStore());
+  click(root.querySelector(".field-btn"));
+  expect((root.querySelector(".field-pop") as unknown as HTMLElement).hidden).toBe(false);
+
+  click(root.ownerDocument.body);
+  expect((root.querySelector(".field-pop") as unknown as HTMLElement).hidden).toBe(true);
+});
+
+// 两个都摊开就又回到了满屏取值。
+test("开第二个字段时第一个收起", async () => {
+  const store = { [FIELDS_KEY]: JSON.stringify(["jira.status", "item.agent"]) };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  const btns = [...root.querySelectorAll(".field-btn")];
+  const pops = [...root.querySelectorAll(".field-pop")] as unknown as HTMLElement[];
+  expect(btns.length).toBe(2);
+
+  click(btns[0]);
+  expect(pops[0]!.hidden).toBe(false);
+  click(btns[1]);
+  expect(pops[0]!.hidden).toBe(true);
+  expect(pops[1]!.hidden).toBe(false);
+});
+
+// 移除字段是低频动作，常驻在外面时跟取值 chip 抢同一片视觉，而误点它会把已选的
+// 筛选一并清掉。所以它在弹层里，不在按钮行上。
+test("移除字段的入口在弹层里", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), fieldStore());
+  const remove = root.querySelector(".field-remove")!;
+  expect(remove.closest(".field-pop")).not.toBeNull();
 });

@@ -558,35 +558,61 @@ header .count {
   min-width: 0;
 }
 
-/* 一个字段一块：标题一行，取值在下面自动换行铺开。归属由位置表达，所以 chip 上
-   不必再重复字段名。 */
-.filter-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1 1 100%;
-  min-width: 0;
+/* 一个字段收成一颗按钮，取值在点开的弹层里。
+   原来是把每个取值都摊成常驻 chip：史诗五条长标题、状态七条，两个字段就折四行，
+   第一张卡片之前先被吃掉 250px——而这些取值绝大多数时候没人要看。 */
+.filter-menu {
+  position: relative;
+  flex: 0 0 auto;
 }
 
-.field-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.field-name {
-  color: var(--text-2);
-  font-size: 12px;
-}
-
-.field-remove {
+.field-btn {
   display: inline-flex;
   align-items: center;
-  border: none;
-  background: none;
-  color: var(--text-2);
-  padding: 0 2px;
+  gap: 6px;
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--surface-3);
+  color: var(--text-1);
+  font-size: 12px;
   cursor: pointer;
+}
+
+/* 选了东西的字段要一眼看出来，否则"为什么少了几张单"就得靠一个个点开找。 */
+.field-btn.on {
+  border-color: var(--accent-text);
+  color: var(--accent-text);
+}
+
+.field-btn-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 10px;
+}
+
+/* 弹层脱离文档流：它撑开高度的话，一打开整页就往下跳一截，等于没省地方。 */
+.field-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 220px;
+  max-width: min(92vw, 460px);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  background: var(--surface-2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
 }
 
 .field-values {
@@ -594,6 +620,23 @@ header .count {
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
+}
+
+/* 移除字段挪进弹层：低频，而误点会把已选的筛选一并清掉。 */
+.field-remove {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 10px;
+  border: none;
+  border-top: 1px solid var(--border-1);
+  border-radius: 0;
+  padding: 8px 2px 0;
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .add-field-wrap {
@@ -2123,7 +2166,8 @@ a.detail-label:hover {
 
      宽屏真正该拿到的是另一件事：字段块从"各占整行"变成并排铺开。字段块自己很矮，
      竖着排会把工具条拉得比第一张卡片还高，而横向的宽度本来就是宽屏富余的那一维。 */
-  .filter-field { flex: 1 1 260px; }
+  /* 字段现在是一颗按钮，本来就并排；宽屏只需要让弹层里的取值有地方铺开。 */
+  .field-pop { min-width: 320px; }
 
   /* chip 的宽度上限是照手机定的（22ch）。宽屏上这个预算没有理由不放宽——史诗名
      被切成一半，等于让人在一排认不出来的选项里挑。 */

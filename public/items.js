@@ -766,27 +766,94 @@ function filterChip(dim, value, active, onToggle) {
  * chips 换行铺开，不横向滚动：横向滚动会把取值藏在屏幕外，而藏起来的筛选项等于
  * 不存在——你不会去滑一个不知道有没有内容的方向。
  */
-function filterField(dim, facets, selected, onToggleValue, onRemove) {
-  const box = el("div", "filter-field");
+/**
+ * 哪个维度的弹层开着。同一时刻只留一个——两个摊开就又回到了满屏取值。
+ *
+ * 记的是**维度名**而不是那个 DOM 节点：选一个取值会触发整页重绘，节点会被换掉，
+ * 记节点等于每选一次就关一次，多选就成了"点开-选一个-再点开"的重复劳动。记维度
+ * 名，重绘后照着它把弹层重新开出来。
+ */
+let openDim = null;
 
-  const head = el("div", "field-head");
-  head.append(el("span", "field-name", dimLabel(dim)));
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.className = "field-remove";
-  remove.innerHTML = icon("x", 14);
-  remove.title = tr("items.removeField");
-  remove.setAttribute("aria-label", tr("items.removeField"));
-  remove.addEventListener("click", onRemove);
-  head.append(remove);
-  box.append(head);
+/** 点弹层外面收起来。只注册一次——每次重绘都加一个的话，监听器会越堆越多。 */
+if (typeof document !== "undefined") {
+  document.addEventListener("click", () => {
+    if (!openDim) return;
+    openDim = null;
+    for (const pop of document.querySelectorAll(".field-pop")) pop.hidden = true;
+    for (const btn of document.querySelectorAll(".field-btn")) btn.setAttribute("aria-expanded", "false");
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !openDim) return;
+    openDim = null;
+    for (const pop of document.querySelectorAll(".field-pop")) pop.hidden = true;
+    for (const btn of document.querySelectorAll(".field-btn")) btn.setAttribute("aria-expanded", "false");
+  });
+}
+
+/**
+ * 一个筛选字段：平时只是一颗按钮，点开才列取值。
+ *
+ * 原来是把这个维度的**每一个取值**都摊成 chip 常驻在页上。史诗有五条、每条是一
+ * 整句标题，状态有七条——两个字段就折了四行，一屏里第一张卡片之前先被吃掉 250px，
+ * 而这些取值绝大多数时候没人要看。
+ *
+ * 现在收成「史诗 2 ▾」这样一颗按钮：**没选就只有名字，选了才带个数字**，屏幕上
+ * 因此永远只有一行。取值挪进弹层，那里横向宽度是整块的，长史诗名不必再截断成
+ * "QBO → 迁移账套到新总账 in-pl…"。
+ *
+ * 「移除这个字段」也挪进弹层：它是低频动作，常驻在外面时跟取值 chip 抢同一片
+ * 视觉，而误点它会把已选的筛选一并清掉。
+ */
+function filterField(dim, facets, selected, onToggleValue, onRemove) {
+  const box = el("div", "filter-menu");
+  const chosen = selected[dim] ?? [];
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = chosen.length ? "field-btn on" : "field-btn";
+  btn.setAttribute("aria-expanded", "false");
+  btn.append(el("span", "field-btn-name", dimLabel(dim)));
+  // 只在选了东西时才显示数字。没选时多一个"0"只是噪音，而这一行的全部意义
+  // 就是把噪音去掉。
+  if (chosen.length) btn.append(el("span", "field-btn-count", String(chosen.length)));
+  box.append(btn);
+
+  const pop = el("div", "field-pop");
+  // 重绘之后照着 openDim 恢复：这一颗本来就开着的话，它还得开着。
+  pop.hidden = openDim !== dim;
+  if (openDim === dim) btn.setAttribute("aria-expanded", "true");
 
   const values = el("div", "field-values");
   for (const value of valuesOf(facets, dim)) {
-    const active = (selected[dim] ?? []).includes(value);
+    const active = chosen.includes(value);
     values.append(filterChip(dim, value, active, () => onToggleValue(value)));
   }
-  box.append(values);
+  pop.append(values);
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "field-remove";
+  remove.innerHTML = icon("x", 13);
+  remove.append(document.createTextNode(tr("items.removeField")));
+  remove.addEventListener("click", onRemove);
+  pop.append(remove);
+
+  btn.addEventListener("click", (e) => {
+    // 不让这一下冒到 document 上，否则刚打开就被"点外面"那条监听收起来。
+    e.stopPropagation();
+    const wasOpen = openDim === dim;
+    for (const other of document.querySelectorAll(".field-pop")) other.hidden = true;
+    for (const other of document.querySelectorAll(".field-btn")) other.setAttribute("aria-expanded", "false");
+    openDim = wasOpen ? null : dim;
+    pop.hidden = !openDim;
+    btn.setAttribute("aria-expanded", String(Boolean(openDim)));
+  });
+  // 点弹层内部不关：选一个取值之后往往还要再选一个，每选一次就收起来会让
+  // 多选变成"点开-选一个-再点开"的重复劳动。
+  pop.addEventListener("click", (e) => e.stopPropagation());
+
+  box.append(pop);
   return box;
 }
 
