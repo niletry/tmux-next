@@ -8,7 +8,7 @@
  * and the network, and is only ever run by a browser.
  */
 
-import { themeVars, uiVars, DEFAULT_THEME } from "./themes.js";
+import { themeVars, uiVars, themeOf, isLight, DEFAULT_THEME } from "./themes.js";
 import { url } from "./root.js";
 
 /**
@@ -38,6 +38,10 @@ export function applyTheme(name) {
   for (const [key, value] of Object.entries({ ...themeVars(name), ...uiVars(name) })) {
     root.style.setProperty(key, value);
   }
+  // color-scheme 不能放进 uiVars：那里每个值都必须是 #rrggbb（有断言拦着），
+  // 而这是个关键字。它决定原生滚动条、<select> 弹层、日期选择器的明暗——
+  // 不写的话浅色主题下这些控件仍然是深色的。
+  root.style.setProperty("color-scheme", isLight(themeOf(name)) ? "light" : "dark");
   root.dataset.theme = name;
 }
 
