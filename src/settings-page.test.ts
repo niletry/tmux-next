@@ -107,8 +107,10 @@ test("内核自己的三节排在最前", async () => {
 
 test("主题一节列出每一款配色", async () => {
   const root = await mount();
+  // 深色/浅色两组标题，七款配色——组标题也是 list 的子节点，不能只数子节点数。
+  expect(root.querySelectorAll(".theme-group").length).toBe(2);
   const opts = root.querySelectorAll(".theme-opt");
-  expect(opts.length).toBeGreaterThan(1);
+  expect(opts.length).toBe(7);
   // 选中的那一款要标出来，否则这一页说不出当前是哪个。
   expect(root.querySelectorAll(".theme-opt.on").length).toBe(1);
 });
@@ -119,6 +121,10 @@ test("点一款配色会存起来", async () => {
   click(off);
   await new Promise((r) => setTimeout(r, 40));
   expect(posted.some((p) => p.url.includes("api/theme"))).toBe(true);
+  // 只有点中的那一款该带 .on / aria-pressed="true"——分组标题 <h3> 也是 list 的
+  // 子节点，用 list.children 更新会把标题也误标成"选中"，这条断言才抓得到那个 bug。
+  expect(root.querySelectorAll(".theme-opt.on").length).toBe(1);
+  expect(root.querySelectorAll('[aria-pressed="true"]').length).toBe(1);
 });
 
 // 换语言之后顶栏那句返回文案也变了。只重建正文会留下一句旧话——这一条盯的就是它。

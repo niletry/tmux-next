@@ -55,10 +55,9 @@ const isLight = (t) => luminance(t.background) > luminance(t.foreground);
 | Catppuccin Latte | magenta / bright-magenta | `#ea76cb` | 2.34:1 | `#c965af` | 3.11:1 |
 | Catppuccin Latte | cursor（rosewater） | `#dc8a78` | 2.34:1 | `#bd7767` | 3.10:1 |
 | Tokyo Night Day | bright-black | `#848cb5` | 2.54:1 | `#777ea3` | 3.06:1 |
-| Tokyo Night Day | selectionBackground | `#99a7df` | 2.49:1 | `#b9c4ec` | 3.39:1 |
 | One Light | bright-black | `#a0a1a7` | 2.47:1 | `#909196` | 3.01:1 |
 
-选区那条要同时满足两件事：前景在它上面读得清（≥3:1），以及它和底色分得开。只朝白提会一路退化到纯白——`#ffffff` 前景对比 5.85:1 过线，但选区和 `#e1e2e7` 的底色差 1.07，等于选不出东西来。`#b9c4ec` 是两条都过的那一档（3.39:1 / 1.334）。另两套上游选区本来就过（Latte 4.39:1 / 1.608，One Light 7.82:1 / 1.388）。
+选区那条要同时满足两件事：前景在它上面读得清（≥3:1），以及它和底色分得开。Tokyo Night Day 的上游选区 `#99a7df` 一度被判定不过线（拿上游前景 `#3760bf` 算得 2.49:1），换成了 `#b9c4ec`；但这套主题的前景后来被压暗成了 `#2d4f9d`，换选区的决定没有回头重算——按实际发布的前景，上游值是 3.293:1，过线，而且它跟底色的区分度 1.814 比 `#b9c4ec` 的 1.334 好三分之一以上，所以选区维持上游值 `#99a7df` 不换。另两套上游选区本来就过（Latte 4.39:1 / 1.608，One Light 7.82:1 / 1.388）。
 
 ## `--accent` 是角色令牌，不是调色板的蓝
 

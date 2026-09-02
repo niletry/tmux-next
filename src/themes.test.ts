@@ -125,6 +125,17 @@ test.each(names)("%s: every chromatic colour clears the floor", (name) => {
   expect(short).toEqual([]);
 });
 
+// --accent 是从这个色推出来的角色令牌，推到 onAccent 过 4.5 为止，所以量
+// --accent 的那条断言按构造不可能失败。这条量的是调色板自己：一套主题的蓝和
+// 它的 onAccent 本来就该配得上。门槛是 3.0 而不是 4.5——七套实测 4.02–7.79 全过，
+// 而 4.5 会误伤 Tokyo Night Day（4.02）和 One Light（4.05），那正是当初把这条
+// 删掉的原因。删掉它的代价是：新加一套蓝色很差的主题时，--accent 会被静默推到
+// 离该主题调色板很远的地方，而所有断言仍然全绿。
+test.each(names)("%s: 调色板自己的蓝配得上它的 on-accent", (name) => {
+  const t = THEMES[name]!;
+  expect(contrast(t.onAccent, t.ansi[4]!)).toBeGreaterThanOrEqual(COLOUR_MIN);
+});
+
 test.each(names)("%s: the cursor is visible and its accent readable under it", (name) => {
   const t = THEMES[name]!;
   expect(contrast(t.cursor, t.background)).toBeGreaterThanOrEqual(COLOUR_MIN);
@@ -353,13 +364,15 @@ test.each(THEME_ORDER)("%s: 角色色和终端调色板互不重叠", (name) => 
  * 改这个颜色吗」。如果答案是"改了实现，颜色确实该变"，才更新这里的期望值，
  * 并把理由记下来，就像这段注释记录 Nord 的例外一样。
  *
- * 只钉四套深色主题（tokyo-night / catppuccin-mocha / one-dark / nord）。浅色
- * 主题还在开发中——Task 4 还要再加两套——现在钉死只会让浅色主题的每次调整都
- * 变成一次无意义的返工，等浅色主题定稿了再补。
+ * 七套主题（四深三浅）全部钉死：tokyo-night / catppuccin-mocha / one-dark /
+ * nord / tokyo-night-day / catppuccin-latte / one-light 都已定稿。
  */
-test("深色主题的角色令牌逐键钉住", () => {
-  const darkThemes = ["tokyo-night", "catppuccin-mocha", "one-dark", "nord"];
-  const actual = Object.fromEntries(darkThemes.map((name) => [name, uiVars(name)]));
+test("七套主题的角色令牌逐键钉住", () => {
+  const allThemes = [
+    "tokyo-night", "catppuccin-mocha", "one-dark", "nord",
+    "tokyo-night-day", "catppuccin-latte", "one-light",
+  ];
+  const actual = Object.fromEntries(allThemes.map((name) => [name, uiVars(name)]));
   expect(actual).toEqual({
     "tokyo-night": {
       "--surface-1": "#1a1b26",
@@ -440,6 +453,66 @@ test("深色主题的角色令牌逐键钉住", () => {
       "--ok": "#a3be8c",
       "--warn": "#ebcb8b",
       "--danger": "#ce878e", // 裁定接受的漂移：旧值 #cb868e，见上方注释。
+    },
+    "tokyo-night-day": {
+      "--surface-1": "#e1e2e7",
+      "--surface-2": "#dadce4",
+      "--surface-3": "#d1d5e0",
+      "--surface-4": "#c8cddd",
+      "--surface-5": "#bfc6d9",
+      "--border-1": "#c1c8da",
+      "--border-2": "#9dabcb",
+      "--accent": "#2a73d6",
+      "--accent-hover": "#2668c1",
+      "--accent-text": "#2d54a5",
+      "--accent-alt-text": "#3e50aa",
+      "--on-accent": "#ffffff",
+      "--text-1": "#2d4f9d",
+      "--text-2": "#3354a0",
+      "--text-3": "#5570ae",
+      "--ok": "#587539",
+      "--warn": "#8c6c3e",
+      "--danger": "#d82559",
+    },
+    "catppuccin-latte": {
+      "--surface-1": "#eff1f5",
+      "--surface-2": "#e8ebef",
+      "--surface-3": "#e0e2e8",
+      "--surface-4": "#d8dae1",
+      "--surface-5": "#d0d2da",
+      "--border-1": "#d2d4dd",
+      "--border-2": "#b2b4c0",
+      "--accent": "#1e66f5",
+      "--accent-hover": "#1b5cdd",
+      "--accent-text": "#335bb5",
+      "--accent-alt-text": "#6f557d",
+      "--on-accent": "#ffffff",
+      "--text-1": "#4c4f69",
+      "--text-2": "#5a5d75",
+      "--text-3": "#76798d",
+      "--ok": "#378a25",
+      "--warn": "#a96b16",
+      "--danger": "#d20f39",
+    },
+    "one-light": {
+      "--surface-1": "#fafafa",
+      "--surface-2": "#f2f2f3",
+      "--surface-3": "#e9e9e9",
+      "--surface-4": "#dfdfe0",
+      "--surface-5": "#d5d6d7",
+      "--border-1": "#dbdbdd",
+      "--border-2": "#b9babd",
+      "--accent": "#3c71e3",
+      "--accent-hover": "#3666cc",
+      "--accent-text": "#3d60af",
+      "--accent-alt-text": "#a626a4",
+      "--on-accent": "#ffffff",
+      "--text-1": "#383a42",
+      "--text-2": "#606268",
+      "--text-3": "#7e7f84",
+      "--ok": "#468e46",
+      "--warn": "#aa7401",
+      "--danger": "#d65145",
     },
   });
 });

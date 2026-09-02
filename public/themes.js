@@ -151,8 +151,12 @@ export const THEMES = {
     foreground: "#2d4f9d",
     cursor: "#2d4f9d",
     cursorAccent: "#e1e2e7",
-    // upstream #99a7df → 前景对比 2.49:1
-    selectionBackground: "#b9c4ec",
+    // 上游值。曾被换成 #b9c4ec，理由是"前景对比只有 2.49:1"——那个数是拿**上游
+    // 前景** #3760bf 算的，而这套主题的前景随后被压暗成了 #2d4f9d，换选区的决定
+    // 却没回头重算。按实际发布的前景，上游值是 3.293:1，过线；而且它跟底色的
+    // 区分度 1.814 比 #b9c4ec 的 1.334 好三分之一以上——选区跟底色分得开是后来
+    // 才补上的第二条准则，上游值在它上面反而更好。
+    selectionBackground: "#99a7df",
     onAccent: "#ffffff",
     ansi: [
       "#b4b5b9", "#f52a65", "#587539", "#8c6c3e",
