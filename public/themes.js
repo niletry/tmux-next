@@ -136,6 +136,46 @@ export const THEMES = {
       "#1e66f5", "#c965af", "#179299", "#bcc0cc",
     ],
   },
+
+  "tokyo-night-day": {
+    label: "Tokyo Night Day",
+    // upstream fg #3760bf → 在自己底色上 4.52:1，刚好压线，而页面的表面是朝
+    // 前景色抬的，抬到 surface-5 时 --text-1 掉到 3.54:1，--text-2 连一步都
+    // 走不动。这暴露了「抬升表面」一个没写下来的隐含要求：前景对底色要有余量。
+    // 四套深色主题的前景是近白色（8–11:1），大到从没暴露过。朝纯黑压 18%,
+    // fg/bg 升到 5.98:1，五层表面上 4.53–5.98 全部过线。
+    background: "#e1e2e7",
+    foreground: "#2d4f9d",
+    cursor: "#2d4f9d",
+    cursorAccent: "#e1e2e7",
+    // upstream #99a7df → 前景对比 2.49:1
+    selectionBackground: "#b9c4ec",
+    onAccent: "#ffffff",
+    ansi: [
+      "#b4b5b9", "#f52a65", "#587539", "#8c6c3e",
+      "#2e7de9", "#9854f1", "#007197", "#6172b0",
+      // upstream #848cb5 → 2.54:1
+      "#777ea3", "#f52a65", "#587539", "#8c6c3e",
+      "#2e7de9", "#9854f1", "#007197", "#2d4f9d",
+    ],
+  },
+
+  "one-light": {
+    label: "One Light",
+    background: "#fafafa",
+    foreground: "#383a42",
+    cursor: "#526fff",
+    cursorAccent: "#fafafa",
+    selectionBackground: "#d4d7d6",
+    onAccent: "#ffffff",
+    ansi: [
+      "#4f525e", "#e45649", "#50a14f", "#c18401",
+      "#4078f2", "#a626a4", "#0184bc", "#a0a1a7",
+      // upstream #a0a1a7 → 2.47:1
+      "#909196", "#e45649", "#50a14f", "#c18401",
+      "#4078f2", "#a626a4", "#0184bc", "#4f525e",
+    ],
+  },
 };
 
 export const DEFAULT_THEME = "tokyo-night";
@@ -148,7 +188,10 @@ export const ANSI_NAMES = [
 ];
 
 /** Picker order. Object key order would work, but relying on it is fragile. */
-export const THEME_ORDER = ["tokyo-night", "catppuccin-mocha", "one-dark", "nord", "catppuccin-latte"];
+export const THEME_ORDER = [
+  "tokyo-night", "catppuccin-mocha", "one-dark", "nord",
+  "tokyo-night-day", "catppuccin-latte", "one-light",
+];
 
 /**
  * A theme by name, falling back to the default.

@@ -145,7 +145,7 @@ test("isLight 读的是调色板，不是名字", () => {
 
 test.each(names)("%s: 深色主题判为深色，浅色主题判为浅色", (name) => {
   const t = THEMES[name]!;
-  const shouldBeLight = name === "catppuccin-latte";
+  const shouldBeLight = ["catppuccin-latte", "tokyo-night-day", "one-light"].includes(name);
   expect(isLight(t)).toBe(shouldBeLight);
 });
 
@@ -281,6 +281,31 @@ test.each(THEME_ORDER)("%s: uiVars 的每个值都是 #rrggbb", (name) => {
   for (const [key, value] of Object.entries(ui(name))) {
     expect({ key, value }).toEqual({ key, value: expect.stringMatching(HEX) as unknown as string });
   }
+});
+
+// 触底的现场特征。pushTo 走完循环还没达标时会返回端点本身，而端点现在是纯黑
+// 或纯白——一个算出来的令牌等于纯黑/纯白，就说明这套主题的这个颜色在这个极性
+// 下根本推不出答案。--on-accent 要排除：它是从调色板直接抄的，三套浅色主题的
+// 它正当地就是 #ffffff。
+//
+// 这条是防将来回归的哨兵，不是发现当下缺陷的工具：极性修好之前，语义色触底
+// 返回的是 ansi[15]（Latte 的 #bcc0cc），这条根本抓不到——抓到它的是既有的
+// 语义色对比度断言。
+test.each(THEME_ORDER)("%s: 没有算出来的令牌触底成纯黑或纯白", (name) => {
+  const bottomed = Object.entries(ui(name))
+    .filter(([key]) => key !== "--on-accent")
+    .filter(([, c]) => c === "#000000" || c === "#ffffff")
+    .map(([key]) => key);
+  expect(bottomed).toEqual([]);
+});
+
+// 选区必须跟底色分得开。前景在选区上读得清（上面已有断言）还不够——一块跟底色
+// 同色的选区不是"淡"，是"选不出东西来"。Tokyo Night Day 的上游选区 #99a7df
+// 前景对比只有 2.49:1，而只朝白提会一路退化到纯白：前景对比过线了，选区却跟
+// #e1e2e7 的底色差 1.07。两条得同时满足。
+test.each(THEME_ORDER)("%s: 选区跟底色分得出来", (name) => {
+  const t = THEMES[name]!;
+  expect(contrast(t.selectionBackground, t.background)).toBeGreaterThanOrEqual(1.15);
 });
 
 // 终端那一组不该被这次改动碰到：uiVars 和 themeVars 是两份互不重叠的输出，
