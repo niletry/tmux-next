@@ -25,19 +25,22 @@
  */
 
 /**
- * Why the `brightBlack` of every theme below departs from its upstream value.
+ * Why the `brightBlack` of most themes below departs from its upstream value.
  *
  * Claude Code draws its secondary information in bright black — the `⏵⏵ …`
- * status line, the `⎿` prefixes, timestamps. Every one of these four palettes
- * ships a bright black between 1.69:1 and 2.46:1 against its own background,
- * which is invisible on a phone outdoors. Each is replaced by a lighter step
- * from the *same* upstream palette (Tokyo Night's comment range, Catppuccin's
- * overlay1, …) so the hue is untouched and only the luminance moves.
+ * status line, the `⎿` prefixes, timestamps. Six of these seven palettes ship a
+ * bright black between 1.69:1 and 2.54:1 against their own background, which is
+ * invisible on a phone outdoors. Each of those is replaced by a step from the
+ * *same* upstream palette moved away from the background (Tokyo Night's comment
+ * range, Catppuccin's overlay1, …) so the hue is untouched and only the
+ * luminance moves — lighter on a dark theme, darker on a light one. Catppuccin
+ * Latte is the exception: its upstream subtext0 already clears the floor at
+ * 4.37:1.
  *
  * The threshold is WCAG AA, not AAA. Measured against their own backgrounds
  * One Dark's foreground is 6.6:1 and two of Nord's colours fall under 4.5:1 —
- * an AAA bar would disqualify two of the four established themes, which says
- * the bar is wrong rather than the themes.
+ * an AAA bar would disqualify two of the four themes this project started with,
+ * which says the bar is wrong rather than the themes.
  */
 
 /** @type {Record<string, Theme>} */

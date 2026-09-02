@@ -198,7 +198,7 @@ Tap the gear in the list header. Seven presets ship, in two groups: four dark �
 
 The choice is stored per machine (`~/.tmux-next/theme.json`), so phone and desktop agree. Font size stays per device, on the terminal toolbar — how big a screen is and what a machine looks like are different questions.
 
-Every palette is checked against WCAG AA by the test suite. Note that the four presets do **not** use their upstream `brightBlack`: all of them ship one between 1.7:1 and 2.5:1 against their own background, and that is the colour Claude Code draws its secondary text in — unreadable on a phone outdoors. Each is replaced by a lighter step from the same upstream palette.
+Every palette is checked against WCAG AA by the test suite. Note that six of the seven do **not** use their upstream `brightBlack`: each of those ships one between 1.7:1 and 2.6:1 against its own background, and that is the colour Claude Code draws its secondary text in — unreadable on a phone outdoors. Each is replaced by a step from the same upstream palette moved away from the background — lighter on a dark theme, darker on a light one. Catppuccin Latte is the exception: its upstream value already clears the bar.
 
 ### Virtual keys
 
