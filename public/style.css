@@ -675,6 +675,17 @@ header .count {
 
 a.item-title { color: var(--accent-text); }
 
+/* 能点的那个单号徽标：颜色是唯一的区别，形状保持一致——它还是同一个东西，只是
+   这次点得开。没有 url 的照旧是静态文字，两者一眼可分。 */
+a.item-source.is-link {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+
+a.item-source.is-link:hover {
+  text-decoration: underline;
+}
+
 .item-source,
 .item-count {
   flex: 0 0 auto;

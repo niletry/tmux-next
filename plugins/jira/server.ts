@@ -364,9 +364,12 @@ export async function sync(): Promise<SyncResult> {
     before.filter((i) => i.source?.provider === "jira").map((i) => i.source!.ref),
   );
 
+  // 工单页地址。只有产生这个来源的一方知道怎么拼——内核不该替它猜，所以由这里
+  // 一并写进 source.url，首页那颗单号徽标据此变成可点的链接。
+  const browse = await browseUrl();
   const syncResult = await syncIssues(result.issues, async (ref, title) => {
     const created = !existingRefs.has(ref);
-    await ensureItemForSource("jira", ref, title, { refreshTitle: true });
+    await ensureItemForSource("jira", ref, title, { refreshTitle: true, ...browse(ref) });
     return { created };
   });
 
@@ -409,7 +412,22 @@ export async function refreshItem(ref: string): Promise<void> {
   const issue = await refreshIssue(ref);
   if (!issue) throw new Error(`refreshIssue(${ref}) 没问到——未配置或 Jira 不通`);
   await dev(issue.id, issue.key, true);
-  await ensureItemForSource("jira", ref, issue.summary, { refreshTitle: true });
+  const browse = await browseUrl();
+  await ensureItemForSource("jira", ref, issue.summary, { refreshTitle: true, ...browse(ref) });
+}
+
+/**
+ * 拼工单页地址的函数，配置读一次。
+ *
+ * 没配 URL 就返回空对象——`ensureItemForSource` 收到没有 url 的 opts 会原样保留
+ * 已有的那个，而不是清掉。这是对的：读不到配置是**我们**这边的临时状态，不该
+ * 表现成"这张单没有地址了"。
+ */
+async function browseUrl(): Promise<(ref: string) => { url?: string }> {
+  const config = await readJiraConfig();
+  const base = config?.url;
+  if (!base) return () => ({});
+  return (ref) => ({ url: `${base}/browse/${encodeURIComponent(ref)}` });
 }
 
 /**

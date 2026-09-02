@@ -262,23 +262,30 @@ test("没有未归单的会话时不画那个分组", async () => {
 // 链接只从 source.url 来——内核不知道任何插件的路由规则，猜一条 URL 出来
 // （比如按 provider 名字拼 p/<id>/？key=）就是在编那份规则，而且这条规则
 // 编错过一次：没有任何插件页面真的读 ?key=。
-test("单的来源带 url 时，标题链到那个地址", async () => {
+// 链接挂在单号徽标上，不挂标题：徽标本来就是"远端那个东西的标识"，而点一段长标题
+// 跳去外部系统是意料之外的事。去外部系统开新窗口，target=_blank 必须配 rel=noopener。
+test("单的来源带 url 时，单号徽标链到那个地址", async () => {
   const root = await mount(payload({
     items: [item({
       source: { provider: "jira", ref: "EXAMPLE-1", url: "https://example.atlassian.net/browse/EXAMPLE-1" },
     })],
   }));
-  const link = root.querySelector("a.item-title");
+  const link = root.querySelector("a.item-source");
   expect(link?.getAttribute("href")).toBe("https://example.atlassian.net/browse/EXAMPLE-1");
+  expect(link?.textContent).toBe("EXAMPLE-1");
+  expect(link?.getAttribute("target")).toBe("_blank");
+  expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+  // 标题不再是链接
+  expect(root.querySelector("a.item-title")).toBeNull();
 });
 
 // 有来源、但那条来源没带 url——标题不该被拿去瞎拼一个地址，退回纯文本；
 // ref 徽标仍然画，因为它是有用的信息，跟"有没有地方可点"是两件事。
-test("单的来源没有 url 时，标题不是链接，但 ref 徽标还在", async () => {
+test("单的来源没有 url 时，徽标不是链接，但仍然画出来", async () => {
   const root = await mount(payload({
     items: [item({ source: { provider: "jira", ref: "EXAMPLE-1" } })],
   }));
-  expect(root.querySelector("a.item-title")).toBeNull();
+  expect(root.querySelector("a.item-source")).toBeNull();
   expect(root.querySelector(".item-source")?.textContent).toBe("EXAMPLE-1");
 });
 
@@ -1014,6 +1021,69 @@ test("工具条的新建和同步都带图标", async () => {
   const root = await mount(payload({ items: [item()] }));
   expect(root.querySelector("#new-item svg")).not.toBeNull();
   expect(root.querySelector("#sync-items svg")).not.toBeNull();
+});
+
+/**
+ * 「只看没开工的」。
+ *
+ * 这条本来就能从筛选行挑出来（item.agent 选「无会话」），做成开关是因为它是这份
+ * 列表最常用的一次筛选——「接下来该干哪张」。
+ */
+
+const idlePair = () => payload({
+  items: [item(), item({ id: "it-2", title: "在跑的" })],
+  facets: {
+    "it-1": [{ dim: "item.agent", value: "none" }],
+    "it-2": [{ dim: "item.agent", value: "working" }],
+  },
+});
+
+test("开关关着时两张单都在", async () => {
+  const root = await mount(idlePair());
+  expect(root.querySelectorAll(".item-card").length).toBe(2);
+});
+
+test("开关开着只剩没有会话的那张", async () => {
+  const root = await mount(idlePair(), { "tmux-next.items.idleOnly": "1" });
+  const cards = [...root.querySelectorAll(".item-card")];
+  expect(cards.length).toBe(1);
+  expect(cards[0]!.textContent).toContain("修登录页");
+});
+
+test("勾上开关立刻生效并记住", async () => {
+  const store: Record<string, string> = {};
+  const root = await mount(idlePair(), store);
+  const toggle = root.ownerDocument.getElementById("idle-only") as unknown as HTMLInputElement;
+  toggle.checked = true;
+  toggle.dispatchEvent(new (globalThis as any).window.Event("change", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+
+  expect(root.querySelectorAll(".item-card").length).toBe(1);
+  expect(store["tmux-next.items.idleOnly"]).toBe("1");
+});
+
+// 跟筛选行是"与"，不是替代——两个都开就是"没会话、且状态是 X"。
+test("开关跟 facet 筛选叠加，不是互相取代", async () => {
+  const body = payload({
+    items: [item(), item({ id: "it-2", title: "没会话但状态不同" })],
+    facets: {
+      "it-1": [{ dim: "item.agent", value: "none" }, { dim: "jira.status", value: "Doing" }],
+      "it-2": [{ dim: "item.agent", value: "none" }, { dim: "jira.status", value: "Done" }],
+    },
+  });
+  const root = await mount(body, {
+    "tmux-next.items.idleOnly": "1",
+    "tmux-next.items.filter": JSON.stringify({ "jira.status": ["Doing"] }),
+  });
+  const cards = [...root.querySelectorAll(".item-card")];
+  expect(cards.length).toBe(1);
+  expect(cards[0]!.textContent).toContain("修登录页");
+});
+
+// 计数数的是屏幕上真能数出来的卡片数，开关生效时也不能例外。
+test("开关生效时头部计数跟着变", async () => {
+  await mount(idlePair(), { "tmux-next.items.idleOnly": "1" });
+  expect(document.getElementById("count")?.textContent).toBe(tr("items.count", { n: 1 }));
 });
 
 /**

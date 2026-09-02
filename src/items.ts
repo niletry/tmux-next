@@ -125,23 +125,32 @@ export async function ensureItemForSource(
   provider: string,
   ref: string,
   title?: string,
-  opts?: { refreshTitle?: boolean },
+  opts?: { refreshTitle?: boolean; url?: string },
 ): Promise<WorkItem> {
   return serialized(async () => {
     const all = await readItems();
     const found = all.find((i) => i.source?.provider === provider && i.source.ref === ref);
     if (found) {
+      let dirty = false;
       // 只在 refreshTitle 开着、新标题非空且与现有不同时才改。
       if (opts?.refreshTitle && title && title !== found.title) {
         found.title = title;
-        await writeJsonAtomic(itemsPath(), all);
+        dirty = true;
       }
+      // url 跟 title 不同，不受 refreshTitle 管：它不是远端的内容，是**我们**拼出
+      // 来的地址，只取决于这个来源当前配在哪。实例地址改了（换域名、从测试环境
+      // 指回生产），旧 url 就是死链，留着它比没有更糟。
+      if (opts?.url && opts.url !== found.source?.url) {
+        found.source = { ...found.source!, url: opts.url };
+        dirty = true;
+      }
+      if (dirty) await writeJsonAtomic(itemsPath(), all);
       return found;
     }
     const item: WorkItem = {
       id: newId(),
       title: title || ref,
-      source: { provider, ref },
+      source: { provider, ref, ...(opts?.url ? { url: opts.url } : {}) },
       tags: [],
       createdAt: Math.floor(Date.now() / 1000),
       closedAt: null,

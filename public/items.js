@@ -463,14 +463,23 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
   // "provider 名字就是插件 id、插件页都在 p/<id>/ 下接受 ?key="，那是两回事，也没
   // 有任何插件的页面真的读 ?key=）。source.ref 的徽标不管有没有 url 都画，它本身
   // 就是有用的信息。
-  if (item.source?.url) {
-    const link = el("a", "item-title", item.title);
-    link.href = item.source.url;
-    head.append(link);
-  } else {
-    head.append(el("h2", "item-title", item.title));
+  head.append(el("h2", "item-title", item.title));
+  if (item.source) {
+    // 链接挂在单号徽标上，不挂标题：徽标本来就是"远端那个东西的标识"，而点一段
+    // 长标题跳去外部系统是意料之外的事——标题读起来像标题，不像出口。
+    // 新窗口打开：那是另一个系统，把人从这份列表里带走等于让他重新找回原来的位置。
+    // target=_blank 必须配 rel=noopener，否则对面拿得到 window.opener。
+    if (item.source.url) {
+      const link = el("a", "item-source is-link", item.source.ref);
+      link.href = item.source.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.title = item.source.url;
+      head.append(link);
+    } else {
+      head.append(el("span", "item-source", item.source.ref));
+    }
   }
-  if (item.source) head.append(el("span", "item-source", item.source.ref));
   if (sessions.length) head.append(el("span", "item-count", tr("items.sessions", { n: sessions.length })));
   card.append(head);
 
@@ -508,6 +517,7 @@ const GROUP_KEY = "tmux-next.items.groupBy";
 const FILTER_KEY = "tmux-next.items.filter";
 const FIELDS_KEY = "tmux-next.items.fields";
 const SHOW_ARCHIVED_KEY = "tmux-next.items.showArchived";
+const IDLE_ONLY_KEY = "tmux-next.items.idleOnly";
 
 // 手机上第一眼要回答的是"该我动了吗"，所以默认分组维度是 agent 状态而不是随便
 // 一个维度或不分组。
@@ -629,6 +639,37 @@ function saveShowArchived(value) {
   } catch {
     // 隐私窗口：记不住就记不住，不是页面能崩的理由。
   }
+}
+
+/**
+ * 「只看还没开工的」：一张单没有任何活着的会话。
+ *
+ * 这条本来就能从筛选行里挑出来（`item.agent` 选「无会话」），做成一个开关是因为
+ * 它是这份列表最常用的一次筛选——「接下来该干哪张」。摊在工具条上一按就到，不用
+ * 先想起有这么个维度、再翻到那一颗 chip。
+ *
+ * 判据取 `item.agent === "none"` 而不是「没有会话行」：agent 是内核已经判好的
+ * 状态，两处各算一遍迟早会对不上，那时页面就在说两套话。
+ */
+function loadIdleOnly() {
+  try {
+    return localStorage.getItem(IDLE_ONLY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveIdleOnly(value) {
+  try {
+    localStorage.setItem(IDLE_ONLY_KEY, value ? "1" : "0");
+  } catch {
+    // 同上：记不住不影响这一次筛选是对的。
+  }
+}
+
+/** 这张单此刻有没有活着的会话。 */
+function hasNoSession(facets) {
+  return (facets ?? []).some((f) => f.dim === "item.agent" && f.value === "none");
 }
 
 /**
@@ -783,6 +824,21 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   archivedWrap.append(archivedToggle);
   archivedWrap.append(el("span", "toolbar-label", tr("items.showArchived")));
   actions.append(archivedWrap);
+
+  // 「只看还没开工的」。排在「显示已归档」旁边，两个都是"这份列表给我看什么"，
+  // 跟分组是同一档，不跟同步那种动作混。
+  const idleWrap = el("label", "show-archived-wrap");
+  const idleToggle = document.createElement("input");
+  idleToggle.type = "checkbox";
+  idleToggle.id = "idle-only";
+  idleToggle.checked = loadIdleOnly();
+  idleToggle.addEventListener("change", () => {
+    saveIdleOnly(idleToggle.checked);
+    onChange();
+  });
+  idleWrap.append(idleToggle);
+  idleWrap.append(el("span", "toolbar-label", tr("items.idleOnly")));
+  actions.append(idleWrap);
 
   const groupWrap = el("label", "group-by-wrap");
   groupWrap.append(el("span", "toolbar-label", tr("items.groupBy")));
@@ -1017,7 +1073,12 @@ async function render(fromSync = false) {
     const stored = loadFilter();
     const selected = pruneSelection(visibleFacets, stored);
     if (JSON.stringify(selected) !== JSON.stringify(stored)) saveFilter(selected);
-    const filtered = filterItems(visible, visibleFacets, selected);
+    // 开关跟筛选行是"与"的关系，不是替代：两个都开就是"没会话、且状态是 X"。
+    // 它排在 facet 筛选之后，所以计数、空状态那几条判断照旧只看一个 filtered。
+    const idleOnly = loadIdleOnly();
+    const filtered = filterItems(visible, visibleFacets, selected).filter(
+      (it) => !idleOnly || hasNoSession(visibleFacets[it.id]),
+    );
 
     // 头部计数数的是筛完之后真正画出来的那些卡片，不是 visible.length——facet
     // 筛选生效时两者会不一样：filtered 是用户此刻在屏幕上能数出来的数字，
