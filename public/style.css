@@ -659,8 +659,15 @@ a.item-title { color: var(--accent); }
   overflow: hidden;
 }
 
-.facet .f-dim,
+/* 值可以被截断，字段名不行。两个都 shrink 的时候先被压扁的是字段名——史诗那颗
+   chip 会缩成「E… QBO → Orbit Ledger in-pl…」，读的人既不知道这是哪个维度，也
+   没读全取值，两头都没落着。字段名是这颗 chip 里最短、也最不能丢的一半。 */
+.facet .f-dim {
+  flex: 0 0 auto;
+}
+
 .facet .f-value {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1844,7 +1851,10 @@ a.detail-label:hover {
   #items > section,
   #list .group {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    /* 440 而不是 380：380 在 1200px 的内容列里排三列，每张卡只剩 384px——单标题
+       要占三行、维度 chips 挤成四排、底部四个按钮还要换行。这些卡片装的是长工单
+       标题和一串 chips，不是缩略图，横向给不够就等于把省下的宽度还回去当高度。 */
+    grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
     gap: 12px;
     padding-inline: 12px;
     /* 每张卡按自己的内容取高，不跟同一行里最高的那张对齐。默认的 stretch 会把
@@ -1856,6 +1866,13 @@ a.detail-label:hover {
   /* 默认横跨整行，卡片才是唯一进入网格的东西。反过来写（逐个列出工具条、
      标题、空状态、恢复横幅……）意味着以后新加一种行就会悄悄变成一个格子，
      坐在第一张卡片旁边——那是没人会想到去检查的失败方式。 */
+  /* 分组时 section 自己也是网格，而它已经坐在 #items 的内边距里了——两层都写
+     padding-inline 会把卡片白白缩进两遍，而且少算一列的宽度。外层负责留白，
+     内层只负责排列。 */
+  #items > section {
+    padding-inline: 0;
+  }
+
   #items > *,
   #items > section > *,
   #list .group > * {
@@ -1902,6 +1919,28 @@ a.detail-label:hover {
   .item-title {
     white-space: normal;
     overflow: visible;
+    /* 独占一行。标题一换行，工单号和会话数就被挤到它下面，变成一排孤零零的小
+       药丸，跟再下面那排维度 chips 长得一模一样——两排同形的东西，谁也说不清
+       上面那排为什么单独站着。既然它们注定分行，就把顺序摆正。 */
+    flex: 1 1 100%;
+    order: 2;
+  }
+
+  /* 标识在标题之上：工单号、会话数是"这是哪一张单"，标题是"这张单要干什么"。
+     先说是谁再说是什么，跟工单页把 key 放在摘要前面是同一个道理。 */
+  .item-source,
+  .item-count {
+    order: 1;
+  }
+
+  /* 动作行改成从左往右排。窄卡片里四个按钮一行放不下，而原来那条 flex-end 会把
+     落到第二行的最后一个（归档）单独顶到右边——看着像画错了，而不是像换了行。
+     靠左排的话，换行就只是换行。 */
+  .item-actions {
+    justify-content: flex-start;
+  }
+  .item-new {
+    margin-right: 0;
   }
 
   /* 工具条在宽屏**仍然**是纵向堆行的，动作一行、筛选一行。
