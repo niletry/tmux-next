@@ -28,7 +28,7 @@
   /* 9-10：实心填充及其悬停；--accent-text 是同一个强调色当文字用的那一档，
      要求是正文级的 4.5:1，跟当填充不是一回事。 */
   --accent: #7aa2f7;
-  --accent-hover: #7aa2f7;
+  --accent-hover: #8daff8;
   --accent-text: #7aa2f7;
   --accent-alt-text: #bb9af7;
   --on-accent: #1a1b26;

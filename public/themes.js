@@ -294,6 +294,8 @@ const farEnd = (t) => (isLight(t) ? "#000000" : "#ffffff");
 const TEXT_FLOOR = 4.5;
 /** 非正文的着色标记（状态点、单个字形、边框）：WCAG AA 的非文本档。 */
 const MARK_FLOOR = 3.0;
+/** 两块填充之间刚好可辨的一档。不是 WCAG 档位——WCAG 管字和背景，不管状态差异。 */
+const HOVER_MIN = 1.15;
 
 /**
  * 页面 chrome 的角色色，按 Radix 12 级色阶的语义分层生成。
@@ -326,15 +328,22 @@ export function uiVars(name) {
   const s4 = mix(bg, fg, 0.86);
   const s5 = mix(bg, fg, 0.81);
 
-  // 强调色当文字用：先试主蓝，再试亮蓝，都不够就从亮蓝朝前景色推。三级而不是
-  // 一步到位，是为了尽量停在调色板自己的颜色上——朝前景色推会把蓝拉灰，那是
-  // 最后手段。
+  const far = farEnd(t);
+
+  // --accent 是填充，onAccent 压在它上面，所以这是正文级要求。上游调色板的蓝
+  // 未必够：Tokyo Night Day 的 #2e7de9 白字压上去 4.02:1、深字约 4.2:1，
+  // **两个方向都过不了**——不是 onAccent 选错了，是这个色当填充时本身不够。
+  // 压的是角色令牌，终端的 ansi[4] 一个字节不动，这正是两组变量分开的意义。
+  // 四套深色主题实测 4.64–7.79:1，循环第一步就过，值不变。
+  const accent = pushTo(t.ansi[4], far, t.onAccent, TEXT_FLOOR);
+
+  // 强调色当文字用：先试主蓝，都不够就从主蓝朝前景色推。中间那一级（试亮蓝）
+  // 删掉了：七套主题的 ansi[12] **全部**等于 ansi[4]
+  // （#7aa2f7 / #89b4fa / #61afef / #81a1c1，三套浅色也一样），所以第二个条件
+  // 跟第一个是同一个判断，永远不可能在第一个失败之后成功——它在任何已发布的
+  // 主题里都是死代码。删它不改变任何一套主题的结果。
   const accentText =
-    contrast(t.ansi[4], s4) >= TEXT_FLOOR
-      ? t.ansi[4]
-      : contrast(t.ansi[12], s4) >= TEXT_FLOOR
-        ? t.ansi[12]
-        : pushTo(t.ansi[12], fg, s4, TEXT_FLOOR);
+    contrast(t.ansi[4], s4) >= TEXT_FLOOR ? t.ansi[4] : pushTo(t.ansi[4], fg, s4, TEXT_FLOOR);
 
   return {
     "--surface-1": s1,
@@ -348,11 +357,15 @@ export function uiVars(name) {
     "--border-1": mix(fg, bg, 0.16),
     "--border-2": mix(fg, bg, 0.32),
 
-    // 9-10：实心填充及其悬停。悬停用同主题的亮蓝，而不是随手调亮——留在调色板里。
-    "--accent": t.ansi[4],
-    "--accent-hover": t.ansi[12],
+    // 9-10：实心填充及其悬停。悬停：从常态填充朝远离表面的一端推，推到跟常态色差
+    // 得出来为止。以前取 ansi[12]（亮蓝），而七套主题的 ansi[12] 全部等于 ansi[4]
+    // ——悬停色一直等于常态色，等于没有悬停反馈。这不是浅色带来的问题，是浅色让它
+    // 显眼了。「远离表面」对填充和压在它上面的字是同向的，所以 onAccent 在悬停填充
+    // 上只会比在常态填充上更好（实测 5.34–9.03:1），不需要再夹一次。
+    "--accent": accent,
+    "--accent-hover": pushTo(accent, far, accent, HOVER_MIN),
     // 强调色当**文字**用（链接、"进入"、主动作的字），这是正文级的要求，跟当填充
-    // 是两回事。太暗就朝亮蓝推，推不动再朝前景色推。
+    // 是两回事。太暗就朝前景色推。
     "--accent-text": accentText,
     // 第二个分类色。不是"某个插件要用紫色"——是"当一个界面需要第二种可区分的
     // 着色时用哪个"，跟 --accent-text 一样是正文级的要求。工单页拿它标史诗。

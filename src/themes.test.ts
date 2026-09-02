@@ -109,12 +109,6 @@ test.each(names)("%s: every chromatic colour clears the floor", (name) => {
   expect(short).toEqual([]);
 });
 
-test.each(names)("%s: on-accent text is readable on the accent fill", (name) => {
-  const t = THEMES[name]!;
-  // --accent is the theme's blue; onAccent is pressed onto it in buttons and chips.
-  expect(contrast(t.onAccent, t.ansi[4]!)).toBeGreaterThanOrEqual(FG_MIN);
-});
-
 test.each(names)("%s: the cursor is visible and its accent readable under it", (name) => {
   const t = THEMES[name]!;
   expect(contrast(t.cursor, t.background)).toBeGreaterThanOrEqual(COLOUR_MIN);
@@ -244,6 +238,20 @@ test.each(THEME_ORDER)("%s: 强调色当文字用时是正文级", (name) => {
 test.each(THEME_ORDER)("%s: 强调色当填充时压在上面的字读得清", (name) => {
   const v = ui(name);
   expect(contrast(v["--on-accent"]!, v["--accent"]!)).toBeGreaterThanOrEqual(FG_MIN);
+});
+
+// 悬停填充必须看得出跟常态不一样。1.15 是两块填充之间刚好可辨的一档——这不是
+// WCAG 的档位，WCAG 管的是文字和它的背景，不管两个状态之间的差别。
+const HOVER_MIN = 1.15;
+
+test.each(THEME_ORDER)("%s: 悬停填充跟常态填充分得出来", (name) => {
+  const v = ui(name);
+  expect(contrast(v["--accent"]!, v["--accent-hover"]!)).toBeGreaterThanOrEqual(HOVER_MIN);
+});
+
+test.each(THEME_ORDER)("%s: 悬停填充上的字也读得清", (name) => {
+  const v = ui(name);
+  expect(contrast(v["--on-accent"]!, v["--accent-hover"]!)).toBeGreaterThanOrEqual(FG_MIN);
 });
 
 // 语义色是短标记（状态点、✓ ✗、一个词的状态），所以是 3:1 那一档而不是 4.5。
