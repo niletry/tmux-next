@@ -24,6 +24,14 @@
      lift of the same weight instead of one hand-picked grey that only suits
      the default. */
   --card: color-mix(in srgb, var(--term-bg) 88%, var(--term-fg));
+  /* 卡片之上再抬一层，给坐在卡片里的 chip 和按钮用。
+     跟 --card 同一个派生路子：从它自己再往前景色混一点，所以每个主题得到的
+     "抬升"权重一致，不是挑一个只配默认主题的灰。
+     没有它的时候，卡片里的 chip 和按钮都用 --card——跟卡片同色，于是最该被点
+     的两个控件成了整张卡上最看不见的东西。 */
+  --raised: color-mix(in srgb, var(--card) 86%, var(--term-fg));
+  /* 一道几乎看不见的边，用来说明"这个东西可以点"，而不用再加一层背景色。 */
+  --edge: color-mix(in srgb, var(--term-fg) 16%, transparent);
   color-scheme: dark;
 }
 
@@ -139,6 +147,8 @@ header .count {
 }
 
 .group-name {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -365,18 +375,35 @@ header .count {
 .empty { padding: 24px; color: var(--dim); text-align: center; }
 .empty .hint { display: block; margin-top: 8px; font-size: 13px; color: var(--dim); }
 
+/* 筛空时的自救入口：说了"没有符合筛选的单"就得给得出解除它的东西。 */
+.clear-filter {
+  display: block;
+  margin: 12px auto 0;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: 6px 14px;
+  background: var(--raised);
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+
 /* ---- work items (home page) ---- */
 
 /* 分组/筛选工具条：横向滚动而不是换行——手机上让它占两行会把第一张卡片挤到
    折叠线以下，而选项数量是数据决定的，不能靠 wrap 兜底。 */
 /* 换行而不是横向滚动：滚动会把筛选项藏在屏幕外，而藏起来的筛选项等于不存在——
    没人会去滑一个不知道有没有内容的方向。宁可多占两行。 */
+/* 工具条跟下面的列表之间要有一道边：筛选区本身就是一堆圆角小块，不隔开的话
+   它和卡片会糊成一片，扫视时分不清哪里是控件、哪里是内容。 */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 10px 12px 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--edge);
 }
 
 /* 同步按钮 + 它的状态文案，一整行独占——truncated 的提示可能比较长，跟别的
@@ -503,27 +530,33 @@ header .count {
   font-size: 12px;
 }
 
+/* 未选中的筛选 chip 也得看出来是个按钮：抬一层背景 + 一道边 + 手型指针。
+   之前它跟卡片同色、无边框，读起来像一段说明文字，没人会想到去点它。
+   max-width 是给史诗名这种长取值的——整条标题铺开会把一行挤成一条，
+   而这一排的用处是让人扫一眼就找到想筛的那个。 */
 .filter-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
-  padding: 3px 9px;
+  padding: 4px 10px;
   border-radius: 999px;
-  border: none;
-  background: var(--card);
-  color: var(--dim);
+  border: 1px solid var(--edge);
+  background: var(--raised);
+  color: var(--fg);
   font-size: 11px;
-  max-width: 100%;
+  max-width: 22ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 /* 选中态要一眼能看出来——跟 .chip.on 同一套配色，都是主题的 accent 变量。 */
 .filter-chip.selected {
   background: var(--accent);
   color: var(--on-accent);
+  border-color: var(--accent);
 }
 
 
@@ -564,7 +597,7 @@ a.item-title { color: var(--accent); }
   flex: 0 0 auto;
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--card);
+  background: var(--raised);
   color: var(--dim);
   font-size: 11px;
   overflow: hidden;
@@ -585,9 +618,9 @@ a.item-title { color: var(--accent); }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 7px;
+  padding: 2px 8px;
   border-radius: 999px;
-  background: var(--card);
+  background: var(--raised);
   color: var(--dim);
   font-size: 11px;
   max-width: 100%;
@@ -652,11 +685,11 @@ a.item-title { color: var(--accent); }
 .item-refresh,
 .item-archive {
   flex: 1 1 0;
-  border: none;
+  border: 1px solid var(--edge);
   border-radius: 8px;
   padding: 8px;
-  background: var(--card);
-  color: var(--dim);
+  background: var(--raised);
+  color: var(--fg);
   font-size: 13px;
   cursor: pointer;
 }
