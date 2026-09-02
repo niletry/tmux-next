@@ -119,3 +119,37 @@ test("并发建三张单，一张都不丢", async () => {
   ]);
   expect((await readItems()).length).toBe(3);
 });
+
+test("refreshTitle 开着时更新标题", async () => {
+  const first = await ensureItemForSource("jira", "EXAMPLE-1", "旧标题");
+  const again = await ensureItemForSource("jira", "EXAMPLE-1", "新标题", { refreshTitle: true });
+  expect(again.id).toBe(first.id);
+  expect(again.title).toBe("新标题");
+  expect((await readItems()).length).toBe(1);
+});
+
+test("不开 refreshTitle 时标题不动（默认行为不变）", async () => {
+  await ensureItemForSource("jira", "EXAMPLE-1", "旧标题");
+  const again = await ensureItemForSource("jira", "EXAMPLE-1", "新标题");
+  expect(again.title).toBe("旧标题");
+});
+
+/**
+ * cwd / tags / closedAt 是**本地状态**——你在这个工具里投入的东西。远端的一次
+ * 改名不该动它们。这条是测试，不是注释里的承诺。
+ */
+test("更新标题绝不碰本地状态", async () => {
+  const created = await ensureItemForSource("jira", "EXAMPLE-1", "旧标题");
+  await updateItem(created.id, { cwd: "/tmp/orbit", tags: ["急"], closedAt: 1787000000 });
+  const again = await ensureItemForSource("jira", "EXAMPLE-1", "新标题", { refreshTitle: true });
+  expect(again.title).toBe("新标题");
+  expect(again.cwd).toBe("/tmp/orbit");
+  expect(again.tags).toEqual(["急"]);
+  expect(again.closedAt).toBe(1787000000);
+});
+
+test("标题为空时不覆盖成空", async () => {
+  await ensureItemForSource("jira", "EXAMPLE-1", "旧标题");
+  const again = await ensureItemForSource("jira", "EXAMPLE-1", "", { refreshTitle: true });
+  expect(again.title).toBe("旧标题");
+});

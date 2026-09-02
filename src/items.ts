@@ -121,16 +121,27 @@ export async function findBySource(provider: string, ref: string): Promise<WorkI
  * 认领一个外部引用：已经有对应的单就返回它，没有就建一张。
  *
  * 整个查找-建立在队列里，否则两个并发的认领会给同一个单号建出两张单。
+ *
+ * `refreshTitle` 只碰 title、对本地状态（cwd、tags、closedAt）一概不管。这是因为本
+ * 地状态是用户在本工具里的投入，远端改个名不该碰它们。
  */
 export async function ensureItemForSource(
   provider: string,
   ref: string,
   title?: string,
+  opts?: { refreshTitle?: boolean },
 ): Promise<WorkItem> {
   return serialized(async () => {
     const all = await readItems();
     const found = all.find((i) => i.source?.provider === provider && i.source.ref === ref);
-    if (found) return found;
+    if (found) {
+      // 只在 refreshTitle 开着、新标题非空且与现有不同时才改。
+      if (opts?.refreshTitle && title && title !== found.title) {
+        found.title = title;
+        await writeJsonAtomic(itemsPath(), all);
+      }
+      return found;
+    }
     const item: WorkItem = {
       id: newId(),
       title: title || ref,
