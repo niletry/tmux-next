@@ -2,7 +2,13 @@ import { PLUGINS } from "./registry.js";
 import type { Facet, ItemRef, Plugin, PluginEnricher, PluginHandler } from "./types";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
-import { handle as jira, enrich as jiraEnrich } from "./jira/server";
+import {
+  handle as jira,
+  enrich as jiraEnrich,
+  start as jiraStart,
+  sync as jiraSync,
+  refreshItem as jiraRefreshItem,
+} from "./jira/server";
 
 /**
  * 插件的服务端那一半。
@@ -34,7 +40,7 @@ export type PluginServer = {
 export const SERVERS: Record<string, PluginServer> = {
   gallery: { handle: gallery },
   notifications: { handle: notifications },
-  jira: { handle: jira, enrich: jiraEnrich },
+  jira: { handle: jira, enrich: jiraEnrich, start: jiraStart, sync: jiraSync, refreshItem: jiraRefreshItem },
 };
 
 /**

@@ -15,6 +15,9 @@ export default {
     '<circle cx="8.5" cy="9.5" r="1.5"/>',
   // 页面外壳由内核生成，见 plugins/types.ts 的 page。
   page: { mainId: "issues" },
+  // 认领 source.provider === "jira" 的单：内核据此知道该找谁做同步/单条刷新，
+  // 不用维护一张 provider→插件名的表。
+  provides: ["jira"],
   // 单卡片上的维度 chips：内核没有"哪个插件有哪些维度"的表，dim 就是 i18n 键，
   // 跟着数据一起来。src/i18n.test.ts 单独认这个数组字面量，只把这四个键当成
   // 有真实使用点（跟 titleKey 一样，它也不长成 t()/tr()/data-i18n 的样子）。

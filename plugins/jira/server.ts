@@ -1,10 +1,12 @@
 import { readJiraConfig } from "./config";
 import { fetchIssue, fetchIssues, type Issue, type IssuesResult } from "./client";
 import { fetchDev, type DevResult } from "./dev";
+import { syncIssues } from "./sync";
 import { readItems, ensureItemForSource } from "../../src/items";
-import { bindSession, unbindSession, resolveBindings } from "../../src/session-binding";
+import { bindSession, unbindSession, resolveBindings, type ResolvedBinding } from "../../src/session-binding";
 import { sessionIdentities } from "../../src/tmux/session-list";
 import type { Facet, ItemRef } from "../types";
+import type { SyncResult } from "../handlers";
 
 /**
  * 工单插件的服务端。
@@ -196,6 +198,87 @@ export async function enrich(items: ItemRef[]): Promise<Record<string, Facet[]>>
     if (facets.length) out[item.id] = facets;
   }
   return out;
+}
+
+/**
+ * 挑出该去拉 PR/检查的单号：source 是 jira、且有一条**活跃**绑定的那些。
+ *
+ * 纯函数——items 和 bindings 都当参数喂进来，唯一有判断的地方能无头测；带网络
+ * 的那部分（真的去问 dev-status）测不了，也不需要测，devTargets 选对了目标，
+ * 网络那层照抄现成的 dev()/mapLimited 就行。
+ */
+export function devTargets(items: ItemRef[], bindings: ResolvedBinding[]): string[] {
+  const liveItemIds = new Set(bindings.filter((b) => b.live).map((b) => b.itemId));
+  const out: string[] = [];
+  for (const item of items) {
+    if (item.source?.provider !== "jira") continue;
+    if (!liveItemIds.has(item.id)) continue;
+    out.push(item.source.ref);
+  }
+  return out;
+}
+
+/**
+ * 把 config.json 里的 JQL 结果同步进内核的单列表，再给正开着会话的那些拉一次
+ * PR/检查。
+ *
+ * 未配置、拉取失败都返回零结果而不是抛——同步是后台动作，不该有一条异常路径
+ * 能把调用方（runSync，进而是启动流程）带崩。PR 那一步单独 try/catch：拿不到
+ * PR 不该抹掉刚刚同步成功的工单。
+ */
+export async function sync(): Promise<SyncResult> {
+  // 显式同步动作，绕开 60 秒的页面缓存——用户点了同步，就该真的问一次。
+  const result = await issues(true);
+  if (!result.ok) return { created: 0, updated: 0, total: 0, truncated: false };
+
+  // 同步之前先记下已经存在的 (provider, ref)：ensureItemForSource 返回的是
+  // WorkItem 本身，不带"是不是新建的"这个标志——加这个标志要为了这一个调用方
+  // 去改内核签名，划不来。改成调用方自己在同步前拍一张快照，之后用它判断。
+  const before = await readItems();
+  const existingRefs = new Set(
+    before.filter((i) => i.source?.provider === "jira").map((i) => i.source!.ref),
+  );
+
+  const syncResult = await syncIssues(result.issues, async (ref, title) => {
+    const created = !existingRefs.has(ref);
+    await ensureItemForSource("jira", ref, title, { refreshTitle: true });
+    return { created };
+  });
+
+  // PR/检查是独立的一步：这一步失败不该把已经写好的工单同步结果变成失败。
+  try {
+    const [afterItems, bindings] = await Promise.all([readItems(), resolveBindings(await liveFromKernel())]);
+    const targets = new Set(devTargets(afterItems, bindings));
+    if (targets.size) {
+      const keyById = new Map(result.issues.map((i) => [i.key, i.id]));
+      const ids = [...targets].map((key) => keyById.get(key)).filter((id): id is string => !!id);
+      const keyOfId = new Map(result.issues.map((i) => [i.id, i.key]));
+      await mapLimited(ids, DEV_CONCURRENCY, (id) => dev(id, keyOfId.get(id) ?? "", true));
+    }
+  } catch {
+    // 拉 PR/检查失败不影响已经同步好的工单结果。
+  }
+
+  return syncResult;
+}
+
+/**
+ * 只刷新一个单：先重取工单本身，再重取它的 PR/检查。
+ *
+ * 不经过 devTargets 的"只给有活跃会话的单拉"这条限制——那条限制是为了不在批量
+ * 同步时打出上百个请求，单条刷新是用户明确点了这一个,该刷就刷。
+ */
+export async function refreshItem(ref: string): Promise<void> {
+  const issue = await refreshIssue(ref);
+  if (!issue) return;
+  await dev(issue.id, issue.key, true);
+}
+
+/**
+ * 进程启动时的一次机会。发出去就不管——手机打开这个页面不该等 Jira 的网络往返。
+ */
+export function start(): void {
+  void sync().catch(() => {});
 }
 
 export async function handle(req: Request, url: URL): Promise<Response | null> {
