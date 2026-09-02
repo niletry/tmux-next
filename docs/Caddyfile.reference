@@ -9,6 +9,28 @@ example.internal:8443 {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}
 
+	# Service Worker 必须绕过任何"跳转式"登录网关。
+	#
+	# 下面这份用的是 basic_auth，浏览器会自动带上凭据，所以不会踩到；但换成
+	# caddy-security / oauth2-proxy 这类未登录就 302 到登录页的网关时，推送
+	# 铃铛会报 "Failed to register a ServiceWorker ... The script resource is
+	# behind a redirect, which is disallowed" —— SW 规范规定脚本抓取遇到任何
+	# 重定向就硬失败，注册期和之后浏览器周期性的 SW 更新抓取都算。
+	#
+	# 解法是在鉴权规则之前放行脚本本身。sw.js 是 module worker，静态 import
+	# 了 notification-target.js，那次 import 也要单独抓一遍，所以两个都得放：
+	#
+	#     @swscript path /sw.js /notification-target.js
+	#     route @swscript {
+	#         reverse_proxy 127.0.0.1:7682
+	#     }
+	#
+	# （route 只吃一个 matcher token，写成 route /sw.js /notification-target.js
+	# 会报 wrong argument count，必须用命名 matcher。）
+	#
+	# 放行不降低安全性：这两个文件是纯前端逻辑、不含凭据，真正的订阅接口
+	# api/push/* 和终端 WebSocket 仍在网关后面。
+
 	# tmux-next: WebSocket 用 cookie 认证（浏览器 WS 握手不带 Basic Auth）
 	@tmuxws path /tmux/ws
 	handle @tmuxws {
