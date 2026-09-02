@@ -10,7 +10,7 @@
 // 字号不在这里：它按设备存（localStorage），是"这块屏幕多大"的事，留在终端页的
 // 工具条上；这里是"这台机器长什么样"。两者存法不同，也不该放在一起。
 
-import { THEMES, THEME_ORDER, ANSI_NAMES } from "./themes.js";
+import { THEMES, THEME_GROUPS, ANSI_NAMES } from "./themes.js";
 import { setTheme, cachedTheme } from "./theme-apply.js";
 import { LANGS, LANG_LABELS } from "./i18n.js";
 import { initLang, setLang, lang as currentLang, tr } from "./i18n-apply.js";
@@ -101,43 +101,46 @@ function themeSection() {
   const note = el("p", "settings-note", tr("settings.note"));
   let current = document.documentElement.dataset.theme || cachedTheme();
 
-  for (const name of THEME_ORDER) {
-    const theme = THEMES[name];
-    const row = el("button", "theme-opt");
-    row.type = "button";
-    if (name === current) row.classList.add("on");
-    row.setAttribute("aria-pressed", String(name === current));
+  for (const group of THEME_GROUPS) {
+    list.append(el("h3", "theme-group", tr(group.labelKey)));
+    for (const name of group.names) {
+      const theme = THEMES[name];
+      const row = el("button", "theme-opt");
+      row.type = "button";
+      if (name === current) row.classList.add("on");
+      row.setAttribute("aria-pressed", String(name === current));
 
-    const radio = el("span", "theme-radio");
-    const body = el("div", "theme-body");
-    body.append(el("b", null, theme.label));
+      const radio = el("span", "theme-radio");
+      const body = el("div", "theme-body");
+      body.append(el("b", null, theme.label));
 
-    const swatches = el("div", "theme-swatches");
-    for (const i of SWATCH_SLOTS) {
-      const chip = el("i");
-      chip.style.background = theme.ansi[i];
-      chip.title = ANSI_NAMES[i];
-      swatches.append(chip);
-    }
-    body.append(swatches, preview(theme));
-    row.append(radio, body);
-
-    row.addEventListener("click", async () => {
-      if (name === current) return;
-      // 先上色：整页在手指底下换过来，这就是选它的理由——不必确认，看见即结果。
-      current = name;
-      for (const other of list.children) {
-        const on = other === row;
-        other.classList.toggle("on", on);
-        other.setAttribute("aria-pressed", String(on));
+      const swatches = el("div", "theme-swatches");
+      for (const i of SWATCH_SLOTS) {
+        const chip = el("i");
+        chip.style.background = theme.ansi[i];
+        chip.title = ANSI_NAMES[i];
+        swatches.append(chip);
       }
-      // 存不下只影响"这台机器下次打开还是不是这个色"，页面此刻已经是对的，
-      // 所以是提示一句而不是回滚——把刚看到的颜色再撤回去才是更糟的答复。
-      const stored = await setTheme(name);
-      note.textContent = stored ? tr("settings.note") : tr("settings.saveFailed");
-    });
+      body.append(swatches, preview(theme));
+      row.append(radio, body);
 
-    list.append(row);
+      row.addEventListener("click", async () => {
+        if (name === current) return;
+        // 先上色：整页在手指底下换过来，这就是选它的理由——不必确认，看见即结果。
+        current = name;
+        for (const other of list.querySelectorAll(".theme-opt")) {
+          const on = other === row;
+          other.classList.toggle("on", on);
+          other.setAttribute("aria-pressed", String(on));
+        }
+        // 存不下只影响"这台机器下次打开还是不是这个色"，页面此刻已经是对的，
+        // 所以是提示一句而不是回滚——把刚看到的颜色再撤回去才是更糟的答复。
+        const stored = await setTheme(name);
+        note.textContent = stored ? tr("settings.note") : tr("settings.saveFailed");
+      });
+
+      list.append(row);
+    }
   }
   return section(tr("settings.theme"), list, note);
 }

@@ -1418,6 +1418,15 @@ header .hbell.on { background: var(--accent); color: var(--on-accent); }
 
 .theme-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 
+.theme-group {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.theme-group:first-child { margin-top: 0; }
+
 /* virtual-key editor: each toolbar row shown as a strip of tiles, like the
    real bar; press a tile and slide it sideways to reorder */
 .key-grid-row {

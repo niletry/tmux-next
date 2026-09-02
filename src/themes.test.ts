@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import {
   THEMES,
   THEME_ORDER,
+  THEME_GROUPS,
   DEFAULT_THEME,
   ANSI_NAMES,
   themeOf,
@@ -37,6 +38,21 @@ const HEX = /^#[0-9a-f]{6}$/;
 
 test("the picker order covers exactly the defined themes", () => {
   expect([...THEME_ORDER].sort()).toEqual([...names].sort());
+});
+
+test("分组覆盖每一套主题，且没有重复", () => {
+  const grouped = THEME_GROUPS.flatMap((g) => g.names);
+  expect([...grouped].sort()).toEqual([...names].sort());
+  expect(new Set(grouped).size).toBe(grouped.length);
+});
+
+test("每组的极性是一致的", () => {
+  // 分组标题说的是"深色/浅色"，所以组里每一套都得真的是那个极性——
+  // 排错了的话，选择器会在"浅色"标题下摆一套深色主题，而每条对比度断言都还是绿的。
+  for (const group of THEME_GROUPS) {
+    const want = group.labelKey === "settings.themeLight";
+    for (const name of group.names) expect(isLight(THEMES[name]!)).toBe(want);
+  }
 });
 
 test("the default theme exists", () => {

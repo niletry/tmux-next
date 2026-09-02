@@ -187,11 +187,24 @@ export const ANSI_NAMES = [
   "bright-blue", "bright-magenta", "bright-cyan", "bright-white",
 ];
 
-/** Picker order. Object key order would work, but relying on it is fragile. */
-export const THEME_ORDER = [
-  "tokyo-night", "catppuccin-mocha", "one-dark", "nord",
-  "tokyo-night-day", "catppuccin-latte", "one-light",
+/**
+ * 选择器的顺序与分组。
+ *
+ * 深色四套、浅色三套——不对称是因为 Nord 没有官方浅色版（见 THEMES 里的注释）。
+ * labelKey 是 i18n 的键而不是显示文本，跟插件清单里的 titleKey 是同一个做法。
+ */
+export const THEME_GROUPS = [
+  { labelKey: "settings.themeDark", names: ["tokyo-night", "catppuccin-mocha", "one-dark", "nord"] },
+  { labelKey: "settings.themeLight", names: ["tokyo-night-day", "catppuccin-latte", "one-light"] },
 ];
+
+/**
+ * 扁平的顺序，从分组推导。
+ *
+ * 保留这个导出而不是让调用方自己 flatMap：形状不变，themes.test.ts 和任何
+ * 「遍历所有主题」的代码都不用动，分组只是多了一层结构。
+ */
+export const THEME_ORDER = THEME_GROUPS.flatMap((g) => g.names);
 
 /**
  * A theme by name, falling back to the default.
