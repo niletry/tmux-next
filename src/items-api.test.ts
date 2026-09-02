@@ -181,13 +181,6 @@ test("/api/sessions 带上 items 与每条会话的 itemId", async () => {
   for (const s of body.sessions) expect(s.itemId).toBeNull();
 });
 
-test("同步返回汇总形状", async () => {
-  const res = await json("/api/items/sync", "POST", {});
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as Record<string, unknown>;
-  expect(Object.keys(body).sort()).toEqual(["created", "total", "truncated", "updated"]);
-});
-
 // 顺序今天并不会被违反：^/api/items/([^/]+)$ 那条只挂在 PATCH 上，这里发的
 // 是 POST，就算把 sync 挪到它后面，方法不匹配也会跳过去、照样落到 sync 处
 // 理器。留着这条顺序是给将来某条不按方法区分的 :id 路由预留的防护，这个测

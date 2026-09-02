@@ -64,7 +64,11 @@ test("插件卡住时超时返回，不吊死", async () => {
   const started = Date.now();
   const got = await runSync(servers, fakePlugins({ slow: ["slow"] }), TEST_TIMEOUT_MS);
   expect(got.total).toBe(0);
-  expect(Date.now() - started).toBeLessThan(SOURCE_TIMEOUT_MS);
+  // 断言的是"确实按注入的 50ms 超时返回"，不是"29 秒的默认预算里随便什么时候
+  // 返回都行"——用 SOURCE_TIMEOUT_MS（30s）当上限时，这条断言就算超时逻辑
+  // 压根没生效、真的等到默认预算也会通过，等于没测到真正要守的性质。乘 10
+  // 是给测试机器抖动的余量，不是给"卡住了但最终还是转起来了"的余量。
+  expect(Date.now() - started).toBeLessThan(TEST_TIMEOUT_MS * 10);
 });
 
 test("按 provides 找到认领这个来源的插件", async () => {
@@ -101,7 +105,9 @@ test("refreshItem 卡住时超时返回 false", async () => {
   expect(
     await refreshFromSource("jira", "x", servers, fakePlugins({ a: ["jira"] }), TEST_TIMEOUT_MS),
   ).toBe(false);
-  expect(Date.now() - started).toBeLessThan(SOURCE_TIMEOUT_MS);
+  // 同上一条："真的按注入的超时返回"跟"30 秒的默认预算内随便什么时候返回"是
+  // 两回事，用小倍数而不是 SOURCE_TIMEOUT_MS 才是在测超时本身。
+  expect(Date.now() - started).toBeLessThan(TEST_TIMEOUT_MS * 10);
 });
 
 // TMUX_NEXT_DISABLE_PLUGINS 关掉一个插件，要让它的 sync/refreshItem 一起消失——
