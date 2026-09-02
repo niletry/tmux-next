@@ -172,6 +172,26 @@ test("单下面列出它的会话", async () => {
   expect(root.querySelector(".item-session")?.textContent).toContain("跑测试");
 });
 
+/**
+ * 会话链接的参数名必须是 `target`。
+ *
+ * terminal.js 只读 `target`（`searchParams.get("target")`），会话列表和通知落点
+ * 用的也是它。这里一度写成 `session=`：链接看着没问题、会话名也在里面，点进去却
+ * 打不开——而当时的断言只检查 href 含不含会话名，正好从这个洞里漏过去了。所以这
+ * 条盯的是参数名本身。
+ */
+test("会话链接用 target 参数，跟会话列表和通知落点一致", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    sessions: [session({ name: "跑测试" })],
+    bindings: [{ session: "跑测试", itemId: "it-1", live: true }],
+  }));
+  const href = root.querySelector(".item-session")?.getAttribute("href") ?? "";
+  expect(href).toContain("target=");
+  expect(href).not.toContain("session=");
+  expect(href).toContain(encodeURIComponent("跑测试"));
+});
+
 // 一张单可以有多个会话，这是整个设计的轴心，不是边角情况。
 test("一张单可以挂多个会话", async () => {
   const root = await mount(payload({

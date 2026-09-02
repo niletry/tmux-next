@@ -99,10 +99,17 @@ function facetChip(facet) {
   return chip;
 }
 
-/** 一张单下的一行会话：它现在什么状态，点进去。别的动作在会话页上。 */
+/**
+ * 一张单下的一行会话：它现在什么状态，点进去。别的动作在会话页上。
+ *
+ * 参数名是 `target`，不是 `session`——terminal.js 只读 `target`（见它开头那行
+ * `searchParams.get("target")`），会话列表与通知落点用的也都是它。这里曾经写成
+ * `session=`，结果链接看着对、点进去却打不开会话，而当时的测试只断言了 href 里
+ * 含会话名，没断言参数名，所以没抓住。
+ */
 function sessionRow(session) {
   const row = el("a", "item-session");
-  row.href = url(`terminal.html?session=${encodeURIComponent(session.name)}`);
+  row.href = url(`terminal.html?target=${encodeURIComponent(session.name)}`);
   row.append(el("span", "s-name", session.name));
   row.append(el("span", "s-state", sessionState(session)));
   row.append(el("span", "s-open", tr("items.open")));
