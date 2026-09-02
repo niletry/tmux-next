@@ -40,7 +40,7 @@
 | **断线重连** | 不缓冲、不重放——重连时从 tmux 重新抓一次完整画面 |
 | **锁屏通知** | 会话结束、一轮聊完在等你、Claude 要你确认时，推到手机锁屏（Web Push，需装 hook + 订阅） |
 | **通知历史** | 每条推送都落盘，手机上划掉了还能在这里翻到 |
-| **配色主题** | 四套预设（Tokyo Night / Catppuccin Mocha / One Dark / Nord），列表顶栏切换，无需刷新 |
+| **配色主题** | 七套预设，深色四套（Tokyo Night / Catppuccin Mocha / One Dark / Nord）、浅色三套（Tokyo Night Day / Catppuccin Latte / One Light），设置页切换，无需刷新 |
 | **语音输入** | 说话代替打字，多段识别攒成可编辑草稿，改完一次发出并回车（可选，需要识别 key） |
 | **制品库** | 丢进 `~/.tmux-next/gallery/` 的东西会出现在界面里，图片和自包含 HTML 直接就地渲染 |
 | **Jira 工单** | 可选插件：看分给你的工单，点一下就为某个单开会话；它的状态、史诗、PR 与检查会作为 chip 贴在这张单的卡片上（需要 `~/.tmux-next/jira/config.json`） |
@@ -190,7 +190,7 @@ bunx tmux-next hook       # 或从克隆的仓库：bun run src/index.ts hook
 
 ### 配色主题
 
-点列表顶栏的齿轮。内置四套：Tokyo Night（默认）、Catppuccin Mocha、One Dark、Nord——每套都带色板和一段样例，选之前就知道长什么样。点了立刻生效，不用刷新。
+点列表顶栏的齿轮。内置七套，分两组：深色四套——Tokyo Night（默认）、Catppuccin Mocha、One Dark、Nord；浅色三套——Tokyo Night Day、Catppuccin Latte、One Light。每套都带色板和一段样例，选之前就知道长什么样，点了立刻生效，不用刷新。没有 Nord 浅色版：Nord 没有官方浅色配色，自己造一套意味着重挑一半色相，而且没有任何上游可以拿来对照。
 
 选择按机器存（`~/.tmux-next/theme.json`），手机和桌面保持一致；字号仍按设备存、在终端页工具条上调——「这块屏幕多大」和「这台机器长什么样」是两回事。
 

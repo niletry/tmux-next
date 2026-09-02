@@ -40,7 +40,7 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 | **Reconnect** | No buffering, no replay — a reconnect re-captures the whole screen from tmux |
 | **Lock-screen push** | Session ended, a turn finished and it's waiting, or Claude needs confirmation — pushed to your phone (Web Push; needs the hook + a subscription) |
 | **Notification history** | Every push is logged, so one swiped away on the phone can still be found |
-| **Colour themes** | Four presets (Tokyo Night, Catppuccin Mocha, One Dark, Nord), switched from the list header, applied without a reload |
+| **Colour themes** | Seven presets — four dark (Tokyo Night, Catppuccin Mocha, One Dark, Nord) and three light (Tokyo Night Day, Catppuccin Latte, One Light) — switched from Settings, applied without a reload |
 | **Voice input** | Speak instead of typing; takes pile up in an editable draft, then go over as one line plus Enter (optional, needs a recognition key) |
 | **Artifacts** | Anything dropped in `~/.tmux-next/gallery/` shows up in the UI — images and self-contained HTML render in place |
 | **Jira issues** | Optional plugin: see the issues assigned to you, start a session for one with a tap; its status, epic, PRs and checks show up as chips on the issue's work-item card (needs `~/.tmux-next/jira/config.json`) |
@@ -194,7 +194,7 @@ Lock-screen notifications follow it too. A push is the one piece of text that sh
 
 ### Colour themes
 
-Tap the gear in the list header. Four presets ship: Tokyo Night (default), Catppuccin Mocha, One Dark and Nord — each shown with its palette and a sample before you pick. The change applies immediately, no reload.
+Tap the gear in the list header. Seven presets ship, in two groups: four dark — Tokyo Night (default), Catppuccin Mocha, One Dark, Nord — and three light — Tokyo Night Day, Catppuccin Latte, One Light. Each is shown with its palette and a sample before you pick, and the change applies immediately, no reload. There is no Nord light: Nord ships no upstream light variant, and inventing one would mean re-picking half its hues with nothing to check the result against.
 
 The choice is stored per machine (`~/.tmux-next/theme.json`), so phone and desktop agree. Font size stays per device, on the terminal toolbar — how big a screen is and what a machine looks like are different questions.
 
