@@ -77,7 +77,20 @@ export type PluginHandler = (req: Request, url: URL) => Promise<Response | null>
  * 的事——而内核一旦开始渲染插件给的链接，就得管协议白名单（`javascript:` 是实打
  * 实的注入面）。不开这个口子，这条安全考量就不存在。
  */
-export type FacetDetail = { label: string; value: string; tone?: "ok" | "warn" | "dim" };
+export type FacetDetail = {
+  label: string;
+  value: string;
+  tone?: "ok" | "warn" | "dim";
+  /**
+   * 这一行指向哪里。只认 http/https，内核在 collectFacets 里挡（见 safeHttpUrl）。
+   *
+   * checks 当初刻意不给链接，理由是"给了就得管协议白名单"。PR 让这个理由不成立了：
+   * 一次 CI 检查在这份数据里没有自己的地址，一个 PR 有，而且那正是看完状态之后
+   * 要去的地方。列出来却点不开，等于只答了一半。白名单本身是三行 new URL 判断，
+   * 不是当初担心的那种复杂度。
+   */
+  url?: string;
+};
 
 export type Facet = {
   dim: string;

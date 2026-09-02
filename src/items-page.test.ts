@@ -755,3 +755,27 @@ test("关闭按钮收起浮层", async () => {
 test("多次 mount 之后真 fetch 仍被还原", () => {
   expect(globalThis.fetch).toBe(REAL_FETCH);
 });
+
+// 明细行带 url 时画成链接。target=_blank 必须配 rel=noopener，否则对面拿得到
+// window.opener；这条断言就是盯着那个组合，不是盯着"有没有 a 标签"。
+test("带链接的明细行画成新窗口打开的链接", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "jira.prs", value: "2", detail: [
+      { label: "修登录页", value: "OPEN", url: "https://example.com/pr/1" },
+      { label: "没链接的", value: "MERGED", tone: "dim" },
+    ] }] },
+  }));
+  root.querySelector("button.facet.has-detail")
+    ?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+
+  const link = document.querySelector("a.detail-label") as HTMLAnchorElement | null;
+  expect(link?.getAttribute("href")).toBe("https://example.com/pr/1");
+  expect(link?.getAttribute("target")).toBe("_blank");
+  expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+
+  // 没链接的那行仍然是静态文字，不是一个 href 为空的链接。
+  expect(document.querySelectorAll("a.detail-label").length).toBe(1);
+  expect(document.querySelectorAll(".detail-row").length).toBe(2);
+});

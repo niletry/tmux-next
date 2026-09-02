@@ -223,3 +223,36 @@ test("冒充 item.* 的 facet 连带它的明细一起被拦", async () => {
   })) as unknown as PluginEnricher;
   expect(await collectFacets(items, { p: sneaky })).toEqual({});
 });
+
+// 明细行的链接会变成页面上的 href，所以内核只放行 http/https。这几条不是"格式校验"，
+// javascript: 是一条真的注入路径，相对地址则按当前页解析——插件不知道自己挂在哪。
+test("明细里的 http/https 链接原样带过去", async () => {
+  const got = await collectFacets([{ id: "a", source: null }], {
+    p: async () => ({
+      a: [{ dim: "x", value: "1", detail: [
+        { label: "PR-1", value: "OPEN", url: "https://example.com/pr/1" },
+        { label: "PR-2", value: "OPEN", url: "http://example.com/pr/2" },
+      ] }],
+    }),
+  });
+  expect(got.a![0]!.detail![0]!.url).toBe("https://example.com/pr/1");
+  expect(got.a![0]!.detail![1]!.url).toBe("http://example.com/pr/2");
+});
+
+test("非 http/https 的链接被丢掉，但那一行还在", async () => {
+  const got = await collectFacets([{ id: "a", source: null }], {
+    p: async () => ({
+      a: [{ dim: "x", value: "1", detail: [
+        { label: "坏的", value: "OPEN", url: "javascript:alert(1)" },
+        { label: "相对", value: "OPEN", url: "/p/jira/" },
+        { label: "文件", value: "OPEN", url: "file:///etc/passwd" },
+        // 插件清单那一侧是 JS，类型挡不住这个；safeHttpUrl 挡的正是运行时。
+        { label: "不是字符串", value: "OPEN", url: { toString: () => "https://x/" } as unknown as string },
+      ] }],
+    }),
+  });
+  const rows = got.a![0]!.detail!;
+  expect(rows.length).toBe(4);
+  expect(rows.every((r) => r.url === undefined)).toBe(true);
+  expect(rows[0]!.label).toBe("坏的");
+});

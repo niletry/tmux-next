@@ -87,6 +87,24 @@ function trim(value: unknown, max: number): string {
 }
 
 /**
+ * 明细行的链接只认 http/https，别的一律当没给。
+ *
+ * 插件给的字符串会变成页面上的 href，`javascript:` 就是一条注入路径；相对地址则会
+ * 按当前页解析，插件根本不知道自己被挂在哪个路径下。两种都不是"链接坏了"那么轻，
+ * 所以这里要的是绝对地址加协议白名单，而不是清洗。拿不准就丢掉——那一行还在，
+ * 只是不可点，跟 facet 那条"拿不到就当没有"是同一种降级。
+ */
+function safeHttpUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 2048) return undefined;
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * 向每个声明了维度能力的插件要一次 facet，合并成 item id → facet 数组。
  *
  * 失败语义只有一种：**拿不到就当没有**。插件抛了、超时了、返回了不是对象的东西，
@@ -144,7 +162,13 @@ export async function collectFacets(
                 if (!label) continue;
                 const rowTone =
                   r?.tone === "ok" || r?.tone === "warn" || r?.tone === "dim" ? r.tone : undefined;
-                detail.push({ label, value: rowValue, ...(rowTone ? { tone: rowTone } : {}) });
+                const rowUrl = safeHttpUrl(r?.url);
+                detail.push({
+                  label,
+                  value: rowValue,
+                  ...(rowTone ? { tone: rowTone } : {}),
+                  ...(rowUrl ? { url: rowUrl } : {}),
+                });
               }
             }
             facets.push({

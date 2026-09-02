@@ -143,6 +143,16 @@ async function liveFromKernel(): Promise<Array<{ name: string; sessionId: string
  * 跟工单页 jira.js 的 checkTone 是同一套判断，只是那边产 CSS 类名、这边产 facet
  * 的 tone——两处都只认 Bitbucket 的原始状态词，改判断要一起改。
  */
+/**
+ * PR 状态的色调。MERGED 是"这条已经不用管了"所以压暗，DECLINED 才是要看一眼的。
+ * OPEN 不给色——列表里绝大多数都是 OPEN，全部染色等于没染。
+ */
+function prFacetTone(status: string): "ok" | "warn" | "dim" | undefined {
+  if (status === "MERGED") return "dim";
+  if (status === "DECLINED") return "warn";
+  return undefined;
+}
+
 function checkFacetTone(state: string): "ok" | "warn" | "dim" {
   if (state === "FAILED" || state === "STOPPED") return "warn";
   if (state === "INPROGRESS") return "dim";
@@ -180,7 +190,19 @@ export function facetsFor(
 
   const got = dev.get(issue.id);
   if (got?.ok) {
-    facets.push({ dim: "jira.prs", value: String(got.prs.length) });
+    facets.push({
+      dim: "jira.prs",
+      value: String(got.prs.length),
+      // 数字说不出是哪个分支、开着还是并了。明细一行一个 PR：标题、状态、链接。
+      // 这里给 url 而 checks 不给，是因为一个 PR 有自己的地址而一次检查在这份数据
+      // 里没有——不是两处标准不一样。
+      detail: got.prs.map((pr) => ({
+        label: pr.title || pr.branch,
+        value: pr.status,
+        tone: prFacetTone(pr.status),
+        url: pr.url,
+      })),
+    });
     // 只统计问到过检查的 PR：checksKnown 为 false 是"我们没问到"，跟"没有检查"是
     // 两回事，收成一个数字会让页面往好看的方向撒谎。
     const known = got.prs.filter((pr) => pr.checksKnown);

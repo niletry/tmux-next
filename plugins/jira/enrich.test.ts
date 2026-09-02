@@ -167,3 +167,44 @@ test("没有 assignee 就不给这个维度", () => {
   const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue({ assignee: null } as Partial<Issue>)]]), new Map());
   expect(dims(got)["jira.assignee"]).toBeUndefined();
 });
+
+// 数字说不出是哪个分支、开着还是并了。明细一行一个 PR。
+test("PR 维度带出每个 PR 的标题、状态和链接", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      { id: "1", title: "修登录页", url: "https://example.com/pr/1", branch: "b1",
+        updated: 0, status: "OPEN", checks: [], checksKnown: true },
+      { id: "2", title: "", url: "https://example.com/pr/2", branch: "feature/EXAMPLE-1",
+        updated: 0, status: "MERGED", checks: [], checksKnown: true },
+      { id: "3", title: "废掉的", url: "https://example.com/pr/3", branch: "b3",
+        updated: 0, status: "DECLINED", checks: [], checksKnown: true },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  const rows = got.find((f) => f.dim === "jira.prs")!.detail!;
+
+  expect(rows.map((r) => r.value)).toEqual(["OPEN", "MERGED", "DECLINED"]);
+  expect(rows[0]!.url).toBe("https://example.com/pr/1");
+  // 没标题的退回分支名——空标题会渲染成一行点不到的空白。
+  expect(rows[1]!.label).toBe("feature/EXAMPLE-1");
+  // 并了的压暗、拒了的报警、开着的不上色（列表里绝大多数是 OPEN，全染等于没染）。
+  expect(rows.map((r) => r.tone)).toEqual([undefined, "dim", "warn"]);
+});
+
+// checksKnown 为 false 只影响 checks，不该把这个 PR 从 PR 列表里抹掉——
+// "我们没问到它的检查"和"它不存在"是两回事。
+test("问不到检查的 PR 仍然列在 PR 明细里", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      { id: "1", title: "问不到", url: "https://example.com/pr/1", branch: "b1",
+        updated: 0, status: "OPEN", checks: [], checksKnown: false },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  expect(got.find((f) => f.dim === "jira.prs")!.detail!.length).toBe(1);
+  expect(dims(got)["jira.checks"]).toBeUndefined();
+});

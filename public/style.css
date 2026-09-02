@@ -1666,6 +1666,15 @@ header .htitle { font-size: 17px; font-weight: 600; }
   font-size: 13px;
 }
 
+/* 能点的那行画成链接色；不能点的保持正文色，两者一眼可分。 */
+a.detail-label {
+  color: var(--accent);
+  text-decoration: none;
+}
+a.detail-label:hover {
+  text-decoration: underline;
+}
+
 .detail-state {
   flex: 0 0 auto;
   font-size: 11px;

@@ -115,7 +115,19 @@ function openDetailSheet(title, rows) {
   const list = el("div", "detail-list");
   for (const row of rows) {
     const line = el("div", "detail-row");
-    line.append(el("span", "detail-label", row.label));
+    if (row.url) {
+      // 内核只放行 http/https（plugins/handlers.ts 的 safeHttpUrl），到这里已经是
+      // 绝对地址。noopener 是因为 target=_blank 会把 window.opener 交给对面。
+      const a = document.createElement("a");
+      a.className = "detail-label";
+      a.href = row.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = row.label;
+      line.append(a);
+    } else {
+      line.append(el("span", "detail-label", row.label));
+    }
     line.append(el("span", row.tone ? `detail-state ${row.tone}` : "detail-state", row.value));
     list.append(line);
   }
