@@ -24,6 +24,11 @@ export type PluginServer = {
   sync?: () => Promise<SyncResult>;
   /** 只刷新一个单，`ref` 是 `source.ref`（比如 Jira 的 issue key）。 */
   refreshItem?: (ref: string) => Promise<void>;
+  /**
+   * 进程启动时给这个插件一次机会。同步、不返回值——内核不等它。想做异步的事
+   * （比如开机同步一次来源），插件自己在里面 fire-and-forget，不能指望内核帮它 await。
+   */
+  start?: () => void;
 };
 
 export const SERVERS: Record<string, PluginServer> = {
@@ -249,5 +254,35 @@ export async function refreshFromSource(
     );
   } catch {
     return false;
+  }
+}
+
+/**
+ * 给每个声明了 `start` 的插件一次进程启动时的机会，逐个调、互不影响。
+ *
+ * 同步函数，不返回 Promise——调用方（CLI 入口）不 await 它，端口该开还是照开。
+ * 插件想做异步的事，自己在 `start()` 里 fire-and-forget。失败语义跟这个接缝
+ * 别处一样：一个插件的 start 抛了，等于它这次没有启动动作，不连累别的插件、
+ * 更不能挡住服务器起来，所以逐个包 try/catch 而不是包在外层一次。
+ *
+ * servers/plugins 作为参数、真表做默认值：理由跟 runSync 一样，注册表是编译期
+ * 常量，不注入就没法证明"一个插件抛了不挡别的插件"这条安全阀真的会兜住。
+ */
+export function startPlugins(
+  servers: Record<string, PluginServer> = SERVERS,
+  plugins: Plugin[] = PLUGINS,
+): void {
+  const enabled = new Set(enabledPlugins().map((p) => p.id));
+  const ids = plugins
+    .filter((p) => isConsidered(p.id, enabled))
+    .map((p) => p.id)
+    .filter((id) => servers[id]?.start);
+
+  for (const id of ids) {
+    try {
+      servers[id]!.start!();
+    } catch {
+      // 这个插件这次没有启动动作，别的插件照常来。
+    }
   }
 }

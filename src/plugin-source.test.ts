@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { runSync, refreshFromSource, SOURCE_TIMEOUT_MS } from "../plugins/handlers";
+import { runSync, refreshFromSource, startPlugins, SOURCE_TIMEOUT_MS } from "../plugins/handlers";
 import type { Plugin } from "../plugins/types";
 import type { PluginServer, SyncResult } from "../plugins/handlers";
 
@@ -140,4 +140,26 @@ test("refreshFromSource 不会调被 TMUX_NEXT_DISABLE_PLUGINS 关掉的真插�
     if (prev === undefined) delete process.env.TMUX_NEXT_DISABLE_PLUGINS;
     else process.env.TMUX_NEXT_DISABLE_PLUGINS = prev;
   }
+});
+
+test("start 被调一次", async () => {
+  let calls = 0;
+  startPlugins({ a: { start: () => { calls += 1; } } }, fakePlugins({ a: ["a"] }));
+  expect(calls).toBe(1);
+});
+
+// 一个插件的 start 抛了，不能挡住服务器起来。
+test("start 抛了不外泄，别的插件照常调到", async () => {
+  let good = 0;
+  expect(() =>
+    startPlugins(
+      { bad: { start: () => { throw new Error("boom"); } }, good: { start: () => { good += 1; } } },
+      fakePlugins({ bad: ["bad"], good: ["good"] }),
+    ),
+  ).not.toThrow();
+  expect(good).toBe(1);
+});
+
+test("没有插件声明 start 时什么都不做", () => {
+  expect(() => startPlugins({}, [])).not.toThrow();
 });

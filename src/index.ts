@@ -2,6 +2,7 @@
 import { HELP, MIN_TMUX, meetsMinimum, parseArgs, parseTmuxVersion } from "./cli";
 import { startServer } from "./server";
 import { migrateJiraBindings } from "./migrate-items";
+import { startPlugins } from "../plugins/handlers";
 // Read from package.json so `--version` can never drift from the published one.
 import pkg from "../package.json" with { type: "json" };
 
@@ -85,6 +86,13 @@ try {
 } catch (e) {
   console.error("migrateJiraBindings failed", e);
 }
+
+// 跟迁移同理，不放进 startServer：至少五个测试文件直接调 startServer 而不带
+// 真实凭据/env 覆盖，钩子挂在那儿会让插件在每次 `bun test` 时真的对外发请求、
+// 往用户真实的 ~/.tmux-next/ 写单——只有真正的 CLI 启动会经过这里。不 await：
+// 它本来就是同步函数，内核不等任何插件，插件想做异步的事自己在 start() 里
+// fire-and-forget。
+startPlugins();
 
 const server = startServer(parsed.port, parsed.host);
 console.log(`listening on http://${parsed.host}:${server.port}`);
