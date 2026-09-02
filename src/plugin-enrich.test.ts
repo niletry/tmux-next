@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { collectFacets, ENRICH_TIMEOUT_MS, MAX_FACETS_PER_ITEM } from "../plugins/handlers";
+import { collectFacets, ENRICH_TIMEOUT_MS, MAX_FACETS_PER_ITEM, MAX_DETAIL_ROWS } from "../plugins/handlers";
 import type { Facet, ItemRef, PluginEnricher } from "../plugins/types";
 
 /**
@@ -144,4 +144,82 @@ test("多个插件的 facet 合并到同一张单下", async () => {
   const got = await collectFacets(items, { good: ok, other });
   expect(got["it-1"]!.length).toBe(2);
   expect(got["it-1"]!.map((f: Facet) => f.dim).sort()).toEqual(["git.branch", "jira.status"]);
+});
+
+/**
+ * facet 底下可展开的明细。
+ *
+ * 内核不解释这些行是什么——是 CI 检查还是别的，只有插件知道。但它照样不信插件给
+ * 的长度和数量：截断、封顶、tone 只认三个值，跟 facet 本身同一套姿态。
+ */
+
+test("明细原样带过来", async () => {
+  const withDetail: PluginEnricher = async () => ({
+    "it-1": [
+      {
+        dim: "jira.checks",
+        value: "1/2",
+        detail: [
+          { label: "ci/circleci: test", value: "FAILED", tone: "warn" },
+          { label: "ci/circleci: build", value: "SUCCESSFUL", tone: "ok" },
+        ],
+      },
+    ],
+  });
+  const got = await collectFacets(items, { p: withDetail });
+  expect(got["it-1"]![0]!.detail?.length).toBe(2);
+  expect(got["it-1"]![0]!.detail?.[0]!.label).toBe("ci/circleci: test");
+});
+
+test("没有明细的 facet 不带 detail 字段", async () => {
+  const got = await collectFacets(items, { p: ok });
+  expect(got["it-1"]![0]!.detail).toBeUndefined();
+});
+
+// 一个坏插件不能靠明细撑爆浮层。
+test("明细行数封顶", async () => {
+  const flood: PluginEnricher = async () => ({
+    "it-1": [
+      {
+        dim: "a",
+        value: "1",
+        detail: Array.from({ length: 100 }, (_, i) => ({ label: `c${i}`, value: "OK" })),
+      },
+    ],
+  });
+  const got = await collectFacets(items, { p: flood });
+  expect(got["it-1"]![0]!.detail?.length).toBe(MAX_DETAIL_ROWS);
+});
+
+test("明细的 label 截断到 120，没有 label 的整行丢掉", async () => {
+  const messy = (async () => ({
+    "it-1": [
+      {
+        dim: "a",
+        value: "1",
+        detail: [{ label: "x".repeat(500), value: "OK" }, { label: "", value: "OK" }],
+      },
+    ],
+  })) as unknown as PluginEnricher;
+  const got = await collectFacets(items, { p: messy });
+  expect(got["it-1"]![0]!.detail?.length).toBe(1);
+  expect(got["it-1"]![0]!.detail?.[0]!.label.length).toBe(120);
+});
+
+test("明细的 tone 只认三个值", async () => {
+  const toned = (async () => ({
+    "it-1": [
+      { dim: "a", value: "1", detail: [{ label: "c", value: "OK", tone: "purple" }] },
+    ],
+  })) as unknown as PluginEnricher;
+  const got = await collectFacets(items, { p: toned });
+  expect(got["it-1"]![0]!.detail?.[0]!.tone).toBeUndefined();
+});
+
+// detail 不是绕过 item.* 保护的后门：整条 facet 仍然按 dim 被拦掉。
+test("冒充 item.* 的 facet 连带它的明细一起被拦", async () => {
+  const sneaky = (async () => ({
+    "it-1": [{ dim: "item.agent", value: "waiting", detail: [{ label: "c", value: "OK" }] }],
+  })) as unknown as PluginEnricher;
+  expect(await collectFacets(items, { p: sneaky })).toEqual({});
 });

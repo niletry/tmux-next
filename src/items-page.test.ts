@@ -18,6 +18,9 @@ const tr = (key: string, vars?: Record<string, string | number>) => t(key, "en",
 // absolute path here would silently test the main checkout instead of this one.
 const PAGE = new URL("../public/items.js", import.meta.url).pathname;
 
+/** 模块加载时的真 fetch，用来证明 shim 被完整还原了（见 patch() 里的注释）。 */
+const REAL_FETCH = globalThis.fetch;
+
 const NOW = Math.floor(Date.now() / 1000);
 
 function item(over: Record<string, unknown> = {}) {
@@ -95,9 +98,14 @@ afterEach(() => {
 });
 
 function patch(shims: Record<string, unknown>) {
+  // 一个测试里 mount 两次是合法的（比如对比"有明细"和"没明细"两种渲染）。第二次
+  // patch 时 globalThis 上放着的是**上一层 shim**，把它存进 saved 就等于让
+  // afterEach 把假 fetch 当真值还原回去，之后整个进程里所有文件的 fetch 都是假的。
+  // 所以只有第一层才记录原值，后面的 patch 直接覆盖。
+  const first = !patched;
   patched = true;
   for (const key of PATCHED) {
-    if (key in globalThis) saved.set(key, (globalThis as Record<string, unknown>)[key]);
+    if (first && key in globalThis) saved.set(key, (globalThis as Record<string, unknown>)[key]);
     Object.defineProperty(globalThis, key, {
       value: shims[key], writable: true, configurable: true,
     });
@@ -667,4 +675,83 @@ test("归档单独有的取值不出现在筛选选项里", async () => {
   }), store);
   const values = [...root.querySelectorAll(".filter-chip")].map((c) => c.textContent);
   expect(values).toEqual(["In Progress"]);
+});
+
+/**
+ * 带明细的维度可以点开看列表。
+ *
+ * 汇总数字只说"几个挂了"，说不出**是哪个**挂了——而那才是看到红色之后唯一想知道
+ * 的事。内核不知道这些行是 CI 检查，只知道这个维度还有东西可看。
+ */
+
+const withChecks = () =>
+  payload({
+    items: [item()],
+    facets: {
+      "it-1": [
+        {
+          dim: "jira.checks",
+          value: "1/2",
+          tone: "warn",
+          detail: [
+            { label: "ci/circleci: test", value: "FAILED", tone: "warn" },
+            { label: "ci/circleci: build", value: "SUCCESSFUL", tone: "ok" },
+          ],
+        },
+      ],
+    },
+  });
+
+test("带明细的 chip 画成按钮，没明细的还是静态文字", async () => {
+  const root = await mount(withChecks());
+  expect(root.querySelector("button.facet.has-detail")).not.toBeNull();
+
+  const plain = await mount(payload({
+    items: [item()],
+    facets: { "it-1": [{ dim: "jira.status", value: "In Progress" }] },
+  }));
+  expect(plain.querySelector("button.facet")).toBeNull();
+});
+
+test("点开列出每一行的名字和状态", async () => {
+  const root = await mount(withChecks());
+  root.querySelector("button.facet.has-detail")
+    ?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+
+  const rows = [...document.querySelectorAll(".detail-row")];
+  expect(rows.length).toBe(2);
+  expect(rows[0]!.textContent).toContain("ci/circleci: test");
+  expect(rows[0]!.textContent).toContain("FAILED");
+});
+
+// 状态的颜色靠 tone，而 tone 是插件给的——内核不认识 FAILED 这个词。
+test("明细行的色调来自 tone，不是内核认识状态词", async () => {
+  const root = await mount(withChecks());
+  root.querySelector("button.facet.has-detail")
+    ?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(document.querySelector(".detail-state.warn")).not.toBeNull();
+  expect(document.querySelector(".detail-state.ok")).not.toBeNull();
+});
+
+test("关闭按钮收起浮层", async () => {
+  const root = await mount(withChecks());
+  root.querySelector("button.facet.has-detail")
+    ?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(document.querySelector(".sheet-back")).not.toBeNull();
+
+  document.querySelector(".sheet-close")
+    ?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 30));
+  expect(document.querySelector(".sheet-back")).toBeNull();
+});
+
+
+// 这条必须排在会 mount 两次的测试后面：它验的正是那一次的 afterEach 还原对不对。
+// 还原错了不会在本文件里露头——本文件每个测试都自带 shim——而是让之后所有文件的
+// fetch 变成假的（CLAUDE.md 记过一次同样的事故，当时打挂 38 个测试）。
+test("多次 mount 之后真 fetch 仍被还原", () => {
+  expect(globalThis.fetch).toBe(REAL_FETCH);
 });

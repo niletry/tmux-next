@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>tmux</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/node_modules/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="term-page">
+  <div class="term-bar">
+    <a href="./" data-i18n="nav.backToSessions">‹ 会话</a>
+    <span class="title" id="title"></span>
+    <span class="status" id="status" data-i18n="term.connecting">连接中…</span>
+    <button class="term-rename" id="rename" data-i18n-title="term.renameTitle" data-i18n="term.rename">改名</button>
+    <button class="term-kill" id="kill" data-i18n-title="term.endTitle" data-i18n="term.end">结束</button>
+  </div>
+
+  <div id="term"></div>
+
+  <div class="keys" id="keys">
+    <!-- Tools — shown only when expanded. -->
+    <div class="keys-row keys-more" data-row="tools">
+      <button id="kbd" data-key="kbd" data-usage="keyboard">⌨</button>
+      <!-- Hidden until the server says a recognition key is configured. -->
+      <button id="mic" data-key="mic" data-usage="voice" hidden
+              data-i18n-title="term.voice" data-i18n-aria="term.voice">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="2" width="6" height="12" rx="3"/>
+          <path d="M5 11a7 7 0 0 0 14 0"/>
+          <path d="M12 18v3"/>
+        </svg>
+      </button>
+      <button id="img" data-key="img" data-usage="image" data-i18n-title="term.sendImage" data-i18n-aria="term.sendImage">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+      </button>
+      <button id="paste" data-key="paste" data-usage="paste" data-i18n-title="term.paste" data-i18n-aria="term.paste">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="5" y="5" width="14" height="16" rx="2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1.5"/>
+        </svg>
+      </button>
+      <button id="copy" data-key="copy" data-usage="copy" data-i18n-title="term.copyLinks" data-i18n-aria="term.copy">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="12" height="12" rx="2"/>
+          <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
+        </svg>
+      </button>
+      <button id="font-dec" data-key="font-dec" data-usage="font-smaller" data-i18n-title="term.fontSmaller">A−</button>
+      <button id="font-inc" data-key="font-inc" data-usage="font-bigger" data-i18n-title="term.fontBigger">A+</button>
+    </div>
+
+    <!-- Navigation / editing — shown only when expanded. -->
+    <div class="keys-row keys-more" data-row="nav">
+      <button id="ctrl" data-key="ctrl" data-usage="ctrl">Ctrl</button>
+      <button data-key="ctrl-c" data-hex="03" data-usage="ctrl-c">^C</button>
+      <button data-key="left" data-hex="1b 5b 44" data-usage="left">←</button>
+      <button data-key="right" data-hex="1b 5b 43" data-usage="right">→</button>
+    </div>
+
+    <!-- Primary — always visible; the toggle opens the rest upward. -->
+    <div class="keys-row keys-primary" data-row="primary">
+      <button class="keys-toggle" id="keys-toggle" data-i18n-aria="term.moreKeys" aria-expanded="false">▴</button>
+      <button data-key="esc" data-hex="1b" data-usage="esc">Esc</button>
+      <button data-key="tab" data-hex="09" data-usage="tab">Tab</button>
+      <button data-key="shift-tab" data-hex="1b 5b 5a" data-usage="shift-tab">⇧Tab</button>
+      <button data-key="up" data-hex="1b 5b 41" data-usage="up">↑</button>
+      <button data-key="down" data-hex="1b 5b 42" data-usage="down">↓</button>
+      <button data-key="enter" data-hex="0d" data-usage="enter">⏎</button>
+    </div>
+  </div>
+
+  <input type="file" id="imgfile" accept="image/*" hidden>
+
+
+  <script src="/node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="/node_modules/@xterm/addon-webgl/lib/addon-webgl.js"></script>
+  <script type="module" src="terminal.js"></script>
+</body>
+</html>

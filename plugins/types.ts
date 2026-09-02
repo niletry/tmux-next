@@ -65,7 +65,27 @@ export type PluginHandler = (req: Request, url: URL) => Promise<Response | null>
  * 这条是整个设计能不违反"内核绝不点名插件"的关键：**内核里因此没有任何"哪个插件
  * 有哪些维度"的表**——维度是数据，跟着 facet 一起来。
  */
-export type Facet = { dim: string; value: string; tone?: "ok" | "warn" | "dim" };
+/**
+ * facet 底下可以展开的一行明细。
+ *
+ * 内核**不解释**这些行是什么——它只知道"这个维度带了若干行，可以点开看"。是 CI
+ * 检查、是 PR 列表、还是别的，只有产生它的插件知道。这跟 `dim` 是个内核不去理解
+ * 的 i18n 键、`source.url` 是只有来源方拼得出的链接，是同一步棋：**破坏插件界线
+ * 的是内核去理解内容，不是插件提供内容。**
+ *
+ * 故意没有 url。明细只用来说明"这一格里都有什么"，需要跳转的话那是插件自己页面
+ * 的事——而内核一旦开始渲染插件给的链接，就得管协议白名单（`javascript:` 是实打
+ * 实的注入面）。不开这个口子，这条安全考量就不存在。
+ */
+export type FacetDetail = { label: string; value: string; tone?: "ok" | "warn" | "dim" };
+
+export type Facet = {
+  dim: string;
+  value: string;
+  tone?: "ok" | "warn" | "dim";
+  /** 可展开的明细。有它的 chip 画成按钮，没有的还是一格静态文字。 */
+  detail?: FacetDetail[];
+};
 
 /**
  * 问插件时给它看的单。

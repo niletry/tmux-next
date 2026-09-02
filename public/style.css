@@ -1612,3 +1612,85 @@ header .htitle { font-size: 17px; font-weight: 600; }
   font: inherit;
   font-size: 16px; /* under 16px iOS zooms the page on focus */
 }
+
+/* 通用明细浮层：内核自己的，插件给的行落进来只当文本渲染。 */
+.sheet-back {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--term-bg) 70%, transparent);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 20;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--card);
+  border-radius: 14px 14px 0 0;
+  padding: 16px 16px 20px;
+}
+
+.sheet-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 一行一个检查：名字占满、状态靠右。名字可能很长（ci/circleci: test 这种），
+   所以它自己截断，而不是把状态挤出屏幕。 */
+.detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+.detail-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.detail-state {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.detail-state.ok { color: var(--idle); }
+.detail-state.warn { color: var(--term-red); }
+.detail-state.dim { color: var(--dim); }
+
+.sheet-close {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--raised);
+  color: var(--fg);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* 带明细的 chip 是个按钮，得看出来能点。 */
+.facet.has-detail {
+  border: 1px solid var(--edge);
+  cursor: pointer;
+}

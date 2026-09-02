@@ -137,6 +137,18 @@ async function liveFromKernel(): Promise<Array<{ name: string; sessionId: string
  * 只认 source 是 jira 的单——传进来的是**全部**单（内核不按 provider 预筛，那会在
  * 内核里写死"provider 名就是插件 id"），挑是这边的事。
  */
+/**
+ * 一个检查状态对应的色调。
+ *
+ * 跟工单页 jira.js 的 checkTone 是同一套判断，只是那边产 CSS 类名、这边产 facet
+ * 的 tone——两处都只认 Bitbucket 的原始状态词，改判断要一起改。
+ */
+function checkFacetTone(state: string): "ok" | "warn" | "dim" {
+  if (state === "FAILED" || state === "STOPPED") return "warn";
+  if (state === "INPROGRESS") return "dim";
+  return "ok";
+}
+
 export function facetsFor(
   item: ItemRef,
   issues: Map<string, Issue>,
@@ -179,6 +191,16 @@ export function facetsFor(
         dim: "jira.checks",
         value: `${failed}/${all.length}`,
         tone: failed ? "warn" : "ok",
+        // 汇总数字只说"几个挂了"，说不出**是哪个**挂了——而那才是看到红色之后
+        // 唯一想知道的事。明细把每个检查的名字（形如 ci/circleci: test）和状态
+        // 带上去，首页因此不必再跳一趟工单页。
+        // 不带 url：内核不渲染插件给的链接（那就得管协议白名单），要点进某次构建
+        // 仍然去工单页。
+        detail: all.map((c) => ({
+          label: c.name,
+          value: c.state,
+          tone: checkFacetTone(c.state),
+        })),
       });
     }
   }

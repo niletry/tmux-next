@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>tmux-next</title>
+  <style>
+    :root {
+      --bg: #14161a;
+      --card: #1e1e23;
+      --ink: #e4e2da;
+      --muted: #9a988e;
+      --line: #2c2c31;
+      --accent: #7aa2f7;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.5 -apple-system, system-ui, "PingFang SC", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      min-height: 100vh;
+      padding: 1.2rem;
+    }
+    .wrap { margin: auto; width: 100%; max-width: 26rem; }
+    .logo {
+      display: flex; align-items: center; gap: 0.6rem;
+      font: 600 1.3rem var(--mono);
+      margin-bottom: 0.4rem;
+    }
+    .logo svg { width: 2rem; height: 2rem; }
+    .sub { color: var(--muted); font-size: 0.95rem; margin: 0 0 1.4rem; }
+    label { color: var(--muted); font-size: 0.85rem; display: block; margin: 0 0 0.4rem; }
+    input {
+      width: 100%;
+      padding: 0.8rem 0.9rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--ink);
+      font: 0.95rem var(--mono);
+      outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+    .row { display: flex; gap: 0.6rem; margin-top: 0.9rem; }
+    button {
+      flex: 1;
+      padding: 0.8rem 1rem;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #14161a;
+      font: 600 0.95rem -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    button.secondary { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+    .note {
+      margin-top: 1.2rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+    .note code { font-family: var(--mono); }
+    .note.error { color: #e2706b; }
+    .ver {
+      margin-top: 1.6rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font: 0.72rem var(--mono);
+    }
+    #loginRow button { background: var(--card); color: var(--ink); border: 1px solid var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7aa2f7"/><stop offset="1" stop-color="#9ece6a"/></linearGradient></defs>
+        <circle cx="16" cy="16" r="16" fill="#14161a"/>
+        <path d="M8.5 10.5 L14 16 L8.5 21.5 M15.5 10.5 L21 16 L15.5 21.5" fill="none" stroke="url(#lg)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      tmux-next
+    </div>
+    <p class="sub">Connect to your tmux-next server. It runs on your own machine — this app only remembers where it lives.</p>
+
+    <label for="server">Server address</label>
+    <input id="server" inputmode="url" autocomplete="url" placeholder="https://tmux.example.com" spellcheck="false">
+
+    <div class="row">
+      <button class="secondary" id="clear" hidden>Forget</button>
+      <button id="connect">Connect</button>
+    </div>
+    <div class="row" id="loginRow">
+      <button id="login" class="secondary">Sign in first (login page)</button>
+    </div>
+
+    <p class="note" id="note">
+      The address must be <code>https://</code> (or a local <code>http://</code> on the same
+      machine). If your server has a login (most do), tap <b>Sign in first</b> below, log in,
+      then tap Connect — the login stays with this app. The address is kept on this device only.
+    </p>
+    <p class="ver">app 0.1.0 · frontend 96cf0ea</p>
+  </div>
+
+  <script type="module">
+    const STORAGE = "tn-server";
+    const input = document.getElementById("server");
+    const connect = document.getElementById("connect");
+    const clear = document.getElementById("clear");
+    const login = document.getElementById("login");
+    const note = document.getElementById("note");
+
+
+    const saved = (() => {
+      try { return localStorage.getItem(STORAGE) || ""; } catch { return ""; }
+    })();
+
+    if (saved) {
+      input.value = saved;
+      clear.hidden = false;
+      // Returning to the app goes straight to the server (same-origin, so the
+      // proxy's login cookie works like in the browser).
+      location.replace(saved);
+    }
+
+    clear.addEventListener("click", () => {
+      try { localStorage.removeItem(STORAGE); } catch {}
+      input.value = "";
+      clear.hidden = true;
+      note.classList.remove("error");
+      note.textContent = "Address forgotten. Enter a new one to reconnect.";
+    });
+
+    connect.addEventListener("click", () => {
+      let url = input.value.trim().replace(/\/+$/, "");
+      if (!url) return;
+      if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+      // Open the server directly. The shell's own origin (https://localhost)
+      // is a different site than the server, so a login cookie set by its
+      // proxy (caddy-security, SameSite=Lax) would never travel on cross-site
+      // requests from local assets. Loading the server page itself keeps the
+      // request same-origin: login, session list, terminal and WebSocket all
+      // behave exactly like the phone browser.
+      try { localStorage.setItem(STORAGE, url); } catch {}
+      location.href = url;
+    });
+
+    login.addEventListener("click", () => {
+      let url = input.value.trim().replace(/\/+$/, "");
+      if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+      try { localStorage.setItem(STORAGE, url); } catch {}
+      location.href = url + "/auth/";
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") connect.click();
+    });
+  </script>
+</body>
+</html>

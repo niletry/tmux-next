@@ -1,5 +1,5 @@
 import { PLUGINS } from "./registry.js";
-import type { Facet, ItemRef, Plugin, PluginEnricher, PluginHandler } from "./types";
+import type { Facet, FacetDetail, ItemRef, Plugin, PluginEnricher, PluginHandler } from "./types";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
 import {
@@ -79,6 +79,9 @@ const MAX_TEXT = 120;
  */
 export const MAX_FACETS_PER_ITEM = 6;
 
+/** 一个维度底下最多能展开几行明细。一个坏插件不能靠 detail 撑爆浮层。 */
+export const MAX_DETAIL_ROWS = 20;
+
 function trim(value: unknown, max: number): string {
   return typeof value === "string" ? value.slice(0, max) : "";
 }
@@ -130,7 +133,26 @@ export async function collectFacets(
             if (dim.startsWith("item.")) continue;
             const tone =
               f?.tone === "ok" || f?.tone === "warn" || f?.tone === "dim" ? f.tone : undefined;
-            facets.push({ dim, value, ...(tone ? { tone } : {}) });
+            // 明细跟 facet 本身同一套不信任姿态：截断、封顶、tone 只认三个值。
+            // 内核不看这些行是什么意思，只保证它们不会撑破页面。
+            const detail: FacetDetail[] = [];
+            if (Array.isArray(f?.detail)) {
+              for (const rawRow of f.detail.slice(0, MAX_DETAIL_ROWS)) {
+                const r = rawRow as Record<string, unknown>;
+                const label = trim(r?.label, MAX_TEXT);
+                const rowValue = trim(r?.value, MAX_TEXT);
+                if (!label) continue;
+                const rowTone =
+                  r?.tone === "ok" || r?.tone === "warn" || r?.tone === "dim" ? r.tone : undefined;
+                detail.push({ label, value: rowValue, ...(rowTone ? { tone: rowTone } : {}) });
+              }
+            }
+            facets.push({
+              dim,
+              value,
+              ...(tone ? { tone } : {}),
+              ...(detail.length ? { detail } : {}),
+            });
           }
           if (facets.length) clean[id] = facets;
         }

@@ -97,12 +97,61 @@ const ITEM_DIM_LABEL = {
  * `item.agent` 的取值也走字典（waiting/working/none 是内部词，不该给人看）；
  * 别的维度的取值是数据（工单状态、史诗名），原样显示。
  */
+/**
+ * 一个通用浮层：标题 + 若干行明细 + 关闭。
+ *
+ * 内核自己的，不复用工单页那个 openSheet——那在插件的 public/ 里，内核 import
+ * 插件代码就是把界线反过来越了。几十行的重复，换的是方向正确。
+ *
+ * 这些行的含义内核一概不知道：它只把 label / value 按 textContent 放进去，
+ * tone 决定颜色。是 CI 检查还是别的，只有给出它的插件知道。
+ */
+function openDetailSheet(title, rows) {
+  const back = el("div", "sheet-back");
+  const sheet = el("div", "sheet");
+  const close = () => back.remove();
+
+  sheet.append(el("h2", "sheet-title", title));
+  const list = el("div", "detail-list");
+  for (const row of rows) {
+    const line = el("div", "detail-row");
+    line.append(el("span", "detail-label", row.label));
+    line.append(el("span", row.tone ? `detail-state ${row.tone}` : "detail-state", row.value));
+    list.append(line);
+  }
+  sheet.append(list);
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "sheet-close";
+  btn.textContent = tr("items.close");
+  btn.addEventListener("click", close);
+  sheet.append(btn);
+
+  // 点背板关闭，但点浮层自身不关——否则想选段文字都会把它关掉。
+  back.addEventListener("click", (e) => {
+    if (e.target === back) close();
+  });
+  back.append(sheet);
+  document.body.append(back);
+}
+
 function facetChip(facet) {
   // tr() 本身查不到键就退回键名，插件维度（开放集合）和真正没配置的 dim 都
   // 落到这条路；内核的五个维度走上面的字面量表，只是为了不被死键扫描误判。
   const label = ITEM_DIM_LABEL[facet.dim]?.() ?? tr(facet.dim);
   const value = facet.dim === "item.agent" ? (AGENT_VALUE[facet.value]?.() ?? facet.value) : facet.value;
-  const chip = el("span", facet.tone ? `facet ${facet.tone}` : "facet");
+  // 带明细的画成按钮：明细只有点得开才算存在，跟工单页那条检查汇总同一个道理。
+  // 内核不知道这些行是什么，只知道"这个维度还有东西可看"。
+  const rows = Array.isArray(facet.detail) ? facet.detail : [];
+  const chip = rows.length
+    ? document.createElement("button")
+    : el("span", facet.tone ? `facet ${facet.tone}` : "facet");
+  if (rows.length) {
+    chip.type = "button";
+    chip.className = facet.tone ? `facet has-detail ${facet.tone}` : "facet has-detail";
+    chip.addEventListener("click", () => openDetailSheet(`${label}: ${value}`, rows));
+  }
   chip.append(el("span", "f-dim", label));
   chip.append(el("span", "f-value", value));
   chip.title = `${label}: ${value}`;

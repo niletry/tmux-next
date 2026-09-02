@@ -1,0 +1,1073 @@
+/*
+ * The palette below is the fallback only — themes.js writes the real --term-*
+ * values onto :root before first paint, and everything here derives from those.
+ * The literals are Tokyo Night, the default theme, so a page that somehow runs
+ * without the script still renders in the right colours rather than unstyled.
+ *
+ * Do not add a colour literal outside this block. Every value belongs in
+ * themes.js, where the contrast tests can reach it.
+ */
+:root {
+  --term-bg: #1a1b26;
+  --term-fg: #c0caf5;
+  --term-blue: #7aa2f7;
+  --term-green: #9ece6a;
+  --term-bright-black: #6272a4;
+  --on-accent: #1a1b26;
+
+  --bg: var(--term-bg);
+  --fg: var(--term-fg);
+  --accent: var(--term-blue);
+  --idle: var(--term-green);
+  --dim: var(--term-bright-black);
+  /* Cards sit just above the background; mixed from it so every theme gets a
+     lift of the same weight instead of one hand-picked grey that only suits
+     the default. */
+  --card: color-mix(in srgb, var(--term-bg) 88%, var(--term-fg));
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 -apple-system, system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ---- list page ---- */
+
+.list-page {
+  padding:
+    env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 16px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+header .count {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--dim);
+}
+
+.card {
+  position: relative;
+  background: var(--card);
+  border-radius: 12px;
+  margin: 0 12px 12px;
+}
+
+.card-main {
+  display: block;
+  padding: 14px;
+  /* Room for the action button so long names never run under it. */
+  padding-right: 52px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 12px;
+}
+
+.card-main:active { background: #252932; }
+
+/* Small and off in the corner: ending a session is destructive, so it should
+   take aim rather than sit under a thumb scrolling the list. */
+.more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.more:active { background: #2a2f3a; color: var(--fg); }
+
+.row { display: flex; align-items: center; gap: 8px; }
+
+.name { font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
+
+.dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+
+.sid {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.7;
+}
+
+.time { margin-left: auto; color: var(--dim); font-size: 13px; white-space: nowrap; }
+
+/* Build marker, unobtrusive in the corner. */
+.ver {
+  position: fixed;
+  right: 8px;
+  bottom: calc(4px + env(safe-area-inset-bottom));
+  color: var(--dim);
+  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.preview {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--dim);
+}
+
+.pending {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #2a2f3a;
+  color: var(--accent);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.pending b { color: var(--dim); font-weight: 400; margin-left: 6px; }
+
+.empty { padding: 24px; color: var(--dim); text-align: center; }
+
+/* ---- terminal page ---- */
+
+.term-page {
+  display: flex;
+  flex-direction: column;
+  /* --app-height tracks the visual viewport so the soft keyboard shrinks us;
+     dvh only accounts for browser chrome, never the keyboard. */
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+}
+
+.term-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+  background: var(--card);
+  font-size: 14px;
+  flex: 0 0 auto;
+}
+
+.term-bar a { color: var(--accent); text-decoration: none; }
+.term-bar .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term-bar .status { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; }
+
+/* Login expired: the one status that must be noticed and tapped, so it drops
+   the dim treatment for the accent and a clear target. */
+.status-relogin {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  padding: 4px 6px;
+  margin: -4px -6px;
+}
+.status-relogin:active { opacity: 0.6; }
+
+.term-kill,
+.term-rename {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #2a2f3a;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+/* Tapping 改名 turns the title into this field, prefilled with the name. */
+.title-edit {
+  min-width: 0;
+  width: 42vw;
+  max-width: 14rem;
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: #1b1e25;
+  color: var(--fg);
+  font: 600 16px/1 -apple-system, system-ui, sans-serif; /* 16px so iOS doesn't zoom. */
+}
+
+.title-edit:focus { outline: none; }
+
+/* Armed: one more tap kills. Red so it can't be mistaken for anything else. */
+.term-kill.armed { background: #b3413c; color: #fff; }
+
+#term { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+/* A stack of grouped rows. The extra rows are hidden until the toggle expands
+   the panel upward, so the common keys never need horizontal scrolling. */
+.keys {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  background: var(--card);
+}
+
+.keys-row { display: flex; gap: 6px; }
+.keys-more { display: none; }
+.keys.expanded .keys-more { display: flex; }
+
+.keys button {
+  flex: 1 1 auto; /* buttons share the row width evenly — bigger tap targets */
+  min-width: 44px;
+  height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #2a2f3a;
+  color: var(--fg);
+  font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* The expand/collapse handle stays a fixed, narrow square. The id keeps this
+   from losing to `.keys button` on specificity. */
+#keys-toggle { flex: 0 0 40px; color: var(--dim); font-size: 15px; }
+.keys.expanded #keys-toggle { color: var(--accent); }
+
+/* These buttons hold an SVG rather than a glyph; centre it like the others and
+   let it inherit the same grey text colour through currentColor. */
+#img,
+#paste,
+#copy { display: inline-flex; align-items: center; justify-content: center; }
+
+.keys button:active { background: #39404e; }
+.keys button.sticky-on { background: var(--accent); color: var(--on-accent); }
+
+
+/* ---- confirmation sheet ---- */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 10;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--card);
+  border-radius: 16px 16px 0 0;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  /* A bottom sheet grows upward; without a ceiling, a tall body (a long
+     directory list plus a history list) pushes its own top off the top of the
+     screen. Cap it to the viewport and let the whole sheet scroll instead. */
+  max-height: calc(100vh - env(safe-area-inset-top));
+  max-height: calc(100dvh - env(safe-area-inset-top));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet h2 { margin: 0 0 4px; font-size: 17px; }
+
+.sheet-name {
+  margin: 0 0 10px;
+  font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.sheet-warn { margin: 0 0 12px; color: var(--dim); font-size: 14px; }
+
+.sheet .preview { max-height: 40vh; overflow-y: auto; }
+
+.sheet-actions { display: flex; gap: 10px; margin-top: 18px; }
+
+.btn {
+  flex: 1;
+  min-height: 54px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #2a2f3a;
+  color: var(--fg);
+  font-size: 16px;
+}
+
+.btn.danger { background: #b3413c; color: #fff; }
+.btn:disabled { opacity: 0.6; }
+
+/* ---- create session ---- */
+
+header .new {
+  /* .hactions carries the margin-left:auto now, so this is just a button. */
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 20px;
+  line-height: 1;
+  align-self: center;
+}
+
+header .new:active { opacity: 0.7; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+
+.chip {
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: #2a2f3a;
+  color: var(--fg);
+  font-size: 13px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip.on { background: var(--accent); color: var(--on-accent); }
+
+.crumb { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; min-height: 30px; }
+
+.crumb .up {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #2a2f3a;
+  color: var(--fg);
+  font-size: 13px;
+}
+
+/*
+ * The crumb, not the chips, is what always says where the session will land:
+ * chips go dark as soon as you browse below a favourite. So the last segment
+ * is styled as the answer and the lead-up recedes to context.
+ */
+.crumb-path {
+  font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+
+.crumb-lead { color: var(--dim); }
+
+.crumb-leaf {
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.field {
+  width: 100%;
+  height: 44px;
+  margin-bottom: 10px;
+  padding: 0 12px;
+  border: 1px solid #2a2f3a;
+  border-radius: 10px;
+  background: #1b1e25;
+  color: var(--fg);
+  font-size: 16px; /* iOS zooms the page for anything smaller. */
+}
+
+.field:focus { outline: none; border-color: var(--accent); }
+
+/* Tall enough to be worth scrolling, short enough to leave the keyboard room. */
+.dir-list {
+  max-height: 34vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 12px;
+}
+
+.dir-row {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #22262f;
+  padding: 12px 4px;
+  background: none;
+  color: var(--fg);
+  font-size: 15px;
+  text-align: left;
+}
+
+.dir-row:active { background: #22262f; }
+.dir-empty { margin: 12px 4px; color: var(--dim); font-size: 14px; }
+
+/* Screen two of the sheet is nothing but the conversation list, so it gets the
+   room. It still scrolls on its own within the capped sheet. */
+.history { max-height: 62vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* Entry to the resume screen and the way back from it. */
+.resume-entry {
+  width: 100%;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 8px;
+  padding: 11px;
+  background: #2a2f3a;
+  color: var(--accent);
+  font-size: 14px;
+}
+.resume-entry:active { background: #22262f; }
+.sheet-back {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 15px;
+  padding: 2px 0;
+  margin-bottom: 10px;
+}
+
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #22262f;
+  padding: 10px 4px;
+  background: none;
+  color: var(--fg);
+  text-align: left;
+}
+
+.hist-title { flex: 1 1 auto; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-time { flex: 0 0 auto; color: var(--dim); font-size: 12px; }
+.hist-row:active { background: #22262f; }
+/* Picked: this conversation will be resumed. */
+.hist-row.on { background: rgba(122, 162, 247, 0.16); }
+.hist-row.on .hist-title { color: var(--accent); font-weight: 600; }
+
+/* Roomy enough to be a comfortable tap target on a phone. */
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 6px 2px;
+  font-size: 14px;
+}
+
+.check input { width: 18px; height: 18px; accent-color: var(--accent); flex: 0 0 auto; }
+
+/* Dim rather than alarm-red: a warning shown every time stops being read. */
+.check-warn { margin-left: auto; color: var(--dim); font-weight: 400; font-size: 12px; }
+
+.sheet-error { margin: 0 0 4px; color: #e2706b; font-size: 14px; min-height: 18px; }
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+
+/* 长按弹出的可选择文字层：把当前屏幕做成普通 HTML，交给系统原生选择/复制 */
+.copy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  padding: env(safe-area-inset-top) 0.5rem env(safe-area-inset-bottom);
+}
+
+.copy-box {
+  margin: auto;
+  width: 100%;
+  /* Without this a flex item won't shrink below its content, so the wide
+     terminal text would push the box past the screen edge. */
+  min-width: 0;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.copy-hint {
+  flex: 0 0 auto;
+  padding: 0.65rem 0.85rem;
+  font-size: 13px;
+  color: #8b919c;
+  border-bottom: 1px solid #22262f;
+}
+
+.copy-text {
+  margin: 0;
+  padding: 0.85rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #e6e8ec;
+  /* Wrap instead of scrolling sideways: on a phone, horizontal-scrolling to
+     select a long line is miserable. Wrapping is only visual — the copied text
+     keeps its real line breaks, and long unbroken tokens (a URL) break too. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---- gallery ---- */
+
+header .back { color: var(--accent); text-decoration: none; font-size: 15px; font-weight: 400; }
+header .back:active { opacity: 0.7; }
+
+/* Entry point on the list header, sitting left of the ＋ button. */
+header .ghead {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #2a2f3a;
+  color: var(--fg);
+  align-self: center;
+  text-decoration: none;
+}
+header .ghead:active { opacity: 0.7; }
+header .ghead svg { width: 18px; height: 18px; }
+
+/* The notification bell, in the right-hand cluster after the gallery icon. */
+header .hbell {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: #2a2f3a;
+  color: var(--fg);
+  align-self: center;
+  text-decoration: none;
+}
+header .hbell:active { opacity: 0.7; }
+header .hbell svg { width: 18px; height: 18px; }
+/* Lit up when notifications are on. */
+header .hbell.on { background: var(--accent); color: var(--on-accent); }
+
+.gal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  padding: 0 12px 24px;
+}
+
+.gal-cell {
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  padding: 0;
+  background: var(--card);
+  border-radius: 12px;
+  overflow: hidden;
+  text-align: left;
+  color: inherit;
+}
+.gal-cell:active { background: #252932; }
+
+.gal-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: #0f1115;
+  display: block;
+}
+
+/* Non-images get a labelled tile instead of a thumbnail. */
+.gal-badge {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #22262f;
+  color: var(--accent);
+  font: 600 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+}
+
+.gal-name { padding: 8px 10px; font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
+.ghint { font-size: 13px; color: var(--dim); }
+.ghint code { font-size: 0.9em; }
+
+/* full-screen viewer for one artifact */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #0c0d10;
+  display: flex;
+  flex-direction: column;
+}
+.viewer[hidden] { display: none; }
+
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: max(10px, env(safe-area-inset-top)) 14px 10px;
+  background: var(--card);
+  flex: 0 0 auto;
+}
+.viewer-close { border: 0; border-radius: 8px; padding: 6px 12px; background: #2a2f3a; color: var(--fg); font-size: 14px; }
+.viewer-name { flex: 1; min-width: 0; font-size: 13px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-dl { color: var(--accent); text-decoration: none; font-size: 14px; }
+
+.viewer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.viewer-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.viewer-frame { width: 100%; height: 100%; border: 0; background: #fff; }
+.viewer-note { color: var(--dim); padding: 24px; text-align: center; }
+
+/* ---- pin ---- */
+
+/* Pinned marker on a list card, and the vertical action menu behind ⋯. */
+.pin { color: var(--accent); display: inline-flex; flex: 0 0 auto; }
+.pin svg { display: block; }
+
+.sheet-menu { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+
+/* Links pulled out of the copy overlay: each a tap-to-copy row. */
+.copy-links {
+  flex: 0 0 auto;
+  max-height: 30vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.5rem;
+  border-bottom: 1px solid #22262f;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.copy-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  background: #1b1e25;
+  color: var(--accent);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+.copy-link:active { background: #22262f; }
+.copy-link.copied { color: var(--idle); border-color: var(--idle); }
+
+/* gallery viewer: page through without returning to the grid */
+.viewer-count { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.viewer-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 66px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(20, 22, 26, 0.5);
+  color: var(--fg);
+  font-size: 30px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.viewer-nav.prev { left: 8px; }
+.viewer-nav.next { right: 8px; }
+.viewer-nav:active { background: rgba(20, 22, 26, 0.85); }
+
+/* restore banner: bring back Claude sessions whose tmux died */
+.restore-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 12px 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #1c2836;
+  border: 1px solid #2a3a52;
+  color: var(--fg);
+  font-size: 14px;
+}
+.restore-banner span { flex: 1; }
+.restore-btn {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+.restore-btn:disabled { opacity: 0.6; }
+
+/* ---- appearance sheet ---- */
+
+.theme-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+
+/* virtual-key editor: each toolbar row shown as a strip of tiles, like the
+   real bar; press a tile and slide it sideways to reorder */
+.key-grid-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.key-strip {
+  position: relative;
+  display: flex;
+  gap: 8px;
+}
+
+.key-tile {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 48px;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #3a4050;
+  border-radius: 12px;
+  background: #2a2f3a;
+  color: var(--fg);
+  font-family: var(--mono, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 14px;
+  cursor: grab;
+  /* The page must not scroll while a tile is being dragged, and a long
+     press must not become text selection (iOS would otherwise select the
+     key's label mid-drag). */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform .12s ease;
+}
+
+/* The grabbed tile floats above the rest and follows the finger via a
+   transform (it stays in flow, so its row keeps its width); the tiles it
+   passes slide out of the way per row. */
+.key-tile.dragging {
+  z-index: 5;
+  opacity: .95;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+}
+
+/* While a drag is in flight the whole board must not select text — the finger
+   travels outside the tiles (row gaps, labels) and iOS would happily start a
+   selection there. Added on pointerdown, removed on release. */
+body.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The tap count, as an app-icon badge on the tile. */
+.key-tile-usage {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 10px/16px -apple-system, system-ui, sans-serif;
+  text-align: center;
+}
+
+.theme-opt {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #2a2f3a;
+  color: var(--fg);
+  text-align: left;
+  font: inherit;
+}
+
+.theme-opt.on { border-color: var(--accent); }
+
+/* The filled state is drawn with a radial gradient rather than a nested
+   element, so the row stays two nodes deep and the ring never drifts. */
+.theme-radio {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  margin-top: 3px;
+  border: 2px solid #565f70;
+  border-radius: 50%;
+}
+
+.theme-opt.on .theme-radio {
+  border-color: var(--accent);
+  background: radial-gradient(var(--accent) 0 38%, transparent 42%);
+}
+
+.theme-body { flex: 1 1 auto; min-width: 0; }
+.theme-body b { display: block; font-size: 14.5px; }
+
+.theme-swatches { display: flex; gap: 3px; margin-top: 6px; }
+.theme-swatches i { width: 15px; height: 15px; border-radius: 3.5px; }
+
+/* Preserves the newlines the preview writes, and clips rather than wraps so a
+   narrow phone never reflows the sample into nonsense. */
+.theme-prev {
+  margin-top: 8px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.sheet-note { margin: 0 0 12px; color: var(--dim); font-size: 12.5px; }
+
+/* Offered in place of "no matching directory": by then the name is already
+   typed in the filter box, so this turns the dead end into the action. */
+.dir-make {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  border: 1px dashed var(--accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+}
+
+.dir-make:active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.dir-make-plus { font-size: 17px; line-height: 1; }
+
+/* The task a session was last given. Sits above the screen preview because it
+   explains it: the preview shows what is happening, this says what it is for.
+   Clamped to two lines so one long prompt cannot push the list around. */
+.task {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 0;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.task > span:last-child {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.task-mark { flex: 0 0 auto; color: var(--accent); font-weight: 600; }
+
+/* With a task line present the preview becomes supporting detail, so it steps
+   back rather than competing. */
+.task + .preview { margin-top: 6px; opacity: 0.72; }
+
+/* Agent picker. Hidden entirely when only one agent is available, so the sheet
+   looks exactly as it did before for anyone who only has Claude Code. */
+.agent-row { display: flex; gap: 6px; margin: 4px 0 2px; flex-wrap: wrap; }
+
+.agent-chip {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 1px solid #3a4050;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font: 13px/1 -apple-system, system-ui, sans-serif;
+}
+
+.agent-chip.on { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+
+.agent-chip.missing { opacity: 0.4; text-decoration: line-through; }
+
+/* Section heading inside the settings sheet. */
+.sheet-sub {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dim);
+}
+.sheet-sub:first-of-type { margin-top: 4px; }
+
+/* ---- shared header navigation ---- */
+
+/* A segmented control of icons. The shared trough is what says these three are
+   alternatives to one another; scattered icons would not. Labels live on
+   title/aria-label so the control stays narrow. */
+.hseg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.hseg-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 36px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--dim);
+  text-decoration: none;
+}
+
+.hseg-item svg { width: 17px; height: 17px; flex: none; }
+
+/* The page you are on. A span, so there is nothing to tap. */
+.hseg-item.on {
+  background: color-mix(in srgb, var(--fg) 14%, var(--bg));
+  color: var(--fg);
+}
+
+.hseg-item:not(.on):active { color: var(--fg); }
+
+/* Only the active segment carries one, so it widens to fit rather than
+   squeezing the icon. */
+.hseg-item.on:has(.count:not(:empty)) { width: auto; padding: 0 9px 0 8px; }
+
+.hseg-item .count {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+/* Pushed to the right edge, away from the page switcher: navigation on one
+   side, actions on the other, so the two groups are not read as one row. */
+.hactions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+
+/* ---- task pages (new session) ---- */
+
+/* A page you go to, do one thing, and leave. It gets a back arrow and a title
+   instead of the switcher — it is not one of the three siblings. */
+header .htitle { font-size: 17px; font-weight: 600; }
+
+.page-body {
+  padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+/* Full height instead of the sheet's 34vh: browsing directories is the whole
+   point of this page, so the list gets the room the viewport can spare. */
+.page-body .dir-list { max-height: none; flex: 1; }
+
+/* ---- voice panel ---- */
+
+/* Shorter than a soft keyboard: the draft is a few lines and the controls sit
+   on one row, so taking the full keyboard's height would just be dead space. */
+.voice-panel {
+  flex: 0 0 auto;
+  height: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--card);
+}
+
+/* Record, its cancel, the status, and send — one row. Cancel used to sit on a
+   row of its own, which cost more height than the button it qualifies. */
+.voice-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.voice-row .voice-hint { flex: 1 1 auto; min-width: 0; }
+.voice-row .btn { flex: 0 0 auto; }
+
+.voice-rec {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 20px;
+  line-height: 1;
+}
+.voice-rec:disabled { opacity: 0.4; }
+.voice-rec[data-state="recording"] { background: var(--term-red, var(--accent)); }
+.voice-rec:active { opacity: 0.7; }
+
+.voice-hint {
+  color: var(--dim);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-note {
+  color: var(--dim);
+  font-size: 14px;
+  text-align: center;
+  margin: 0;
+  max-width: 30em;
+}
+
+.voice-text {
+  width: 100%;
+  flex: 1 1 auto;
+  resize: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 16px; /* under 16px iOS zooms the page on focus */
+}
+

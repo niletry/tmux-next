@@ -1,0 +1,12 @@
+{
+	"appId": "work.tmuxnext.app",
+	"appName": "tmux-next",
+	"webDir": "www",
+	"server": {
+		"androidScheme": "https",
+		"cleartext": false
+	},
+	"ios": {
+		"contentInset": "always"
+	}
+}
