@@ -4,6 +4,7 @@ import {
   valuesOf,
   groupItems,
   filterItems,
+  pruneSelection,
   AGENT_ORDER,
 } from "../public/facet-view.js";
 
@@ -139,4 +140,51 @@ test("没有 facet 记录的单在有筛选时被筛掉", () => {
     "item.agent": ["waiting"],
   });
   expect(got.map((i) => i.id)).toEqual(["a", "c"]);
+});
+
+/**
+ * 存下来的筛选要跟当前数据对账。
+ *
+ * chips 只画 `valuesOf` —— 当前数据里真实存在的取值。一旦某个被选中的取值从数据里
+ * 消失（工单状态变了、同步换了一批单），它就变成一个**看不见、点不掉、却仍在生效**
+ * 的筛选：页面被筛空，屏幕上却没有任何一个 chip 是选中态，用户无从知道发生了什么。
+ *
+ * 这跟"移除字段时要连它的选择一起清掉"是同一个失败模式，只是走的另一条路——那次
+ * 是字段被拿掉，这次是取值自己没了。
+ */
+
+test("当前数据里还在的取值原样保留", () => {
+  const got = pruneSelection(facets, { "item.agent": ["waiting"] });
+  expect(got).toEqual({ "item.agent": ["waiting"] });
+});
+
+test("数据里已经没有的取值被丢掉", () => {
+  const got = pruneSelection(facets, { "jira.status": ["In Progress", "Done"] });
+  expect(got).toEqual({ "jira.status": ["In Progress"] });
+});
+
+// 这条就是用户真实遇到的那一幕：筛选把页面清空，而没有一个 chip 是选中的。
+test("一个维度的取值全没了，这个维度整条丢掉，而不是留一个空数组", () => {
+  const got = pruneSelection(facets, { "jira.status": ["Done"] });
+  expect(got).toEqual({});
+});
+
+test("维度本身在数据里消失了，也整条丢掉", () => {
+  const got = pruneSelection(facets, { "gone.dim": ["x"] });
+  expect(got).toEqual({});
+});
+
+test("空选择原样返回空", () => {
+  expect(pruneSelection(facets, {})).toEqual({});
+});
+
+test("没有数据时一切都对不上账，返回空", () => {
+  expect(pruneSelection({}, { "item.agent": ["waiting"] })).toEqual({});
+});
+
+// 对账之后再筛，结果必须是"筛选自动放宽了"，不是"页面空了"。
+test("对账后再筛，失效的取值不再把页面筛空", () => {
+  const stale = { "jira.status": ["Done"] };
+  expect(filterItems(items, facets, stale)).toEqual([]);
+  expect(filterItems(items, facets, pruneSelection(facets, stale)).length).toBe(items.length);
 });

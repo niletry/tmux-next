@@ -375,13 +375,69 @@ test("存的是一个数据里已经没有的维度时退回默认，不是空�
   expect(root.querySelectorAll(".item-card").length).toBe(1);
 });
 
+/**
+ * 真正筛空的情形：两个维度的取值在数据里都存在，但没有一张单同时满足。
+ *
+ * 这条以前用的是"取值压根不在数据里"（`item.agent: ["nope"]`），而那种筛选现在会被
+ * pruneSelection 对账掉——它是个看不见、点不掉却在生效的筛选，属于要治的病，不是要
+ * 测的行为。
+ */
 test("筛到没有单时说清楚，而不是空白", async () => {
+  const store = {
+    "tmux-next.items.filter": JSON.stringify({
+      "item.agent": ["working"],
+      "jira.status": ["Done"],
+    }),
+  };
+  const root = await mount(payload({
+    items: [item({ id: "it-1" }), { ...item(), id: "it-2", title: "另一张" }],
+    facets: {
+      "it-1": [{ dim: "item.agent", value: "working" }],
+      "it-2": [{ dim: "jira.status", value: "Done" }],
+    },
+  }), store);
+  expect(root.querySelectorAll(".item-card").length).toBe(0);
+  expect(root.querySelector(".empty")?.textContent).toContain(tr("items.noneMatch"));
+});
+
+// 说清楚还不够——还要给一个能解除它的东西，否则你知道是筛选在作怪，也得自己去猜是
+// 哪个字段、翻到哪个 chip。
+test("筛空时给一个清除筛选的按钮，点了就回到全部", async () => {
+  const store = {
+    "tmux-next.items.filter": JSON.stringify({
+      "item.agent": ["working"],
+      "jira.status": ["Done"],
+    }),
+  };
+  const root = await mount(payload({
+    items: [item({ id: "it-1" }), { ...item(), id: "it-2", title: "另一张" }],
+    facets: {
+      "it-1": [{ dim: "item.agent", value: "working" }],
+      "it-2": [{ dim: "jira.status", value: "Done" }],
+    },
+  }), store);
+  const clear = root.querySelector(".clear-filter");
+  expect(clear).not.toBeNull();
+  clear?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  expect(root.querySelectorAll(".item-card").length).toBe(2);
+  expect(JSON.parse(store["tmux-next.items.filter"]!)).toEqual({});
+});
+
+/**
+ * 存下来的取值已经不在数据里时，页面自愈而不是被筛空。
+ *
+ * 这就是真实遇到的那一幕：同步换了一批单之后，早先选中的状态没了，chips 里没有它、
+ * 点不掉它，可它还在过滤 —— 46 张单被筛成 0，屏幕上没有一个选中的 chip 可以解释。
+ */
+test("失效的筛选取值被对账掉，页面不再被筛空", async () => {
   const store = { "tmux-next.items.filter": JSON.stringify({ "item.agent": ["nope"] }) };
   const root = await mount(payload({
     items: [item()],
     facets: { "it-1": [{ dim: "item.agent", value: "working" }] },
   }), store);
-  expect(root.querySelector(".empty")?.textContent).toContain(tr("items.noneMatch"));
+  expect(root.querySelectorAll(".item-card").length).toBe(1);
+  expect(JSON.parse(store["tmux-next.items.filter"]!)).toEqual({});
 });
 
 test("localStorage 里是坏 JSON 时当作没有筛选", async () => {

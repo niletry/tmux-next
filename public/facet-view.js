@@ -144,3 +144,34 @@ export function filterItems(items, facets, selected) {
     }),
   );
 }
+
+/**
+ * 把选中的取值跟当前数据对一次账：数据里已经没有的，丢掉。
+ *
+ * 为什么必须有这一步：chips 只画 `valuesOf` —— 当前数据里真实存在的取值。一旦某个
+ * 被选中的取值从数据里消失（工单状态变了、同步换了一批单），它就变成一个**看不见、
+ * 点不掉、却仍在生效**的筛选：页面被筛空，而屏幕上没有任何一个 chip 是选中态，用户
+ * 完全无从知道发生了什么，也没有任何一个可点的东西能解除它。
+ *
+ * 这跟"移除字段时要连它的选择一起清掉"是同一个失败模式，只是走的另一条路：那次是
+ * 字段被拿掉，这次是取值自己没了。两处都必须保证——**能生效的筛选，必须是看得见、
+ * 点得掉的那些**。
+ *
+ * 取值全部失效的维度整条丢掉，而不是留一个空数组：空数组在 filterItems 里等价于
+ * 没选，但留着会让存储里慢慢堆满没有意义的键。
+ *
+ * @param {FacetMap} facets
+ * @param {Record<string, string[]>} selected
+ * @returns {Record<string, string[]>}
+ */
+export function pruneSelection(facets, selected) {
+  /** @type {Record<string, string[]>} */
+  const out = {};
+  for (const [dim, wanted] of Object.entries(selected ?? {})) {
+    if (!Array.isArray(wanted) || !wanted.length) continue;
+    const alive = new Set(valuesOf(facets, dim));
+    const kept = wanted.filter((v) => alive.has(v));
+    if (kept.length) out[dim] = kept;
+  }
+  return out;
+}

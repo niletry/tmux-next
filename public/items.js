@@ -2,7 +2,7 @@ import { initTheme } from "./theme-apply.js";
 import { initLang, tr } from "./i18n-apply.js";
 import { renderHeader } from "./nav.js";
 import { url } from "./root.js";
-import { dimensionsOf, valuesOf, groupItems, filterItems } from "./facet-view.js";
+import { dimensionsOf, valuesOf, groupItems, filterItems, pruneSelection } from "./facet-view.js";
 import { PLUGINS } from "../plugins/registry.js";
 
 // Before anything renders: paints the cached theme synchronously, then
@@ -738,7 +738,13 @@ async function render(fromSync = false) {
     const dims = dimensionsOf(visibleFacets);
 
     const groupBy = loadGroupBy(dims);
-    const selected = loadFilter();
+    // 先跟当前数据对一次账再筛：存下来的取值可能已经不在数据里了（工单状态变了、
+    // 同步换了一批单）。不对账的话它会变成一个看不见、点不掉、却仍在生效的筛选——
+    // 页面被筛空，而屏幕上没有任何一个 chip 是选中态，用户无从知道是什么在作怪。
+    // 对完账写回去，免得每次渲染都重算同一份失效数据。
+    const stored = loadFilter();
+    const selected = pruneSelection(visibleFacets, stored);
+    if (JSON.stringify(selected) !== JSON.stringify(stored)) saveFilter(selected);
     const filtered = filterItems(visible, visibleFacets, selected);
 
     // 头部计数数的是筛完之后真正画出来的那些卡片，不是 visible.length——facet
@@ -753,7 +759,21 @@ async function render(fromSync = false) {
     if (!filtered.length) {
       // 跟"压根没有单"是两件不同的事——这里是筛出来的空（或者归档单都被
       // 开关挡住了），得说清楚，不能看着像页面坏了。
-      root.append(el("p", "empty", tr("items.noneMatch")));
+      // 说清楚是筛空的还不够——还得给一个能解除它的东西。否则你知道是筛选在作怪，
+      // 也还要自己去猜是哪个字段、翻到哪个 chip。
+      const empty = el("p", "empty", tr("items.noneMatch"));
+      if (Object.keys(selected).length) {
+        const clear = document.createElement("button");
+        clear.type = "button";
+        clear.className = "clear-filter";
+        clear.textContent = tr("items.clearFilter");
+        clear.addEventListener("click", () => {
+          saveFilter({});
+          draw();
+        });
+        empty.append(clear);
+      }
+      root.append(empty);
     } else if (groupBy) {
       for (const group of groupItems(filtered, visibleFacets, groupBy)) {
         const section = el("section");
