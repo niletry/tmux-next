@@ -563,10 +563,13 @@ header .count {
    之前它跟卡片同色、无边框，读起来像一段说明文字，没人会想到去点它。
    max-width 是给史诗名这种长取值的——整条标题铺开会把一行挤成一条，
    而这一排的用处是让人扫一眼就找到想筛的那个。 */
+/* inline-block 而不是 inline-flex：上面那句 text-overflow: ellipsis 一直是死的，
+   flex 容器里的匿名文本不吃这条属性，于是长取值是被硬切掉半个词（"Vendor report
+   feedback fr"），而不是省略号。chip 里只有一段文本，没有需要 flex 排布的子元素，
+   所以换成 inline-block 就够了。 */
 .filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  display: inline-block;
+  vertical-align: middle;
   flex: 0 0 auto;
   padding: 4px 10px;
   border-radius: 999px;
@@ -1901,19 +1904,19 @@ a.detail-label:hover {
     overflow: visible;
   }
 
-  /* 工具条：窄屏纵向堆行是因为放不下，宽屏放得下。动作在左、筛选在右，
-     两块之间留一道明显比行内间距大的沟，免得读成一整片控件。 */
-  .toolbar {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    column-gap: 24px;
-  }
-  .toolbar-actions { flex: 0 0 auto; }
-  .filter-row { flex: 1 1 320px; }
-  /* 窄屏一个字段独占一行，宽屏让它们并排——字段块本身很矮，竖着排会把工具条
-     拉得比第一张卡片还高。 */
-  .filter-field { flex: 1 1 220px; }
+  /* 工具条在宽屏**仍然**是纵向堆行的，动作一行、筛选一行。
+
+     试过把它改成横排（动作在左、筛选在右），错了：筛选区的高度是数据决定的，
+     一个史诗字段就能占三行 chip，而动作那一行永远只有一行高。两块并排的结果是
+     左下方空出一大块 L 形的洞，右边挤着一坨 chip——宽屏反而比窄屏更难扫。
+
+     宽屏真正该拿到的是另一件事：字段块从"各占整行"变成并排铺开。字段块自己很矮，
+     竖着排会把工具条拉得比第一张卡片还高，而横向的宽度本来就是宽屏富余的那一维。 */
+  .filter-field { flex: 1 1 260px; }
+
+  /* chip 的宽度上限是照手机定的（22ch）。宽屏上这个预算没有理由不放宽——史诗名
+     被切成一半，等于让人在一排认不出来的选项里挑。 */
+  .filter-chip { max-width: 44ch; }
 
   /* 页头粘顶。桌面窗口高，滚下去几屏之后没有任何东西能切回另一个标签页。 */
   .list-page > header {
