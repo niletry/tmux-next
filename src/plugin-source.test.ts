@@ -103,3 +103,41 @@ test("refreshItem 卡住时超时返回 false", async () => {
   ).toBe(false);
   expect(Date.now() - started).toBeLessThan(SOURCE_TIMEOUT_MS);
 });
+
+// TMUX_NEXT_DISABLE_PLUGINS 关掉一个插件，要让它的 sync/refreshItem 一起消失——
+// 跟它的 tab、它的 /api/<id> 一样。真表里确实存在 "jira" 这个 id，所以这条测试
+// 只能用它（假插件不在真注册表里，天然被放行，证明不了这条过滤）。跑完必须把
+// env 还原，Bun 整个套件在一个进程里跑，漏了会把 jira 悄悄关掉到后面的文件。
+test("runSync 跳过被 TMUX_NEXT_DISABLE_PLUGINS 关掉的真插件", async () => {
+  const prev = process.env.TMUX_NEXT_DISABLE_PLUGINS;
+  process.env.TMUX_NEXT_DISABLE_PLUGINS = "jira";
+  try {
+    let called = false;
+    const servers: Record<string, PluginServer> = {
+      jira: { sync: async () => { called = true; return ok(1); } },
+    };
+    const got = await runSync(servers, fakePlugins({ jira: ["jira"] }));
+    expect(called).toBe(false);
+    expect(got).toEqual({ created: 0, updated: 0, total: 0, truncated: false });
+  } finally {
+    if (prev === undefined) delete process.env.TMUX_NEXT_DISABLE_PLUGINS;
+    else process.env.TMUX_NEXT_DISABLE_PLUGINS = prev;
+  }
+});
+
+test("refreshFromSource 不会调被 TMUX_NEXT_DISABLE_PLUGINS 关掉的真插件", async () => {
+  const prev = process.env.TMUX_NEXT_DISABLE_PLUGINS;
+  process.env.TMUX_NEXT_DISABLE_PLUGINS = "jira";
+  try {
+    let called = false;
+    const servers: Record<string, PluginServer> = {
+      jira: { refreshItem: async () => { called = true; } },
+    };
+    const found = await refreshFromSource("jira", "X-1", servers, fakePlugins({ jira: ["jira"] }));
+    expect(found).toBe(false);
+    expect(called).toBe(false);
+  } finally {
+    if (prev === undefined) delete process.env.TMUX_NEXT_DISABLE_PLUGINS;
+    else process.env.TMUX_NEXT_DISABLE_PLUGINS = prev;
+  }
+});

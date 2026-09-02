@@ -91,9 +91,7 @@ export async function collectFacets(
 ): Promise<Record<string, Facet[]>> {
   const enabled = new Set(enabledPlugins().map((p) => p.id));
   // 真实插件按启用状态过滤；测试注进来的假插件不在注册表里，一律放行。
-  const entries = Object.entries(enrichers).filter(
-    ([id]) => !PLUGINS.some((p) => p.id === id) || enabled.has(id),
-  );
+  const entries = Object.entries(enrichers).filter(([id]) => isConsidered(id, enabled));
   const asked = new Set(items.map((i) => i.id));
 
   const results = await Promise.all(
@@ -166,6 +164,19 @@ async function withTimeout<T>(work: Promise<T>, fallback: T, timeoutMs: number):
 }
 
 /**
+ * 一个插件是否该被这一轮考虑：不在真注册表里的（测试注进来的假插件）一律放行，
+ * 在真注册表里的看 `enabledPlugins()`。
+ *
+ * `collectFacets`、`runSync`、`refreshFromSource` 三处都要这条判断，抽出来是因为
+ * 三份各写一次迟早会飘——尤其是 `TMUX_NEXT_DISABLE_PLUGINS` 关掉一个插件本该让它
+ * 的 tab、API、页面一起消失（CLAUDE.md 的原话），`refreshFromSource` 直接调
+ * `refreshItem`、不经过 `/api/<id>` 的 404 闸门，这条过滤就是它唯一的闸门。
+ */
+function isConsidered(id: string, enabled: Set<string>): boolean {
+  return !PLUGINS.some((real) => real.id === id) || enabled.has(id);
+}
+
+/**
  * 让所有声明了 `sync` 的插件各同步一遍自己的来源，把结果相加。
  *
  * servers/plugins 作为参数、真表做默认值——理由跟 collectFacets 一样：注册表是
@@ -182,10 +193,8 @@ export async function runSync(
   timeoutMs: number = SOURCE_TIMEOUT_MS,
 ): Promise<SyncResult> {
   const enabled = new Set(enabledPlugins().map((p) => p.id));
-  // 真实插件按启用状态过滤；测试注进来的假插件不在注册表里，一律放行——跟
-  // collectFacets 同一条判断。
   const ids = plugins
-    .filter((p) => !PLUGINS.some((real) => real.id === p.id) || enabled.has(p.id))
+    .filter((p) => isConsidered(p.id, enabled))
     .map((p) => p.id)
     .filter((id) => servers[id]?.sync);
 
@@ -225,7 +234,10 @@ export async function refreshFromSource(
   plugins: Plugin[] = PLUGINS,
   timeoutMs: number = SOURCE_TIMEOUT_MS,
 ): Promise<boolean> {
-  const owner = plugins.find((p) => p.provides?.includes(provider));
+  const enabled = new Set(enabledPlugins().map((p) => p.id));
+  const owner = plugins.find(
+    (p) => p.provides?.includes(provider) && isConsidered(p.id, enabled),
+  );
   const refreshItem = owner ? servers[owner.id]?.refreshItem : undefined;
   if (!refreshItem) return false;
 
