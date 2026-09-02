@@ -52,7 +52,6 @@ test("建单补齐默认值", async () => {
   const item = await createItem({ title: "修登录页" });
   expect(item.id).toMatch(/^it-[a-z0-9]+$/);
   expect(item.title).toBe("修登录页");
-  expect(item.cwd).toBeNull();
   expect(item.source).toBeNull();
   expect(item.tags).toEqual([]);
   expect(item.closedAt).toBeNull();
@@ -61,10 +60,9 @@ test("建单补齐默认值", async () => {
 
 test("建出来的单读得回来", async () => {
   const a = await createItem({ title: "甲" });
-  const b = await createItem({ title: "乙", cwd: "/tmp/x" });
+  const b = await createItem({ title: "乙" });
   const items = await readItems();
   expect(items.map((i) => i.id).sort()).toEqual([a.id, b.id].sort());
-  expect(items.find((i) => i.id === b.id)?.cwd).toBe("/tmp/x");
 });
 
 test("两张单的 id 不相同", async () => {
@@ -135,15 +133,14 @@ test("不开 refreshTitle 时标题不动（默认行为不变）", async () => 
 });
 
 /**
- * cwd / tags / closedAt 是**本地状态**——你在这个工具里投入的东西。远端的一次
+ * tags / closedAt 是**本地状态**——你在这个工具里投入的东西。远端的一次
  * 改名不该动它们。这条是测试，不是注释里的承诺。
  */
 test("更新标题绝不碰本地状态", async () => {
   const created = await ensureItemForSource("jira", "EXAMPLE-1", "旧标题");
-  await updateItem(created.id, { cwd: "/tmp/orbit", tags: ["急"], closedAt: 1787000000 });
+  await updateItem(created.id, { tags: ["急"], closedAt: 1787000000 });
   const again = await ensureItemForSource("jira", "EXAMPLE-1", "新标题", { refreshTitle: true });
   expect(again.title).toBe("新标题");
-  expect(again.cwd).toBe("/tmp/orbit");
   expect(again.tags).toEqual(["急"]);
   expect(again.closedAt).toBe(1787000000);
 });

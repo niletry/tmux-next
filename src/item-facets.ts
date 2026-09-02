@@ -1,4 +1,3 @@
-import { basename } from "node:path";
 import type { Facet } from "../plugins/types";
 import type { WorkItem } from "./items";
 import type { SessionSummary } from "./tmux/session-list";
@@ -78,7 +77,6 @@ export function kernelFacets(
       { dim: "item.agent", value: state, tone: AGENT_TONE[state] },
       { dim: "item.sessions", value: String(mine.length) },
     ];
-    if (item.cwd) facets.push({ dim: "item.cwd", value: basename(item.cwd) });
     if (item.source) facets.push({ dim: "item.source", value: item.source.provider });
     for (const tag of item.tags) facets.push({ dim: "item.tag", value: tag });
     out[item.id] = facets;

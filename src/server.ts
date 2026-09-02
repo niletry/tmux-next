@@ -316,7 +316,6 @@ export function startServer(
         if (!title) return new Response("missing title", { status: 400 });
         const item = await createItem({
           title: title.slice(0, 200),
-          cwd: typeof b.cwd === "string" ? b.cwd : null,
           source:
             typeof (b.source as any)?.provider === "string" &&
             typeof (b.source as any)?.ref === "string"
@@ -393,7 +392,6 @@ export function startServer(
         const b = body as Record<string, unknown>;
         const patch: Parameters<typeof updateItem>[1] = {};
         if (typeof b.title === "string" && b.title.trim()) patch.title = b.title.trim().slice(0, 200);
-        if (typeof b.cwd === "string" || b.cwd === null) patch.cwd = (b.cwd as string) ?? null;
         if (Array.isArray(b.tags)) patch.tags = b.tags.filter((t): t is string => typeof t === "string");
         if (typeof b.closedAt === "number" || b.closedAt === null) patch.closedAt = b.closedAt as number | null;
         const next = await updateItem(decodeURIComponent(itemPatch[1]!), patch);

@@ -75,15 +75,6 @@ test("一张没有会话的单，内核给出 agent=none 与 sessions=0", async 
   expect(dims["item.sessions"]).toBe("0");
 });
 
-test("带 cwd 的单给出目录维度", async () => {
-  const created = await makeItem("有目录的单", { cwd: "/tmp/orbit" });
-  const body = (await (await fetch(at("/api/items"))).json()) as {
-    facets: Record<string, Array<{ dim: string; value: string }>>;
-  };
-  const dims = Object.fromEntries((body.facets[created.id] ?? []).map((f) => [f.dim, f.value]));
-  expect(dims["item.cwd"]).toBe("orbit");
-});
-
 // 首页要在一次请求里拿齐画卡片需要的东西：单、绑定、会话摘要、维度。
 // 分两次请求会让同一张卡片上的「几个会话」和下面列出的会话来自两个时刻。
 test("列表同时带上会话摘要", async () => {
@@ -92,16 +83,15 @@ test("列表同时带上会话摘要", async () => {
 });
 
 test("建单返回 201 与建出来的单", async () => {
-  const res = await json("/api/items", "POST", { title: "修登录页", cwd: "/tmp/x" });
+  const res = await json("/api/items", "POST", { title: "修登录页" });
   expect(res.status).toBe(201);
-  const item = (await res.json()) as { id: string; title: string; cwd: string };
+  const item = (await res.json()) as { id: string; title: string };
   expect(item.title).toBe("修登录页");
-  expect(item.cwd).toBe("/tmp/x");
   expect(item.id).toMatch(/^it-/);
 });
 
 test("没有 title 的建单请求被拒", async () => {
-  const res = await json("/api/items", "POST", { cwd: "/tmp/x" });
+  const res = await json("/api/items", "POST", { tags: ["急"] });
   expect(res.status).toBe(400);
 });
 

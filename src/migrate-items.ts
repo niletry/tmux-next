@@ -67,7 +67,6 @@ export async function migrateJiraBindings(): Promise<{ migrated: number }> {
       item = {
         id: newId(),
         title: binding.key,
-        cwd: null,
         source: { provider: "jira", ref: binding.key },
         tags: [],
         createdAt: Math.floor(Date.now() / 1000),

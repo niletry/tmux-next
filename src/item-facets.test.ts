@@ -13,7 +13,6 @@ function item(over: Partial<WorkItem> = {}): WorkItem {
   return {
     id: "it-1",
     title: "修登录页",
-    cwd: null,
     source: null,
     tags: [],
     createdAt: 0,
@@ -102,16 +101,6 @@ test("会话条数只数活着的", () => {
     [bind("甲", "it-1"), bind("乙", "it-1", false)],
   );
   expect(dims(got, "it-1")["item.sessions"]).toBe("1");
-});
-
-test("目录只取最后一段", () => {
-  const got = kernelFacets([item({ cwd: "/Users/x/projects/orbit" })], [], []);
-  expect(dims(got, "it-1")["item.cwd"]).toBe("orbit");
-});
-
-test("没有目录就没有这个维度", () => {
-  const got = kernelFacets([item({ cwd: null })], [], []);
-  expect(dims(got, "it-1")["item.cwd"]).toBeUndefined();
 });
 
 test("来源维度给 provider 名", () => {

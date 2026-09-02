@@ -27,7 +27,6 @@ function item(over: Record<string, unknown> = {}) {
   return {
     id: "it-1",
     title: "修登录页",
-    cwd: "/tmp/x",
     source: null,
     tags: [],
     createdAt: NOW,

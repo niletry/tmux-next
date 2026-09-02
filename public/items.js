@@ -83,7 +83,6 @@ const AGENT_VALUE = {
 const ITEM_DIM_LABEL = {
   "item.agent": () => tr("item.agent"),
   "item.sessions": () => tr("item.sessions"),
-  "item.cwd": () => tr("item.cwd"),
   "item.source": () => tr("item.source"),
   "item.tag": () => tr("item.tag"),
 };

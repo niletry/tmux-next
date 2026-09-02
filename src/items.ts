@@ -21,7 +21,6 @@ export type ItemSource = { provider: string; ref: string; url?: string };
 export type WorkItem = {
   id: string;
   title: string;
-  cwd: string | null;
   source: ItemSource | null;
   tags: string[];
   createdAt: number;
@@ -57,7 +56,6 @@ export async function readItems(): Promise<WorkItem[]> {
       out.push({
         id: v.id,
         title: v.title,
-        cwd: typeof v.cwd === "string" ? v.cwd : null,
         source: sanitiseSource(v.source),
         tags: Array.isArray(v.tags) ? v.tags.filter((t): t is string => typeof t === "string") : [],
         createdAt: typeof v.createdAt === "number" ? v.createdAt : 0,
@@ -75,14 +73,12 @@ function newId(): string {
 
 export async function createItem(input: {
   title: string;
-  cwd?: string | null;
   source?: ItemSource | null;
   tags?: string[];
 }): Promise<WorkItem> {
   const item: WorkItem = {
     id: newId(),
     title: input.title,
-    cwd: input.cwd ?? null,
     source: input.source ?? null,
     tags: input.tags ?? [],
     createdAt: Math.floor(Date.now() / 1000),
@@ -100,7 +96,7 @@ export async function createItem(input: {
 
 export async function updateItem(
   id: string,
-  patch: Partial<Pick<WorkItem, "title" | "cwd" | "tags" | "closedAt" | "source">>,
+  patch: Partial<Pick<WorkItem, "title" | "tags" | "closedAt" | "source">>,
 ): Promise<WorkItem | null> {
   return serialized(async () => {
     const all = await readItems();
@@ -122,8 +118,8 @@ export async function findBySource(provider: string, ref: string): Promise<WorkI
  *
  * 整个查找-建立在队列里，否则两个并发的认领会给同一个单号建出两张单。
  *
- * `refreshTitle` 只碰 title、对本地状态（cwd、tags、closedAt）一概不管。这是因为本
- * 地状态是用户在本工具里的投入，远端改个名不该碰它们。
+ * `refreshTitle` 只碰 title、对本地状态（tags、closedAt）一概不管。这是因为本地状态
+ * 是用户在本工具里的投入，远端改个名不该碰它们。
  */
 export async function ensureItemForSource(
   provider: string,
@@ -145,7 +141,6 @@ export async function ensureItemForSource(
     const item: WorkItem = {
       id: newId(),
       title: title || ref,
-      cwd: null,
       source: { provider, ref },
       tags: [],
       createdAt: Math.floor(Date.now() / 1000),

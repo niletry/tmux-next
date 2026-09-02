@@ -85,7 +85,6 @@ const zh = {
   // 插件维度走 facetDims 的另一条路（见 plugins/jira/plugin.js）。
   "item.agent": "Agent",
   "item.sessions": "会话",
-  "item.cwd": "目录",
   "item.source": "来源",
   "item.tag": "标签",
 
@@ -300,7 +299,6 @@ const en = {
 
   "item.agent": "Agent",
   "item.sessions": "Sessions",
-  "item.cwd": "Directory",
   "item.source": "Source",
   "item.tag": "Tag",
 
