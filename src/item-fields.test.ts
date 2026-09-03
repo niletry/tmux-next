@@ -5,7 +5,7 @@ import type { WorkItem } from "./items";
 const item = (extra: Partial<WorkItem> = {}): WorkItem => ({
   id: "it-1",
   title: "修登录页",
-  source: { provider: "jira", ref: "EXAMPLE-1", url: "https://x.example/EXAMPLE-1" },
+  source: { provider: "jira", ref: "EXAMPLE-1", url: "https://example.atlassian.net/browse/EXAMPLE-1" },
   tags: ["前端", "紧急"],
   createdAt: 0,
   closedAt: null,
@@ -18,7 +18,7 @@ test("挂了来源的单，六个字段都有值", () => {
     "item.title": "修登录页",
     "item.provider": "jira",
     "item.ref": "EXAMPLE-1",
-    "item.url": "https://x.example/EXAMPLE-1",
+    "item.url": "https://example.atlassian.net/browse/EXAMPLE-1",
     "item.tags": "前端, 紧急",
   });
 });

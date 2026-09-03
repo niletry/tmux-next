@@ -4,9 +4,15 @@ import { DEFAULT_COLUMNS, PaneSession, mouseModeSeed } from "./pane-session";
 const BASE = "ps-test-" + Math.random().toString(36).slice(2, 8);
 const dec = new TextDecoder();
 
+// The web sessions **this test process** created, not every one on the machine.
+// The tmux server is shared with whatever else the developer is running — very
+// often a real tmux-next serving their phone — and its web sessions are just as
+// legitimately named `web-…`. Counting those made these assertions fail forever
+// on any machine where the app was actually in use. The pid in the name
+// (`web-<pid>-<random>`, session-manager.ts) is exactly the discriminator needed.
 const webSessionCount = async () =>
   (await Bun.$`tmux list-sessions -F '#{session_name}'`.quiet().nothrow())
-    .stdout.toString().split("\n").filter((l) => l.startsWith("web-")).length;
+    .stdout.toString().split("\n").filter((l) => l.startsWith(`web-${process.pid}-`)).length;
 
 beforeAll(async () => {
   await Bun.$`tmux new-session -d -s ${BASE} -x 100 -y 30`.quiet();
