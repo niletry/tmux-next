@@ -19,9 +19,12 @@ let asked: string[] = [];
 
 /** 下一次请求的应答。测试各自改它。 */
 let reply: { status: number; body: unknown } = { status: 200, body: {} };
+/** /api/plugins 答哪些插件是启用的。默认一个都没有——刷新按钮就不画。 */
+let enabled: string[] = [];
 
 beforeEach(async () => {
   asked = [];
+  enabled = [];
   const win = new Window({ url: "http://127.0.0.1:7682/terminal.html" });
   patched = true;
   for (const key of PATCHED) {
@@ -31,8 +34,12 @@ beforeEach(async () => {
     Object.defineProperty(globalThis, key, { value, writable: true, configurable: true });
   set("window", win);
   set("document", win.document);
-  set("fetch", async (u: unknown) => {
-    asked.push(String(u));
+  set("fetch", async (u: unknown, init?: { method?: string }) => {
+    asked.push(`${init?.method ?? "GET"} ${u}`);
+    // 启用了哪些插件是另一条路：它决定「刷新这一个单」画不画，跟这张单的明细
+    // 用同一个 reply 会让每个测试都得记得把它也摆对。
+    if (String(u).includes("api/plugins")) return new Response(JSON.stringify(enabled));
+    if (String(u).includes("/refresh")) return new Response("{}");
     if (reply.status !== 200) return new Response("no", { status: reply.status });
     return new Response(JSON.stringify(reply.body));
   });
@@ -84,7 +91,7 @@ test("按会话名取，打的是 by-session 那条", async () => {
   reply = { status: 200, body: detail() };
   const { openItemPanel } = await load();
   await openItemPanel({ session: "web-1-a" });
-  expect(asked[0]).toContain("api/items/by-session?session=web-1-a");
+  expect(asked.some((u) => u.includes("api/items/by-session?session=web-1-a"))).toBe(true);
 });
 
 // 会话没挂单、单被扫掉、服务器不在——对看的人是同一件事：这会儿看不到。浮层照开，
@@ -128,6 +135,58 @@ test("已经开着一个时不叠第二个", async () => {
   const { openItemPanel } = await load();
   await openItemPanel({ id: "it-1" });
   await openItemPanel({ id: "it-1" });
+  expect(document.querySelectorAll(".sheet-backdrop").length).toBe(1);
+});
+
+// --- 「刷新这一个单」-------------------------------------------------------
+//
+// 浮层其余部分是只读的，这一颗是例外：它不改这张单，只是去远端把此刻的说法再问
+// 一遍，而"远端此刻怎么说"正是你在终端里干活这段时间唯一会变的东西。按钮本身跟
+// 首页卡片上那颗是同一个函数（item-card.js 的 refreshButton）。
+
+test("有插件认领这个来源时才画刷新", async () => {
+  reply = { status: 200, body: detail() };
+  enabled = ["jira"];
+  const { openItemPanel } = await load();
+  const panel = await openItemPanel({ id: "it-1" });
+  expect(panel.querySelector(".item-refresh")).toBeTruthy();
+});
+
+// 没人认领时那颗按钮必然 404，画出来比不画更糟——TMUX_NEXT_DISABLE_PLUGINS 关掉
+// Jira 之后，它的刷新入口该跟着它的 tab 一起消失。
+test("没有插件认领就不画刷新", async () => {
+  reply = { status: 200, body: detail() };
+  enabled = [];
+  const { openItemPanel } = await load();
+  const panel = await openItemPanel({ id: "it-1" });
+  expect(panel.querySelector(".item-refresh")).toBeNull();
+});
+
+// 本地单没有来源，没有谁能替它去问。
+test("本地单不画刷新", async () => {
+  reply = { status: 200, body: detail({ item: { id: "it-2", title: "本地的活", source: null } }) };
+  enabled = ["jira"];
+  const { openItemPanel } = await load();
+  const panel = await openItemPanel({ id: "it-2" });
+  expect(panel.querySelector(".item-refresh")).toBeNull();
+});
+
+// 刷完就地重画这一层，不关掉重开：重开会顺带回调调用方的 onClose，终端页拿它
+// 放下 modalOpen，焦点会在刷新的一瞬间被抢回终端。
+test("点刷新：POST 那条路由，按单号重取，浮层不关", async () => {
+  reply = { status: 200, body: detail() };
+  enabled = ["jira"];
+  const { openItemPanel } = await load();
+  let closed = 0;
+  const panel = await openItemPanel({ session: "web-1-a" }, { onClose: () => { closed++; } });
+  reply = { status: 200, body: detail({ facets: [{ dim: "jira.status", value: "Done" }] }) };
+  (panel.querySelector(".item-refresh") as HTMLButtonElement).click();
+  await new Promise((r) => setTimeout(r, 20));
+  expect(asked.some((u) => u.startsWith("POST") && u.endsWith("api/items/it-1/refresh"))).toBe(true);
+  // 入口是会话名，重取却按单号：中间要是刚解绑，按会话名再问一遍就变成 404。
+  expect(asked.some((u) => u.startsWith("GET") && u.endsWith("api/items/it-1"))).toBe(true);
+  expect(panel.textContent).toContain("Done");
+  expect(closed).toBe(0);
   expect(document.querySelectorAll(".sheet-backdrop").length).toBe(1);
 });
 

@@ -8,8 +8,10 @@
  * 对同一份数据给出两种说法，而那种漂移没有任何东西看得见——抽出来是唯一能让它
  * 只有一处的做法。
  *
- * 只画，不取数据、不做动作：fetch 与"刷新/归档/关联会话"那些留在各自的页面里。
- * 唯一的例外是会话行上的解绑，它跟着那一行走（见 sessionRow 的 onUnbind）。
+ * 以画为主：归档、关联已有会话那些只有首页才有的动作留在 items.js 里。会跟着某
+ * 一块画法走的动作是例外——会话行上的解绑（sessionRow 的 onUnbind）和「刷新这一
+ * 个单」（refreshButton），后者两处入口都要，判断"什么时候能刷"的那点逻辑（
+ * claimedProviders）写两遍就会漂。
  *
  * 页面文件不做类型检查（tsconfig 的 checkJs: false），这一层做——它是两处共用的
  * 那一层，src/item-card.test.ts 无头地渲染它。
@@ -17,7 +19,8 @@
 
 import { tr } from "./i18n-apply.js";
 import { url } from "./root.js";
-import { svgShell } from "./icons.js";
+import { svgShell, icon } from "./icons.js";
+import { PLUGINS } from "../plugins/registry.js";
 
 /**
  * @typedef {object} DetailRow
@@ -424,3 +427,101 @@ export function itemHead(item, facets, sessionCount) {
   return head;
 }
 
+
+/**
+ * 服务端到底认领了哪些 source.provider。
+ *
+ * `item.source` 单独一件事只说明这张单**有**来源，不说明**有谁能刷它**——
+ * /api/plugins 只答启用的插件 id，从来不答它们的 provides，浏览器手上唯一能
+ * 拼出"这个 provider 被谁认领了"这件事的数据，是同构的 registry.js（跟 nav.js
+ * 画 tab 用的是同一份 import），拿它跟 /api/plugins 的启用 id 取交集。
+ *
+ * 问不到就当没人认领：画一个几乎必然 404 的按钮，比不画更糟——TMUX_NEXT_DISABLE_
+ * PLUGINS 关掉一个插件时，它的刷新入口也该跟着它的 tab、它的 /api/<id> 一起消失，
+ * 而不是留在页面上等着点了才报错。
+ *
+ * @returns {Promise<Set<string>>}
+ */
+export async function claimedProviders() {
+  try {
+    const res = await fetch(url("api/plugins"));
+    if (!res.ok) throw new Error(String(res.status));
+    const ids = await res.json();
+    const enabled = new Set(Array.isArray(ids) ? ids : []);
+    const out = new Set();
+    for (const p of PLUGINS) {
+      if (!enabled.has(p.id)) continue;
+      for (const provider of p.provides ?? []) out.add(provider);
+    }
+    return out;
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * 去外部来源那边重新问一次这张单。
+ *
+ * 成功了让调用方整个重画，不在本地拼装变化后的状态——服务端才是真相，刷新可能
+ * 把标题、状态、检查全换掉。
+ *
+ * 404 = 那张单没有可刷的东西（单没了、没来源、没有插件认领这个来源）。三种情况
+ * 故意收拢成一种：提示一次，不重画——那张单没变，重画只会抖一下又变回原样。
+ * 失败复用 push.actionFailed，那是站里唯一一个已有的"操作失败"通用键。
+ *
+ * @param {*} item
+ * @param {() => Promise<void>} onChange
+ */
+async function refreshItem(item, onChange) {
+  try {
+    const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}/refresh`), { method: "POST" });
+    if (res.ok) {
+      await onChange();
+      return;
+    }
+    alert(tr("push.actionFailed"));
+  } catch {
+    alert(tr("push.actionFailed"));
+  }
+}
+
+/**
+ * 「刷新这一个单」。
+ *
+ * 它在首页是从 ⋯ 里搬回卡片行上的：盯着一张单的 PR 或状态时，这是几分钟就要按
+ * 一次的动作，而 ⋯ 是"偶尔用一次"的抽屉——把每分钟要按的东西放进抽屉，等于每次
+ * 都多两步。关联已有会话（一张单一辈子按几次）和归档（按一次就再也见不到这张单）
+ * 留在里面。
+ *
+ * 会话侧那个只读浮层里也是这一颗，不是另写一个：两处各写一遍"什么时候能刷、刷
+ * 失败说什么"，迟早会对同一张单给出两种说法，而这种漂移没有任何东西看得见——这
+ * 跟 chip 抽到这个文件里是同一条理由。它没有破坏浮层的只读：刷新不改这张单的
+ * 任何东西，它只是把远端此刻的说法再问一遍，而"远端此刻怎么说"正是你干活这段
+ * 时间里唯一会变的东西。
+ *
+ * 只在有来源、且真有启用的插件认领那个来源时才画（见 claimedProviders）：一个
+ * 必然 404 的按钮比没有这个按钮更糟。
+ *
+ * 请求期间禁用自己，而不是拦一个"正在刷"的标志位——按钮就是这个状态唯一的宿主，
+ * 它自己灰掉既是防重复点击，也是唯一需要的反馈。
+ *
+ * @param {*} item
+ * @param {() => Promise<void>} onChange
+ */
+export function refreshButton(item, onChange) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "item-refresh";
+  btn.innerHTML = icon("refresh");
+  btn.append(document.createTextNode(tr("items.refresh")));
+  btn.title = tr("items.refresh");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      await refreshItem(item, onChange);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  return btn;
+}

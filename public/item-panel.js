@@ -3,8 +3,15 @@
  * 反过来看：这条会话（或这张会话卡）挂在哪张单下，那张单此刻怎么样。
  *
  * 首页是单 → 会话，这个浮层是会话 → 单。它只读：状态、PR、检查、这张单底下还有
- * 哪些会话；刷新、归档、解绑那些留在首页。理由是它开在你正干活的地方——终端页和
- * 会话列表——那里要的是"瞄一眼"，不是"顺手改点什么"。
+ * 哪些会话；归档、解绑那些留在首页。理由是它开在你正干活的地方——终端页和会话
+ * 列表——那里要的是"瞄一眼"，不是"顺手改点什么"。
+ *
+ * 「刷新这一个单」是这条界线上唯一的动作，因为它并不改这张单：它去远端把此刻的
+ * 说法再问一遍，而"远端此刻怎么说"（工单状态、PR 的检查）正是你干活这段时间里
+ * 唯一会变的东西。浮层每次打开都重新取，本来就是为了不给你一份越看越旧的快照，
+ * 但那份数据自己是五分钟一档的缓存——盯着一次 CI 时，没有这颗按钮就只剩"回首页
+ * 找到那张单再点一次"，而你正在终端里。按钮本身就是首页卡片上那一颗
+ * （item-card.js 的 refreshButton），不是照着又写一遍。
  *
  * 画法全部来自 item-card.js，跟首页卡片是同一份代码：两边各画一套 chip，迟早会对
  * 同一份数据给出两种说法。
@@ -16,7 +23,14 @@
 
 import { url } from "./root.js";
 import { tr } from "./i18n-apply.js";
-import { itemHead, facetChip, chipVisible, sessionRow } from "./item-card.js";
+import {
+  itemHead,
+  facetChip,
+  chipVisible,
+  sessionRow,
+  claimedProviders,
+  refreshButton,
+} from "./item-card.js";
 
 /**
  * @typedef {object} PanelQuery
@@ -59,7 +73,9 @@ export async function openItemPanel(query, opts = {}) {
   // 连点两下不叠第二层：把已经开着的那个先关掉，新的那次照常回调它的 onClose。
   if (current) current();
 
-  const detail = await fetchDetail(query);
+  // 两次请求彼此独立，串起来只是白等一次往返；claimedProviders() 自己兜住失败、
+  // 从不抛，所以这里不需要 allSettled。
+  const [detail, claimed] = await Promise.all([fetchDetail(query), claimedProviders()]);
 
   const backdrop = document.createElement("div");
   backdrop.className = "sheet-backdrop panel-backdrop";
@@ -85,34 +101,61 @@ export async function openItemPanel(query, opts = {}) {
     close();
   }
 
-  if (detail?.item) {
-    const facets = Array.isArray(detail.facets) ? detail.facets : [];
-    const sessions = Array.isArray(detail.sessions) ? detail.sessions : [];
-    sheet.append(itemHead(detail.item, facets, sessions.length));
+  /**
+   * 把浮层里的内容整个重画一遍。
+   *
+   * 刷新之后重画的是这一层，不是整页：调用方（终端页、会话列表）身后那一页跟这张
+   * 单没有关系，为了一枚 chip 变色去重画一个正开着的终端，代价和收益完全不成比例。
+   * 就地重画而不是关掉重开，是因为重开会走 openItemPanel 开头那句"先关已开的"，
+   * 顺带调一次调用方的 onClose——终端页拿它放下 modalOpen，焦点会在刷新的一瞬间
+   * 被抢回终端。
+   *
+   * @param {{item: any, sessions: any[], facets: any[]} | null} data
+   */
+  function fill(data) {
+    sheet.textContent = "";
 
-    const shown = facets.filter(chipVisible);
-    if (shown.length) {
-      const row = document.createElement("div");
-      row.className = "facets";
-      for (const facet of shown) row.append(facetChip(facet));
-      sheet.append(row);
+    if (data?.item) {
+      const facets = Array.isArray(data.facets) ? data.facets : [];
+      const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+      sheet.append(itemHead(data.item, facets, sessions.length));
+
+      const shown = facets.filter(chipVisible);
+      if (shown.length) {
+        const row = document.createElement("div");
+        row.className = "facets";
+        for (const facet of shown) row.append(facetChip(facet));
+        sheet.append(row);
+      }
+
+      // 解绑不给：这是只读的一眼，改绑定在首页和会话列表上都有入口。
+      for (const session of sessions) sheet.append(sessionRow(session, null));
+
+      if (data.item.source && claimed.has(data.item.source.provider)) {
+        const actions = document.createElement("div");
+        actions.className = "item-actions";
+        // 刷完按 id 再取一次，不按打开时那个 query：入口可能是会话名，而重画的
+        // 目标从来是这张单本身——按会话名再问一遍，中间要是刚解绑就变成 404。
+        const again = async () => fill(await fetchDetail({ id: data.item.id }));
+        actions.append(refreshButton(data.item, again));
+        sheet.append(actions);
+      }
+    } else {
+      const line = document.createElement("p");
+      line.className = "sheet-error";
+      line.textContent = tr("items.offline");
+      sheet.append(line);
     }
 
-    // 解绑不给：这是只读的一眼，改绑定在首页和会话列表上都有入口。
-    for (const session of sessions) sheet.append(sessionRow(session, null));
-  } else {
-    const line = document.createElement("p");
-    line.className = "sheet-error";
-    line.textContent = tr("items.offline");
-    sheet.append(line);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "sheet-close";
+    btn.textContent = tr("items.close");
+    btn.addEventListener("click", close);
+    sheet.append(btn);
   }
 
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "sheet-close";
-  btn.textContent = tr("items.close");
-  btn.addEventListener("click", close);
-  sheet.append(btn);
+  fill(detail);
 
   // 点背板关闭，点浮层自身不关——否则想选一段单号都会把它关掉。
   backdrop.addEventListener("click", (e) => {
