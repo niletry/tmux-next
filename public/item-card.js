@@ -308,7 +308,7 @@ function confirmUnbind(name, onConfirm) {
 
   const actions = el("div", "sheet-actions");
   const cancel = el("button", "btn", tr("items.cancel"));
-  const confirm = el("button", "btn primary", tr("items.unlinkConfirm"));
+  const confirm = el("button", "btn primary", tr("items.unlink"));
   cancel.type = "button";
   confirm.type = "button";
   actions.append(cancel, confirm);
@@ -486,7 +486,7 @@ async function refreshItem(item, onChange) {
 }
 
 /**
- * 「刷新这一个单」。
+ * 「刷新」。
  *
  * 它在首页是从 ⋯ 里搬回卡片行上的：盯着一张单的 PR 或状态时，这是几分钟就要按
  * 一次的动作，而 ⋯ 是"偶尔用一次"的抽屉——把每分钟要按的东西放进抽屉，等于每次

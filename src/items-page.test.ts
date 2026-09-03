@@ -260,7 +260,7 @@ test("单下的会话行带解绑按钮，确认后打 DELETE /api/items/bind", 
   expect(posted.some((p) => p.method === "DELETE")).toBe(false);
 
   const confirm = [...sheet.querySelectorAll("button")].find(
-    (b) => b.textContent === tr("items.unlinkConfirm"),
+    (b) => b.textContent === tr("items.unlink"),
   ) as unknown as HTMLElement;
   expect(confirm).toBeTruthy();
   confirm.click();
@@ -700,7 +700,7 @@ const clickable = (root: any, sel: string) =>
 /**
  * 打开卡片右上角的 ⋯，返回它掀起的那张浮层。
  *
- * 关联已有会话 / 刷新 / 归档都住在这里面了——卡片底部那一行只剩「再开一个会话」。
+ * 关联已有会话 / 刷新 / 归档都住在这里面了——卡片底部那一行只剩「新会话」。
  * 这些断言因此全部改成"先开 ⋯ 再找按钮"，而不是直接在卡片上找：如果哪天有人把
  * 某个动作偷偷搬回卡片行上，这些测试会红，这正是想要的。
  */
@@ -1550,7 +1550,7 @@ test("表格里的动作跟卡片同一套两档分法", async () => {
   expect(row.querySelector(".item-new")).not.toBeNull();
   expect(row.querySelector(".item-more")).not.toBeNull();
   // 归档在 ⋯ 后面，跟卡片一样——行里直接摊开就等于把一辈子按一次的动作
-  // 放到跟"再开一个会话"同样的重量上。
+  // 放到跟"新会话"同样的重量上。
   expect(row.querySelector(".item-archive")).toBeNull();
   click(row.querySelector(".item-more")!);
   expect(document.querySelector(".sheet-menu .item-archive")).not.toBeNull();

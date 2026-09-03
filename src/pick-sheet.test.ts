@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 const base = {
-  title: "挂到单下",
+  title: "关联到单",
   emptyText: "还没有单",
   cancelText: "取消",
   failedText: "关联失败",

@@ -36,7 +36,7 @@ beforeEach(async () => {
   set("document", win.document);
   set("fetch", async (u: unknown, init?: { method?: string }) => {
     asked.push(`${init?.method ?? "GET"} ${u}`);
-    // 启用了哪些插件是另一条路：它决定「刷新这一个单」画不画，跟这张单的明细
+    // 启用了哪些插件是另一条路：它决定「刷新」画不画，跟这张单的明细
     // 用同一个 reply 会让每个测试都得记得把它也摆对。
     if (String(u).includes("api/plugins")) return new Response(JSON.stringify(enabled));
     if (String(u).includes("/refresh")) return new Response("{}");
@@ -138,7 +138,7 @@ test("已经开着一个时不叠第二个", async () => {
   expect(document.querySelectorAll(".sheet-backdrop").length).toBe(1);
 });
 
-// --- 「刷新这一个单」-------------------------------------------------------
+// --- 「刷新」-------------------------------------------------------
 //
 // 浮层其余部分是只读的，这一颗是例外：它不改这张单，只是去远端把此刻的说法再问
 // 一遍，而"远端此刻怎么说"正是你在终端里干活这段时间唯一会变的东西。按钮本身跟

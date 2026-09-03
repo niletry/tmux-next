@@ -491,27 +491,27 @@ test("绑了单的会话行上显示单标题", async () => {
 // 反向那一半：一条会话通往它那张单的入口。卡片主链接里塞不下一个按钮（button
 // 嵌在 anchor 里既不合法，点它还会顺带把人送进终端页），所以它跟置顶、改挂、结束
 // 一样是一个具名动作，两个入口都画——宽屏露动作行，窄屏露 ⋯，由 CSS 决定。
-test("绑了单的会话，动作行和 ⋯ 里都有「查看这张单」", async () => {
+test("绑了单的会话，动作行和 ⋯ 里都有「查看单」", async () => {
   const root = await mount([session({ name: "orbit", itemId: "it-1" })], {}, [], [ITEM]);
   const inRow = [...root.querySelectorAll(".card-actions .card-act")]
     .map((b) => b.textContent);
-  expect(inRow.some((text) => text?.includes("View the work item"))).toBe(true);
+  expect(inRow.some((text) => text?.includes("View item"))).toBe(true);
 
   (root.querySelector(".more") as unknown as HTMLElement).click();
   const inSheet = [...document.querySelectorAll(".sheet-menu .btn")].map((b) => b.textContent);
-  expect(inSheet).toContain("View the work item");
+  expect(inSheet).toContain("View item");
 });
 
 test("没绑单的会话不给这个入口", async () => {
   const root = await mount([session({ name: "orbit", itemId: null })], {}, [], [ITEM]);
   const labels = [...root.querySelectorAll(".card-actions .card-act")].map((b) => b.textContent);
-  expect(labels.some((text) => text?.includes("View the work item"))).toBe(false);
+  expect(labels.some((text) => text?.includes("View item"))).toBe(false);
 });
 
-test("点「查看这张单」开出那张单的浮层", async () => {
+test("点「查看单」开出那张单的浮层", async () => {
   const root = await mount([session({ name: "orbit", itemId: "it-1" })], {}, [], [ITEM]);
   const view = [...root.querySelectorAll(".card-actions .card-act")]
-    .find((b) => b.textContent?.includes("View the work item")) as unknown as HTMLElement;
+    .find((b) => b.textContent?.includes("View item")) as unknown as HTMLElement;
   view.click();
   await new Promise((r) => setTimeout(r, 50));
   const panel = document.querySelector(".panel-backdrop")!;
@@ -569,11 +569,11 @@ async function openMenu(root: { querySelector(s: string): unknown }) {
   await new Promise((r) => setTimeout(r, 20));
 }
 
-test("⋯ 菜单里有挂到单下", async () => {
+test("⋯ 菜单里有关联到单", async () => {
   const root = await mount([session()], {}, [], [workItem()]);
   await openMenu(root as never);
   const labels = [...document.querySelectorAll(".sheet-menu .btn")].map((b) => b.textContent);
-  expect(labels).toContain("Link to a work item");
+  expect(labels).toContain("Link to item");
 });
 
 test("选一张单就 POST 到那张单的 bind 上，带的是这个会话名", async () => {
@@ -594,14 +594,14 @@ test("选一张单就 POST 到那张单的 bind 上，带的是这个会话名",
 /**
  * 菜单里按文字找那一格。
  *
- * 原先是 `.btn:nth-child(2)`——菜单里多一格（比如「查看这张单」只在挂着单时才画）
+ * 原先是 `.btn:nth-child(2)`——菜单里多一格（比如「查看单」只在挂着单时才画）
  * 就会指到别的动作上，而那种错位不会报错，只会让测试悄悄测了另一个按钮。
  */
 function menuItem(text: string) {
   return [...document.querySelectorAll(".sheet-menu .btn")].find((b) => b.textContent === text);
 }
 
-// 已经挂着的会话，菜单上的字要变——「挂到单下」在这时候是句错话。
+// 已经挂着的会话，菜单上的字要变——「关联到单」在这时候是句错话。
 test("已经挂着时菜单说的是改挂，并且给解除", async () => {
   const root = await mount([session({ itemId: "it-1" })], {}, [], [workItem()]);
   await openMenu(root as never);
@@ -630,7 +630,7 @@ test("解除关联走 DELETE，按会话名", async () => {
 test("没挂着的时候不画解除", async () => {
   const root = await mount([session()], {}, [], [workItem()]);
   await openMenu(root as never);
-  clickIt(menuItem("Link to a work item"));
+  clickIt(menuItem("Link to item"));
   await new Promise((r) => setTimeout(r, 20));
   expect(document.querySelector(".btn.danger")).toBeNull();
 });
@@ -702,7 +702,7 @@ test("标题里已经含单号就不重复显示", async () => {
 test("卡片上有动作行，四个动作都在，⋯ 也还在", async () => {
   const root = await mount([session()], {}, [], []);
   const labels = [...root.querySelectorAll(".card-actions .card-act")].map((b) => b.textContent);
-  expect(labels).toEqual(["Open", "Pin to top", "Link to a work item", "End session"]);
+  expect(labels).toEqual(["Open", "Pin", "Link to item", "End session"]);
   expect(root.querySelector(".more")).not.toBeNull();
 });
 
@@ -771,7 +771,7 @@ test("动作行每个按钮都带图标，文字也还在", async () => {
   expect(acts.map((a) => Boolean(a.querySelector("svg")))).toEqual([true, true, true, true]);
   // 图标不替代文字：只留图标就是让人靠猜，而这一行四个动作里三个会改状态。
   expect(acts.map((a) => a.textContent?.trim())).toEqual([
-    "Open", "Pin to top", "Link to a work item", "End session",
+    "Open", "Pin", "Link to item", "End session",
   ]);
 });
 

@@ -221,7 +221,7 @@ async function toggleArchive(item, onChange) {
  *
  * 卡片底部那一行原本并排四个按钮——开会话、关联已有会话、刷新、归档——在手机上
  * 挤成两行，而后三个都是偶尔才用一次的：关联已有会话是"这单我已经开着终端了"，
- * 刷新是盯着某个 PR 时才按，归档一张单一辈子按一次。它们跟"再开一个会话"抢的是
+ * 刷新是盯着某个 PR 时才按，归档一张单一辈子按一次。它们跟"新会话"抢的是
  * 同一片视觉重量，结果四个按钮谁都不显眼。
  *
  * 所以只留主动作在行里，其余收进右上角——跟会话卡片的 ⋯ 同一个位置、同一个
@@ -289,7 +289,7 @@ function openItemActions(item, onChange, link) {
 /**
  * 单卡片。
  *
- * 「再开一个会话」永远在，不是「打开」——一张单多个会话是常态，不是边角情况。
+ * 「新会话」永远在，不是「打开」——一张单多个会话是常态，不是边角情况。
  */
 function itemCard(item, sessions, facets, claimed, onChange, link) {
   const card = el("article", "item-card");
@@ -323,7 +323,7 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
 }
 
 /**
- * 「再开一个会话」/「开第一个会话」。文案随这张单此刻有没有会话变，但动作是同一
+ * 「新会话」/「开第一个会话」。文案随这张单此刻有没有会话变，但动作是同一
  * 个——一张单多个会话是常态，不是边角情况。卡片和表格共用。
  */
 function newSessionLink(item, count) {
@@ -656,7 +656,7 @@ if (typeof document !== "undefined") {
  * 因此永远只有一行。取值挪进弹层，那里横向宽度是整块的，长史诗名不必再截断成
  * "QBO → 迁移账套到新总账 in-pl…"。
  *
- * 「移除这个字段」也挪进弹层：它是低频动作，常驻在外面时跟取值 chip 抢同一片
+ * 「移除字段」也挪进弹层：它是低频动作，常驻在外面时跟取值 chip 抢同一片
  * 视觉，而误点它会把已选的筛选一并清掉。
  */
 function filterField(dim, facets, selected, onToggleValue, onRemove) {

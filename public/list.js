@@ -5,7 +5,7 @@ import { openPicker } from "./pick-sheet.js";
 import { icon } from "./icons.js";
 import { readIds, toggleId } from "./collapse-store.js";
 // 反过来看那一半：这条会话挂在哪张单下，那张单此刻怎么样。只读的一眼，改绑定
-// 仍然是旁边那个「挂到单下」。
+// 仍然是旁边那个「关联到单」。
 import { openItemPanel } from "./item-panel.js";
 
 // Before anything renders: paints the cached theme synchronously, then

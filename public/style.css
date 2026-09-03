@@ -920,7 +920,7 @@ a.item-source.is-link:hover {
   white-space: nowrap;
 }
 
-/* 卡片底部的动作行：主动作「再开一个会话」和「刷新这一个单」。关联已有会话和
+/* 卡片底部的动作行：主动作「新会话」和「刷新」。关联已有会话和
    归档收在右上角的 ⋯（.item-more）里——那两个是偶尔才用一次的。 */
 .item-actions {
   display: flex;
