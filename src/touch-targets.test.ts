@@ -56,7 +56,12 @@ const DENSE = [
 const STANDALONE = [".sheet-close", ".sheet-create", ".field-remove", ".pick-row"];
 
 /** 工具条：一页只有一行，代价只付一次。 */
-const TOOLBAR = [".new-item-btn", ".sync-btn", ".field-btn", "#group-by", "#session-filter", "#field-picker"];
+// 工具条那几个控件收敛成了一个共享类。以前这里按名字列举，而列举挡不住"新加
+// 一个控件时忘了给它挂样式"——#session-filter 就是这么漏掉外观规则的（它在这张
+// 清单里，却没有任何外观规则）。DOM 那一侧由 src/items-toolbar.test.ts 断言每个
+// 控件都戴了这个类，两条合起来才是完整的：一条管"戴了类的够高"，一条管"每个
+// 控件都戴了类"。
+const TOOLBAR = [".toolbar-control", ".field-btn", "#field-picker"];
 
 for (const selector of DENSE) {
   test(`${selector} 至少 24px 高（WCAG 2.5.8 AA）`, () => {

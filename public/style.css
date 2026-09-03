@@ -67,8 +67,6 @@
 .item-link,
 .item-refresh,
 .item-archive,
-.new-item-btn,
-.sync-btn,
 .toolbar-label,
 .dir-make {
   display: inline-flex;
@@ -459,19 +457,15 @@ header .count {
   border-bottom: 1px solid var(--border-1);
 }
 
-/* 第一行：同步 / 显示已归档 / 分组。窄屏放不下时换行，行内仍然左对齐。 */
+/* 第一行：新建 / 同步 / 显示已归档 / 开工 / 分组。窄屏放不下时换行，行内仍然
+   左对齐。这条规则以前在本文件里出现过两次，后一份静静覆盖前一份——两份的
+   gap 还不一样，所以"改了没生效"会先撞上一次。 */
 .toolbar-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-}
-
-.show-archived-wrap,
-.group-by-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  gap: 8px;
+  flex: 1 1 100%;
 }
 
 /* 浏览器给复选框的默认 margin 会把它顶离左边缘几个像素，跟上下两行错开。 */
@@ -487,31 +481,60 @@ header .count {
   gap: 8px;
 }
 
-/* 同步按钮 + 它的状态文案，一整行独占——truncated 的提示可能比较长，跟别的
-   工具条控件挤在一行会被截断到看不出内容，而这条提示恰恰是不能被悄悄吞掉
-   的那种信息。 */
-.toolbar-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  flex: 1 1 100%;
-}
+/* 工具条上每个控件都戴 .toolbar-control：尺寸、圆角、字号、对齐只写一次。
 
-.sync-btn {
+   以前这些值散在 .new-item-btn / .sync-btn / #group-by 三处，而 #session-filter
+   谁也没戴——加三态开工筛选时给它补了 min-height 却漏了外观规则，于是那个下拉
+   掉回浏览器原生的白底方框，跟旁边的灰底药丸并排站着。按 ID 挂样式没有任何
+   东西会提醒你"还有一个同类控件"，按类挂才有；src/items-toolbar.test.ts 里那条
+   「每个孩子都戴 .toolbar-control」就是当初该有的断言。
+
+   透明边框不是摆设：次动作是描边的，主动作和字段是实心的，不给后两者留出这
+   1px，三种控件的高度会差 2px。 */
+.toolbar-control {
   flex: 0 0 auto;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
   border-radius: 8px;
   padding: 5px 12px;
-  background: var(--accent);
-  color: var(--on-accent);
   font-size: 13px;
-  cursor: pointer;
 }
 
-.sync-btn:disabled {
+/* 主动作。一条工具条上只该有一个实心。 */
+.toolbar-control.is-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.toolbar-control.is-primary:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* 次动作：同样的形状，描边而不是实心。 */
+.toolbar-control.is-secondary {
+  background: transparent;
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* 视图字段：两个下拉和归档开关。它们不是动作，是"这份列表给我看什么"，所以坐
+   在一层表面上而不是穿强调色——把筛选画得跟"同步"一样抢眼，一屏上就没有主次
+   可言了。 */
+.toolbar-control.is-field {
+  background: var(--surface-3);
+  color: var(--text-1);
+}
+
+/* 药丸本身已经有背景和内边距，里面的 select 只保留下拉箭头。 */
+.toolbar-control.is-field select {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  padding: 0;
 }
 
 /* 独立一行，不跟按钮抢宽度——"只同步了前 N 条"这类话被截断等于没说。 */
@@ -521,30 +544,10 @@ header .count {
   font-size: 12px;
 }
 
-.show-archived-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  color: var(--text-2);
-  font-size: 12px;
-}
-
-/* 定位交给上面那张网格；这里只管它自己的两个孩子怎么排。 */
-
 .toolbar-label {
   color: var(--text-2);
   font-size: 12px;
   white-space: nowrap;
-}
-
-#group-by {
-  background: var(--surface-3);
-  color: var(--text-1);
-  border: none;
-  border-radius: 8px;
-  padding: 4px 8px;
-  font-size: 13px;
 }
 
 /* 筛选那一行的右列：添加入口和已加的字段块都落在这里，可换行。 */
@@ -1833,17 +1836,6 @@ a.detail-label:hover {
 
 /* 新建单：跟同步同高同圆角，但不抢 accent 底色——建单是主动作，同步是维护动作，
    两个都涂满会互相削弱。 */
-.new-item-btn {
-  flex: 0 0 auto;
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  padding: 5px 12px;
-  background: transparent;
-  color: var(--accent-text);
-  font-size: 13px;
-  cursor: pointer;
-}
-
 .sheet-input {
   width: 100%;
   box-sizing: border-box;
@@ -2245,8 +2237,7 @@ a.detail-label:hover {
   .hseg-item:not(.on),
   .sheet-close,
   .sheet-create:not(:disabled),
-  .sync-btn:not(:disabled),
-  .new-item-btn,
+  .toolbar-control:not(:disabled),
   .restore-btn:not(:disabled),
   .item-refresh,
   .item-link,
@@ -2278,7 +2269,7 @@ a.detail-label:hover {
   .term-back:hover,
   .status-relogin:hover,
   .voice-rec:not(:disabled):hover,
-  .sync-btn:not(:disabled):hover,
+  .toolbar-control:not(:disabled):hover,
   .restore-btn:not(:disabled):hover,
   header .hbell.on:hover {
     opacity: 0.8;
@@ -2477,11 +2468,8 @@ a.detail-label:hover {
 }
 
 /* 工具条的控件一页只有一行，长高的代价只付一次，所以给到 32px。 */
-.new-item-btn,
-.sync-btn,
+.toolbar-control,
 .field-btn,
-#group-by,
-#session-filter,
 #field-picker {
   min-height: 32px;
   box-sizing: border-box;

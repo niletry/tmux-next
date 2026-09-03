@@ -876,7 +876,7 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   const newBtn = document.createElement("button");
   newBtn.type = "button";
   newBtn.id = "new-item";
-  newBtn.className = "new-item-btn";
+  newBtn.className = "toolbar-control is-secondary";
   newBtn.innerHTML = icon("plus");
   newBtn.append(document.createTextNode(tr("items.newItem")));
   // 这里不能用 onChange（它只拿已经拉到的数据重画一遍，新建的单不在里面），
@@ -887,14 +887,14 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   const syncBtn = document.createElement("button");
   syncBtn.type = "button";
   syncBtn.id = "sync-items";
-  syncBtn.className = "sync-btn";
+  syncBtn.className = "toolbar-control is-primary";
   syncBtn.innerHTML = icon("refresh");
   syncBtn.append(document.createTextNode(syncing ? tr("items.syncing") : tr("items.sync")));
   syncBtn.disabled = syncing;
   syncBtn.addEventListener("click", doSync);
   actions.append(syncBtn);
 
-  const archivedWrap = el("label", "show-archived-wrap");
+  const archivedWrap = el("label", "toolbar-control is-field show-archived-wrap");
   const archivedToggle = document.createElement("input");
   archivedToggle.type = "checkbox";
   archivedToggle.id = "show-archived";
@@ -910,7 +910,7 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   // 开没开工。跟「分组」同一种控件、同一档——两个都是"这份列表给我看什么"，
   // 不跟同步那种动作混。三态而不是复选框：反过来那一半（"我手上正跑着什么"）
   // 是同样常用的一问，复选框问不出来。
-  const sessionWrap = el("label", "group-by-wrap");
+  const sessionWrap = el("label", "toolbar-control is-field group-by-wrap");
   sessionWrap.append(el("span", "toolbar-label", tr("items.sessionFilter")));
   const sessionSelect = document.createElement("select");
   sessionSelect.id = "session-filter";
@@ -934,7 +934,7 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   sessionWrap.append(sessionSelect);
   actions.append(sessionWrap);
 
-  const groupWrap = el("label", "group-by-wrap");
+  const groupWrap = el("label", "toolbar-control is-field group-by-wrap");
   groupWrap.append(el("span", "toolbar-label", tr("items.groupBy")));
   const select = document.createElement("select");
   select.id = "group-by";
@@ -1138,7 +1138,9 @@ async function render(fromSync = false) {
     const first = document.createElement("button");
     first.type = "button";
     first.id = "new-item";
-    first.className = "new-item-btn";
+    // 跟工具条上那颗是同一个动作，所以是同一档外观——这里只是它在"工具条画不
+    // 出来"时的复述。
+    first.className = "toolbar-control is-secondary";
     first.textContent = tr("items.newItem");
     first.addEventListener("click", () => openNewItemSheet(() => render()));
     root.append(first);
