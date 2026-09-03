@@ -41,8 +41,10 @@ test("一个插件抛了不影响另一个", async () => {
 
 test("插件卡住时超时返回，不吊死调用方", async () => {
   const started = Date.now();
-  expect(await collectFields(item, { slow: hangs })).toEqual({});
-  expect(Date.now() - started).toBeLessThan(FIELD_TIMEOUT_MS * 2);
+  // 注入 50ms 的超时值而不是用 5 秒的默认值，让这条测试能在毫秒级证明超时会兜住，
+  // 不用等真实的预算时间。
+  expect(await collectFields(item, { slow: hangs }, 50)).toEqual({});
+  expect(Date.now() - started).toBeLessThan(200);
 });
 
 test("返回不是对象时当作没有", async () => {

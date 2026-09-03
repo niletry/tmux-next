@@ -295,10 +295,15 @@ const FIELD_KEY = /^[A-Za-z0-9._-]+$/;
  *
  * sources 是参数而不是直接用 FIELD_SOURCES，理由跟 collectFacets 一模一样：注册表是
  * 编译期常量，不注入假插件就没有任何办法证明超时和 try/catch 真的会兜住。
+ *
+ * timeoutMs 单独开成可注入的尾参数（默认 FIELD_TIMEOUT_MS）：真实预算是 5 秒，但测试
+ * "卡住的插件不会吊死调用方"这件事跟等多久无关，注入一个很小的值就能在毫秒级证明同一条
+ * 性质，不用真的等 5 秒。
  */
 export async function collectFields(
   item: ItemRef,
   sources: Record<string, PluginFieldSource> = FIELD_SOURCES,
+  timeoutMs: number = FIELD_TIMEOUT_MS,
 ): Promise<Record<string, string>> {
   const enabled = new Set(enabledPlugins().map((p) => p.id));
   const entries = Object.entries(sources).filter(([id]) => isConsidered(id, enabled));
@@ -307,7 +312,7 @@ export async function collectFields(
     entries.map(async ([, fields]) => {
       try {
         const timeout = new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), FIELD_TIMEOUT_MS),
+          setTimeout(() => resolve(null), timeoutMs),
         );
         const got = await Promise.race([fields(item), timeout]);
         if (!got || typeof got !== "object" || Array.isArray(got)) return null;
