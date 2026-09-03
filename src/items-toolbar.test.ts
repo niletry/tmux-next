@@ -102,10 +102,10 @@ test("工具条里每个控件都戴 .toolbar-control", async () => {
   expect(bare).toEqual([]);
 });
 
-test("两个下拉是同一种外观，不是一个药丸一个原生方框", async () => {
+test("下拉都是同一种外观，不是一个药丸一个原生方框", async () => {
   const actions = await mountToolbar();
   const selects = [...actions.querySelectorAll("select")];
-  expect(selects.map((s) => s.id).sort()).toEqual(["group-by", "session-filter"]);
+  expect(selects.map((s) => s.id).sort()).toEqual(["group-by", "session-filter", "view-mode"]);
   // 各自的容器戴同一个变体类——外观由类决定，而不是由哪个 id 恰好被写过规则决定。
   for (const s of selects) {
     const wrap = s.closest(".toolbar-control");

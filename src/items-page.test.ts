@@ -1288,3 +1288,117 @@ test("移除字段的入口在弹层里", async () => {
   const remove = root.querySelector(".field-remove")!;
   expect(remove.closest(".field-pop")).not.toBeNull();
 });
+
+/**
+ * 表格视图。
+ *
+ * 卡片是给手机的：一张单一块，纵向读。坐在电脑前扫二十张单时要的是另一件事——
+ * 同一个字段在所有单上对齐成一列，一眼看出哪几张卡在同一个状态上。所以这是同一
+ * 份数据的第二种排法，不是第二个页面：分组、筛选、开工筛选三个控件在两种视图下
+ * 含义完全一致，切过去不丢上下文。
+ */
+
+const VIEW_KEY = "tmux-next.items.view";
+const asTable = () => ({ [VIEW_KEY]: "table" });
+
+const change = (node: any) =>
+  node?.dispatchEvent(new (globalThis as any).window.Event("change", { bubbles: true }));
+
+test("默认是卡片视图", async () => {
+  const root = await mount(payload({ items: [item()] }));
+  expect(root.querySelector(".item-table")).toBeNull();
+  expect(root.querySelectorAll(".item-card").length).toBe(1);
+});
+
+test("工具条上有视图切换器，两种视图都在选项里", async () => {
+  const root = await mount(payload({ items: [item()] }));
+  const options = [...root.querySelectorAll("#view-mode option")].map((o) => o.getAttribute("value"));
+  expect(options).toEqual(["cards", "table"]);
+});
+
+test("存了表格视图时画表格，一张单一行", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), asTable());
+  expect(root.querySelector(".item-card")).toBeNull();
+  expect(root.querySelectorAll(".item-table tbody tr.item-row").length).toBe(2);
+  expect(root.querySelector(".item-row .item-title")?.textContent).toBe("修登录页");
+});
+
+// 列不从数据里的维度全摊开——那是开放集合。哪些值得成列的判断在筛选区已经做过
+// 一次了，表格直接复用它。
+test("已加的筛选字段在表格里各成一列", async () => {
+  const store = { ...asTable(), [FIELDS_KEY]: JSON.stringify(["jira.status"]) };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  const heads = [...root.querySelectorAll(".item-table thead th")].map((n) => n.textContent);
+  expect(heads).toContain(tr("items.colItem"));
+  expect(heads).toContain(tr("item.agent"));
+  expect(heads).toContain(tr("item.sessions"));
+  expect(heads.length).toBe(5);
+  const first = root.querySelector(".item-row");
+  expect(first?.querySelectorAll("td.facet-cell").length).toBe(1);
+  expect(first?.querySelector("td.facet-cell")?.textContent).toContain("In Progress");
+});
+
+test("一个字段都没加时表格只有固定列", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), asTable());
+  expect(root.querySelectorAll(".item-table thead th").length).toBe(4);
+});
+
+// 分组在表格下也生效：组名是一行贯通全表的标题行，不是另起一张表——另起一张表
+// 的话每组都带一次表头，列就不再在整页上对齐，而对齐正是选表格的理由。
+test("分组名在表格里是跨列的标题行", async () => {
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), asTable());
+  const heads = [...root.querySelectorAll(".item-table .group-row .group-name")];
+  expect(heads.map((n) => n.textContent)).toEqual([
+    tr("items.agent.waiting"), tr("items.agent.working"),
+  ]);
+  expect(heads[0]?.getAttribute("colspan")).toBe("4");
+});
+
+// 表格不是卡片的只读版：卡片上够得到的东西，表格里也要够得到，否则切过去就是
+// 一次功能降级。
+test("表格里会话链接还在", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    sessions: [session({ name: "跑测试" })],
+    bindings: [{ session: "跑测试", itemId: "it-1", live: true }],
+  }), asTable());
+  expect(root.querySelector(".item-row .item-session")?.textContent).toContain("跑测试");
+});
+
+test("表格里开会话和归档等动作都还在", async () => {
+  const root = await mount(payload({ items: [item()] }), asTable());
+  const row = root.querySelector(".item-row");
+  expect(row?.querySelector(".item-new")).not.toBeNull();
+  expect(row?.querySelector(".item-archive")).not.toBeNull();
+});
+
+test("切到表格视图会存下来", async () => {
+  const store: Record<string, string> = {};
+  const root = await mount(payload({ items: [item()] }), store);
+  const select = root.querySelector("#view-mode") as unknown as HTMLSelectElement;
+  select.value = "table";
+  change(select);
+  await new Promise((r) => setTimeout(r, 20));
+  expect(store[VIEW_KEY]).toBe("table");
+  expect(root.querySelector(".item-table")).not.toBeNull();
+});
+
+// 存的东西可能来自旧版本，也可能被人手改过。认不出来就当卡片——那是默认，
+// 也是任何宽度上都成立的那一种。
+test("存了认不出来的视图名时退回卡片", async () => {
+  const root = await mount(payload({ items: [item()] }), { [VIEW_KEY]: "spreadsheet" });
+  expect(root.querySelectorAll(".item-card").length).toBe(1);
+});
+
+// 筛空这些状态跟视图无关，表格视图下也得照说，不能画一张只有表头的空表。
+test("表格视图下筛空了照样给提示", async () => {
+  const store = {
+    ...asTable(),
+    // Done 那张单在跑（agent=working），所以「只看没开工的」把它也筛掉了。
+    "tmux-next.items.filter": JSON.stringify({ "jira.status": ["Done"] }),
+    "tmux-next.items.sessionFilter": "none",
+  };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  expect(root.querySelector(".item-table")).toBeNull();
+  expect(root.querySelector(".empty")?.textContent).toContain(tr("items.noneMatch"));
+});

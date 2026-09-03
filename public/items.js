@@ -5,6 +5,7 @@ import { url } from "./root.js";
 import { dimensionsOf, valuesOf, groupItems, filterItems, pruneSelection } from "./facet-view.js";
 import { openPicker } from "./pick-sheet.js";
 import { icon, svgShell } from "./icons.js";
+import { tableColumns, facetsIn } from "./item-table.js";
 import { PLUGINS } from "../plugins/registry.js";
 
 // Before anything renders: paints the cached theme synchronously, then
@@ -450,6 +451,34 @@ function itemActions(item, claimed, onChange, link) {
 }
 
 /**
+ * 单号徽标。没有来源就没有这个东西（本地单），返回 null。
+ *
+ * 链接只从 source.url 来，且只在它存在时才画成链接：url 是那个外部系统自己的
+ * 路由，只有产生这个 source 的一方才知道怎么拼——内核不该替它猜（尤其不该假定
+ * "provider 名字就是插件 id、插件页都在 p/<id>/ 下接受 ?key="，那是两回事，也没
+ * 有任何插件的页面真的读 ?key=）。source.ref 的徽标不管有没有 url 都画，它本身
+ * 就是有用的信息。
+ *
+ * 链接挂在单号徽标上，不挂标题：徽标本来就是"远端那个东西的标识"，而点一段长标题
+ * 跳去外部系统是意料之外的事——标题读起来像标题，不像出口。新窗口打开：那是另一个
+ * 系统，把人从这份列表里带走等于让他重新找回原来的位置。target=_blank 必须配
+ * rel=noopener，否则对面拿得到 window.opener。
+ *
+ * 卡片和表格共用这一份：两处各写一遍的话，"什么时候画成链接"这条判断迟早在一边
+ * 被改、另一边没跟上，而那是安静的——两种视图看着都对，只是说法不一样了。
+ */
+function itemSource(item) {
+  if (!item.source) return null;
+  if (!item.source.url) return el("span", "item-source", item.source.ref);
+  const link = el("a", "item-source is-link", item.source.ref);
+  link.href = item.source.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.title = item.source.url;
+  return link;
+}
+
+/**
  * 单卡片。
  *
  * 「再开一个会话」永远在，不是「打开」——一张单多个会话是常态，不是边角情况。
@@ -458,28 +487,9 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
   const card = el("article", "item-card");
 
   const head = el("div", "item-head");
-  // 链接只从 source.url 来，且只在它存在时才画成链接：url 是那个外部系统自己的
-  // 路由，只有产生这个 source 的一方才知道怎么拼——内核不该替它猜（尤其不该假定
-  // "provider 名字就是插件 id、插件页都在 p/<id>/ 下接受 ?key="，那是两回事，也没
-  // 有任何插件的页面真的读 ?key=）。source.ref 的徽标不管有没有 url 都画，它本身
-  // 就是有用的信息。
   head.append(el("h2", "item-title", item.title));
-  if (item.source) {
-    // 链接挂在单号徽标上，不挂标题：徽标本来就是"远端那个东西的标识"，而点一段
-    // 长标题跳去外部系统是意料之外的事——标题读起来像标题，不像出口。
-    // 新窗口打开：那是另一个系统，把人从这份列表里带走等于让他重新找回原来的位置。
-    // target=_blank 必须配 rel=noopener，否则对面拿得到 window.opener。
-    if (item.source.url) {
-      const link = el("a", "item-source is-link", item.source.ref);
-      link.href = item.source.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.title = item.source.url;
-      head.append(link);
-    } else {
-      head.append(el("span", "item-source", item.source.ref));
-    }
-  }
+  const mark = itemSource(item);
+  if (mark) head.append(mark);
   if (sessions.length) head.append(el("span", "item-count", tr("items.sessions", { n: sessions.length })));
   card.append(head);
 
@@ -498,15 +508,21 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
   // 都收成小按钮靠右。之前它们占了三行——两个半宽按钮加一条整宽的开会话——在
   // 一屏几十张卡片的列表里，光是卡片自己的操作区就吃掉了大半屏。
   const actions = itemActions(item, claimed, onChange, link);
-  const more = el("a", "item-new");
-  more.innerHTML = icon("plus");
-  more.append(
-    document.createTextNode(sessions.length ? tr("items.newSession") : tr("items.firstSession")),
-  );
-  more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
-  actions.prepend(more);
+  actions.prepend(newSessionLink(item, sessions.length));
   card.append(actions);
   return card;
+}
+
+/**
+ * 「再开一个会话」/「开第一个会话」。文案随这张单此刻有没有会话变，但动作是同一
+ * 个——一张单多个会话是常态，不是边角情况。卡片和表格共用。
+ */
+function newSessionLink(item, count) {
+  const more = el("a", "item-new");
+  more.innerHTML = icon("plus");
+  more.append(document.createTextNode(count ? tr("items.newSession") : tr("items.firstSession")));
+  more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
+  return more;
 }
 
 /**
@@ -514,6 +530,7 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
  * （主题才是）。两把键各管一半状态，互不影响对方的降级路径。
  */
 const GROUP_KEY = "tmux-next.items.groupBy";
+const VIEW_KEY = "tmux-next.items.view";
 const FILTER_KEY = "tmux-next.items.filter";
 const FIELDS_KEY = "tmux-next.items.fields";
 const SHOW_ARCHIVED_KEY = "tmux-next.items.showArchived";
@@ -544,6 +561,34 @@ function loadGroupBy(dims) {
   if (stored === null) return DEFAULT_GROUP_DIM;
   if (stored === "" || dims.includes(stored)) return stored;
   return DEFAULT_GROUP_DIM;
+}
+
+/**
+ * 卡片还是表格。
+ *
+ * 默认卡片，认不出来的值也当卡片：存的东西可能来自旧版本、也可能被人手改过，而
+ * 卡片是任何宽度上都成立的那一种。表格的切换器在 900px 以下不画（样式里那一条），
+ * 所以手机上永远存不进 `table`；桌面把窗口拖窄时存着的 table 仍会画，那时靠
+ * `.table-wrap` 的横滚兜住——不读 matchMedia，那要自己管窗口变化和重画时机，
+ * 而这个判断背后没有任何状态（同 CLAUDE.md 里卡片动作行那条）。
+ */
+const VIEW_VALUES = ["cards", "table"];
+
+function loadView() {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY) ?? "";
+    return VIEW_VALUES.includes(raw) ? raw : "cards";
+  } catch {
+    return "cards";
+  }
+}
+
+function saveView(value) {
+  try {
+    localStorage.setItem(VIEW_KEY, value);
+  } catch {
+    // 隐私窗口：记不住就记不住，不是页面能崩的理由。
+  }
 }
 
 function saveGroupBy(dim) {
@@ -956,6 +1001,30 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   groupWrap.append(select);
   actions.append(groupWrap);
 
+  // 视图切换跟「分组」并排：两个都是"这份列表怎么排给我看"，不跟同步那种动作混。
+  // 900px 以下整个控件不画（.view-mode-wrap），手机上表格没有意义。
+  const viewWrap = el("label", "toolbar-control is-field view-mode-wrap");
+  viewWrap.append(el("span", "toolbar-label", tr("items.view")));
+  const viewSelect = document.createElement("select");
+  viewSelect.id = "view-mode";
+  // 字面量的 tr()，不是 tr(变量)——死键扫描只认字面量（同 list.js:52 的写法）。
+  for (const [value, label] of [
+    ["cards", () => tr("items.viewCards")],
+    ["table", () => tr("items.viewTable")],
+  ]) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label();
+    viewSelect.append(opt);
+  }
+  viewSelect.value = loadView();
+  viewSelect.addEventListener("change", () => {
+    saveView(viewSelect.value);
+    onChange();
+  });
+  viewWrap.append(viewSelect);
+  actions.append(viewWrap);
+
   bar.append(actions);
   // 状态文案自己一行，有内容才画。
   if (syncMessage) bar.append(el("p", "sync-status", syncMessage));
@@ -1035,6 +1104,97 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   filters.append(body);
   bar.append(filters);
   return bar;
+}
+
+/**
+ * 表格视图：同一份数据的第二种排法。
+ *
+ * 卡片是给手机的，一张单一块、纵向读；坐在电脑前扫二十张单时要的是另一件事——
+ * 同一个字段在所有单上对齐成一列，一眼看出哪几张卡在同一个状态上。所以这里跟卡片
+ * 共用全部构件（itemSource / facetChip / sessionRow / itemActions / newSessionLink），
+ * 换的只是排法：两边各画一套的话，"这颗 chip 什么时候带明细"这类判断迟早在一边被
+ * 改、另一边没跟上，而那是安静的——两种视图看着都对，只是说法不一样了。
+ *
+ * 分组是一行贯通全表的标题行，不是每组另起一张表：另起一张表的话每组都带一次表头，
+ * 列就不再在整页上对齐，而对齐正是选表格的理由。
+ *
+ * @param {Array<{value: string | null, items: any[]}>} groups value 为 null 表示不分组
+ * @param {string} groupBy
+ * @param {string[]} cols facet 列的维度
+ */
+function itemTable(groups, groupBy, cols, mine, facets, claimed, onChange, link) {
+  // 横滚在包一层上，不在 <table> 上：桌面把窗口拖窄到 900px 以下时（那时切换器
+  // 已经不画了，但存着的选择还在生效）表格靠它退化成横滚，而不是撑破整页布局。
+  const wrap = el("div", "table-wrap");
+  const table = el("table", "item-table");
+  const span = 4 + cols.length;
+
+  const thead = el("thead");
+  const hr = el("tr");
+  hr.append(el("th", "col-item", tr("items.colItem")));
+  // 这两列的表头就是维度自己的名字——固定列和 facet 列在表头上没有两套说法。
+  hr.append(el("th", "col-agent", tr("item.agent")));
+  hr.append(el("th", "col-sessions", tr("item.sessions")));
+  for (const dim of cols) hr.append(el("th", "col-facet", dimLabel(dim)));
+  hr.append(el("th", "col-actions", tr("items.colActions")));
+  thead.append(hr);
+  table.append(thead);
+
+  for (const group of groups) {
+    const body = el("tbody");
+    if (group.value !== null) {
+      const row = el("tr", "group-row");
+      const cell = el("th", "group-name", groupLabel(groupBy, group.value));
+      cell.colSpan = span;
+      row.append(cell);
+      body.append(row);
+    }
+    for (const item of group.items) {
+      body.append(itemRow(item, mine.get(item.id) ?? [], facets[item.id], cols, claimed, onChange, link));
+    }
+    table.append(body);
+  }
+
+  wrap.append(table);
+  return wrap;
+}
+
+/** 表格里的一张单。构件全部来自卡片那一套，见 itemTable 顶上的注释。 */
+function itemRow(item, sessions, facets, cols, claimed, onChange, link) {
+  const row = el("tr", "item-row");
+
+  const first = el("td", "col-item");
+  const mark = itemSource(item);
+  if (mark) first.append(mark);
+  first.append(el("span", "item-title", item.title));
+  row.append(first);
+
+  // agent 和会话数这两个维度不再画进 facet 列（tableColumns 已经把它们挡掉了），
+  // 它们在这里各有自己的固定列。agent 走 facetChip 而不是自己拼一个词：tone 是
+  // 它带的，颜色跟卡片上那颗必须是同一颗。
+  const agent = el("td", "col-agent");
+  for (const f of facetsIn(facets, "item.agent")) agent.append(facetChip(f));
+  row.append(agent);
+
+  // 会话格里是链接本身，不是一个数字：数字回答"有几个"，而在这份列表里下一步动作
+  // 永远是"点进去看某一个"。
+  const cell = el("td", "col-sessions");
+  for (const session of sessions) cell.append(sessionRow(session));
+  row.append(cell);
+
+  for (const dim of cols) {
+    const td = el("td", "facet-cell");
+    // 一个维度可以有多个取值（标签就是），全画——只画第一个等于在表格里悄悄丢数据。
+    for (const f of facetsIn(facets, dim)) td.append(facetChip(f));
+    row.append(td);
+  }
+
+  const actions = el("td", "col-actions");
+  const wrap = itemActions(item, claimed, onChange, link);
+  wrap.prepend(newSessionLink(item, sessions.length));
+  actions.append(wrap);
+  row.append(actions);
+  return row;
 }
 
 /** 没有绑定的会话。不变成假单、也不藏起来——一个明确的待归类区。 */
@@ -1203,6 +1363,23 @@ async function render(fromSync = false) {
         empty.append(clear);
       }
       root.append(empty);
+    } else if (loadView() === "table") {
+      // 分组在表格下照旧生效，只是画成跨列的标题行；不分组时就是一组、没有标题行。
+      const groups = groupBy
+        ? groupItems(filtered, visibleFacets, groupBy)
+        : [{ value: null, items: filtered }];
+      root.append(
+        itemTable(
+          groups,
+          groupBy,
+          tableColumns(dims, loadFields()),
+          mine,
+          visibleFacets,
+          claimed,
+          render,
+          link,
+        ),
+      );
     } else if (groupBy) {
       for (const group of groupItems(filtered, visibleFacets, groupBy)) {
         const section = el("section");
