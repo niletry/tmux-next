@@ -71,7 +71,11 @@ async function mount(search = "", opts: { settingsStatus?: number } = {}) {
         }));
       }
       if (href.includes("api/language")) return new Response(JSON.stringify({ lang: "zh" }));
-      if (href.includes("api/theme")) return new Response(JSON.stringify({ theme: "tokyo-night" }));
+      // 两个名字，且**故意不同**：选中态、预览、点击写哪个字段，三件事都只有在
+      // 两半不一样的时候才分得出对错。
+      if (href.includes("api/theme")) {
+        return new Response(JSON.stringify({ name: "nord", ui: "catppuccin-latte" }));
+      }
       if (href.includes("api/key-usage")) return new Response(JSON.stringify({}));
       return new Response("{}");
     }) as typeof fetch,
@@ -97,34 +101,72 @@ const click = (n: unknown) =>
     new (globalThis as any).window.Event("click", { bubbles: true }),
   );
 
-test("内核自己的三节排在最前", async () => {
+test("内核自己的四节排在最前", async () => {
   const root = await mount();
   const heads = [...root.querySelectorAll(".settings-head")].map((h) => h.textContent);
   // 语言在最前：它决定这一页其余部分用什么字写。插件那几节要等一次网络往返，
-  // 追加在后面——所以这里只钉前三个，不钉总数。
-  expect(heads.slice(0, 3)).toEqual(["语言", "配色", "虚拟按键"]);
+  // 追加在后面——所以这里只钉前四个，不钉总数。
+  expect(heads.slice(0, 4)).toEqual(["语言", "终端配色", "界面配色", "虚拟按键"]);
 });
 
-test("主题一节列出每一款配色", async () => {
+test("两节各列出每一款配色", async () => {
   const root = await mount();
-  // 深色/浅色两组标题，七款配色——组标题也是 list 的子节点，不能只数子节点数。
-  expect(root.querySelectorAll(".theme-group").length).toBe(2);
-  const opts = root.querySelectorAll(".theme-opt");
-  expect(opts.length).toBe(7);
-  // 选中的那一款要标出来，否则这一页说不出当前是哪个。
-  expect(root.querySelectorAll(".theme-opt.on").length).toBe(1);
+  const lists = root.querySelectorAll(".theme-list");
+  expect(lists.length).toBe(2);
+  for (const list of lists) {
+    // 深色/浅色两组标题，七款配色——组标题也是 list 的子节点，不能只数子节点数。
+    expect(list.querySelectorAll(".theme-group").length).toBe(2);
+    expect(list.querySelectorAll(".theme-opt").length).toBe(7);
+    // 选中的那一款要标出来，否则这一节说不出当前是哪个。
+    expect(list.querySelectorAll(".theme-opt.on").length).toBe(1);
+  }
+});
+
+// 缓存是空的（垫片里的 localStorage 每次 mount 都是新的），所以选中态只能来自
+// 那一次 api/theme。这一条同时钉住"设置页真的去问了服务端"——在此之前这一页
+// 谁也没调 initTheme()，于是它画的是兜底调色板、勾的是缓存。
+test("两节各自勾住服务端那一份", async () => {
+  const root = await mount();
+  const [term, ui] = [...root.querySelectorAll(".theme-list")];
+  const picked = (list: any) => list.querySelector(".theme-opt.on b")?.textContent;
+  expect(picked(term)).toBe("Nord");
+  expect(picked(ui)).toBe("Catppuccin Latte");
 });
 
 test("点一款配色会存起来", async () => {
   const root = await mount();
-  const off = [...root.querySelectorAll(".theme-opt")].find((o) => !o.className.includes("on"));
+  const list = root.querySelector(".theme-list");
+  const off = [...list!.querySelectorAll(".theme-opt")].find((o) => !o.className.includes("on"));
   click(off);
   await new Promise((r) => setTimeout(r, 40));
   expect(posted.some((p) => p.url.includes("api/theme"))).toBe(true);
   // 只有点中的那一款该带 .on / aria-pressed="true"——分组标题 <h3> 也是 list 的
   // 子节点，用 list.children 更新会把标题也误标成"选中"，这条断言才抓得到那个 bug。
-  expect(root.querySelectorAll(".theme-opt.on").length).toBe(1);
-  expect(root.querySelectorAll('[aria-pressed="true"]').length).toBe(1);
+  expect(list!.querySelectorAll(".theme-opt.on").length).toBe(1);
+  expect(list!.querySelectorAll('[aria-pressed="true"]').length).toBe(1);
+});
+
+// 两个旋钮真的独立：发上去的是补丁，只有被点的那一节对应的字段。合并在服务端，
+// 所以改界面外观这一下不该在请求里提到终端调色板。
+test("每一节只写自己那个字段", async () => {
+  const root = await mount();
+  const [termList, uiList] = [...root.querySelectorAll(".theme-list")];
+  const other = (list: any) =>
+    [...list.querySelectorAll(".theme-opt")].find((o: any) => !o.className.includes("on"));
+
+  click(other(uiList));
+  await new Promise((r) => setTimeout(r, 40));
+  let body = JSON.parse(posted.at(-1)!.body);
+  expect(Object.keys(body)).toEqual(["ui"]);
+
+  click(other(termList));
+  await new Promise((r) => setTimeout(r, 40));
+  body = JSON.parse(posted.at(-1)!.body);
+  expect(Object.keys(body)).toEqual(["name"]);
+
+  // 点了终端那一节之后，界面那一节的选中态不该跟着动。
+  expect(uiList.querySelectorAll(".theme-opt.on").length).toBe(1);
+  expect(termList.querySelectorAll(".theme-opt.on").length).toBe(1);
 });
 
 // 换语言之后顶栏那句返回文案也变了。只重建正文会留下一句旧话——这一条盯的就是它。
@@ -165,8 +207,8 @@ test("声明了配置的插件各画一节", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
   const heads = [...root.querySelectorAll(".settings-head")].map((h) => h.textContent);
-  // 内核三节，加上声明了 settings 的那个插件
-  expect(heads.length).toBe(4);
+  // 内核四节（语言、终端配色、界面配色、虚拟按键），加上声明了 settings 的那个插件
+  expect(heads.length).toBe(5);
 });
 
 test("密钥画成 password，且输入框是空的", async () => {
@@ -219,6 +261,6 @@ test("保存后给一句回执", async () => {
 test("读不到配置就不画那一节", async () => {
   const root = await mount("", { settingsStatus: 404 });
   await new Promise((r) => setTimeout(r, 80));
-  expect(root.querySelectorAll(".settings-head").length).toBe(3);
+  expect(root.querySelectorAll(".settings-head").length).toBe(4);
   expect(root.querySelector(".settings-form")).toBeNull();
 });

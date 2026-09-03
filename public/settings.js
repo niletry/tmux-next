@@ -10,8 +10,8 @@
 // 字号不在这里：它按设备存（localStorage），是"这块屏幕多大"的事，留在终端页的
 // 工具条上；这里是"这台机器长什么样"。两者存法不同，也不该放在一起。
 
-import { THEMES, THEME_GROUPS, ANSI_NAMES } from "./themes.js";
-import { setTheme, cachedTheme } from "./theme-apply.js";
+import { THEMES, THEME_GROUPS, ANSI_NAMES, uiVars } from "./themes.js";
+import { setTheme, cachedTheme, initTheme } from "./theme-apply.js";
 import { LANGS, LANG_LABELS } from "./i18n.js";
 import { initLang, setLang, lang as currentLang, tr } from "./i18n-apply.js";
 import { clearLayout } from "./key-layout.js";
@@ -93,13 +93,61 @@ function languageSection(rerender) {
     });
     row.append(btn);
   }
-  return section(tr("settings.language"), row);
+  return section(tr("settings.language"), row, el("p", "settings-note", tr("settings.note")));
 }
 
-function themeSection() {
+/**
+ * 界面外观的缩略图，跟终端那个是两件事。
+ *
+ * 拿假终端去预览界面主题是预览错了对象：那张图里每一个颜色都来自 `--term-*`，
+ * 而界面主题喂的是 `uiVars` 那套角色令牌，两者现在可以是不同的主题。所以这里
+ * 照着一张真的会话卡片画——表面层、主次文字、一个实心强调按钮，也就是这一页
+ * 之外的地方真正会看到的东西。
+ *
+ * 颜色一律写成内联样式、从 uiVars 取，不写进样式表：样式表里除了兜底那一块
+ * 不许出现颜色字面量（src/themes.test.ts 逐张表扫）。
+ */
+function chromePreview(name) {
+  const v = uiVars(name);
+  const box = el("div", "theme-prev is-chrome");
+  box.style.background = v["--surface-1"];
+
+  const card = el("div", "theme-prev-card");
+  card.style.background = v["--surface-3"];
+  card.style.borderColor = v["--border-1"];
+
+  const title = el("b", null, "fix the hook");
+  title.style.color = v["--text-1"];
+  const meta = el("span", "theme-prev-meta", `${tr("list.working")} · 5m`);
+  meta.style.color = v["--text-2"];
+  const btn = el("span", "theme-prev-btn", tr("settings.themePreviewAction"));
+  btn.style.background = v["--accent"];
+  btn.style.color = v["--on-accent"];
+
+  card.append(title, meta, btn);
+  box.append(card);
+  return box;
+}
+
+/**
+ * 一节配色选择器。两节共用这一个函数，差别只有三处：改哪个字段、当前勾的是谁、
+ * 预览画什么。
+ *
+ * `field` 就是发给 /api/theme 的补丁字段名（"name" 是终端调色板，"ui" 是页面
+ * 外壳），所以这一节不需要知道这两个字段各自意味着什么。
+ *
+ * 标题和说明收的都是**已经翻好的**字符串，不是 i18n 键：死键扫描只认字面量
+ * `tr("…")`，把键名当参数传进来它就看不见了。跟 section() 同一个理由。
+ *
+ * @param {"name" | "ui"} field
+ * @param {string} title 已经翻好的节标题
+ * @param {string} noteText 已经翻好的说明，存失败时会被回执顶掉再换回来
+ * @param {string} chosen 当前选中的主题名
+ */
+function themeSection(field, title, noteText, chosen) {
   const list = el("div", "theme-list");
-  const note = el("p", "settings-note", tr("settings.note"));
-  let current = document.documentElement.dataset.theme || cachedTheme();
+  const note = el("p", "settings-note", noteText);
+  let current = chosen;
 
   for (const group of THEME_GROUPS) {
     list.append(el("h3", "theme-group", tr(group.labelKey)));
@@ -121,7 +169,7 @@ function themeSection() {
         chip.title = ANSI_NAMES[i];
         swatches.append(chip);
       }
-      body.append(swatches, preview(theme));
+      body.append(swatches, field === "ui" ? chromePreview(name) : preview(theme));
       row.append(radio, body);
 
       row.addEventListener("click", async () => {
@@ -135,14 +183,38 @@ function themeSection() {
         }
         // 存不下只影响"这台机器下次打开还是不是这个色"，页面此刻已经是对的，
         // 所以是提示一句而不是回滚——把刚看到的颜色再撤回去才是更糟的答复。
-        const stored = await setTheme(name);
-        note.textContent = stored ? tr("settings.note") : tr("settings.saveFailed");
+        const stored = await setTheme({ [field]: name });
+        note.textContent = stored ? noteText : tr("settings.saveFailed");
       });
 
       list.append(row);
     }
   }
-  return section(tr("settings.theme"), list, note);
+  return section(title, list, note);
+}
+
+/**
+ * 两节：终端画布一套配色，页面外壳另一套。
+ *
+ * 平铺成两节而不是一个"终端/界面"切换器，是为了两边的当前选择同时看得见——
+ * 切换器把另一半藏起来，而这一页存在的意义就是说出这台机器现在长什么样。
+ *
+ * 选中态来自 :root 上的两个 attribute（theme-apply.js 刚写的，也就是服务端那份），
+ * 拿不到才回落到缓存。
+ */
+function themeSections() {
+  const root = document.documentElement;
+  const cached = cachedTheme();
+  return [
+    themeSection(
+      "name", tr("settings.themeTerminal"), tr("settings.themeTerminalNote"),
+      root.dataset.termTheme || cached.name,
+    ),
+    themeSection(
+      "ui", tr("settings.themeUi"), tr("settings.themeUiNote"),
+      root.dataset.theme || cached.ui,
+    ),
+  ];
 }
 
 /** 虚拟按键：哪些键排在哪一行。按设备存，跟字号同类。 */
@@ -288,7 +360,7 @@ async function pluginSections() {
 export function renderSettings(root) {
   const draw = async () => {
     document.title = tr("settings.title");
-    root.replaceChildren(languageSection(draw), themeSection(), keysSection());
+    root.replaceChildren(languageSection(draw), ...themeSections(), keysSection());
     const header = document.getElementById("header");
     // 顶栏跟着一起重画：换语言之后返回键的文案也变了，只重画正文会留下一句旧话。
     if (header) header.replaceChildren(backLink(), el("h1", "settings-title", tr("settings.title")));
@@ -301,7 +373,11 @@ export function renderSettings(root) {
 
 // 这一页不画顶部标签栏：它是从齿轮进来的，不是「单/会话」的同级，画上去只会多出
 // 一个指向自己的齿轮。跟 new.html 一样，自带一个返回。
-initLang().then(() => {
+// initTheme() 先跑：这一页在此之前谁也没调过它——settings.html 里那个
+// <script src="theme-apply.js"> 只是 import，模块顶层没有调用——所以它画的是
+// 样式表里的兜底调色板，选中态勾的是缓存而不是这台机器真正存着的那两个名字。
+// 等它落定再渲染，选择器才勾得对；等一次本地往返也不会闪，因为它先用缓存上了色。
+Promise.all([initLang(), initTheme()]).then(() => {
   const root = document.getElementById("settings");
   if (root) renderSettings(root);
 });

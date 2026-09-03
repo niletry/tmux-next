@@ -196,7 +196,7 @@ Lock-screen notifications follow it too. A push is the one piece of text that sh
 
 Tap the gear in the list header. Seven presets ship, in two groups: four dark — Tokyo Night (default), Catppuccin Mocha, One Dark, Nord — and three light — Tokyo Night Day, Catppuccin Latte, One Light. Each is shown with its palette and a sample before you pick, and the change applies immediately, no reload. There is no Nord light: Nord ships no upstream light variant, and inventing one would mean re-picking half its hues with nothing to check the result against.
 
-The choice is stored per machine (`~/.tmux-next/theme.json`), so phone and desktop agree. Font size stays per device, on the terminal toolbar — how big a screen is and what a machine looks like are different questions.
+The terminal's palette and the interface's are chosen separately — Settings has a section for each — so a light interface can wrap a dark terminal, or the other way round. Both choices are stored per machine (`~/.tmux-next/theme.json`), so phone and desktop agree. Font size stays per device, on the terminal toolbar — how big a screen is and what a machine looks like are different questions.
 
 Every palette is checked against WCAG AA by the test suite. Note that six of the seven do **not** use their upstream `brightBlack`: each of those ships one between 1.7:1 and 2.6:1 against its own background, and that is the colour Claude Code draws its secondary text in — unreadable on a phone outdoors. Each is replaced by a step from the same upstream palette moved away from the background — lighter on a dark theme, darker on a light one. Catppuccin Latte is the exception: its upstream value already clears the bar.
 
