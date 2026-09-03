@@ -13,6 +13,7 @@ import {
   templatesPath,
   MAX_TEMPLATES,
   MAX_LABEL,
+  MAX_NAME,
   MAX_INPUT,
 } from "./templates";
 
@@ -74,11 +75,16 @@ test("超过 MAX_TEMPLATES 的部分被截掉", async () => {
   expect((await writeTemplates(many)).length).toBe(MAX_TEMPLATES);
 });
 
-test("过长的 label 和 input 被截断", async () => {
+test("过长的 label、name 和 input 都被截断", async () => {
   const written = await writeTemplates([
-    { label: "x".repeat(MAX_LABEL + 20), name: "", input: "y".repeat(MAX_INPUT + 20) },
+    {
+      label: "x".repeat(MAX_LABEL + 20),
+      name: "z".repeat(MAX_NAME + 20),
+      input: "y".repeat(MAX_INPUT + 20),
+    },
   ]);
   expect(written[0]!.label.length).toBe(MAX_LABEL);
+  expect(written[0]!.name.length).toBe(MAX_NAME);
   expect(written[0]!.input.length).toBe(MAX_INPUT);
 });
 
