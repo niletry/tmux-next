@@ -1648,6 +1648,20 @@ body.no-select {
 
 .agent-chip.missing { opacity: 0.4; text-decoration: line-through; }
 
+/* Template picker. Only drawn when the page was opened from a work item and
+   that item has templates, so it costs nothing for anyone who never made one. */
+.template-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.template-label { color: var(--text-2); font-size: 13px; }
+.template-chip {
+  background: var(--surface-4);
+  color: var(--text-1);
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+.template-chip.on { background: var(--accent); color: var(--surface-1); border-color: var(--accent); }
+textarea.field.initial { min-height: 96px; resize: vertical; font: inherit; }
+
 /* Section heading inside the settings sheet. */
 .sheet-sub {
   margin: 14px 0 6px;

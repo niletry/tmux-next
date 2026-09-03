@@ -71,10 +71,72 @@ export function renderNewSession(root) {
 
   const list = el("div", "dir-list");
 
-  const nameField = el("input", "field");
+  const nameField = el("input", "field name");
   nameField.placeholder = tr("new.namePlaceholder");
   nameField.autocapitalize = "none";
   nameField.autocomplete = "off";
+
+  // 模板：从一张单开会话时，会话名和首条输入长什么样。
+  //
+  // 只在带 ?item= 时出现——没有单就没有字段，每个占位符都会渲染成空，给一个必然产出
+  // 空模板的选择器只是噪音。清单为空时同样不画，所以没建过模板的人看到的是跟以前
+  // 一模一样的页面。
+  const templateRow = el("div", "template-row");
+  const initialField = el("textarea", "field initial");
+  initialField.placeholder = tr("new.inputPlaceholder");
+  initialField.rows = 4;
+  initialField.style.display = "none";
+  /** @type {Array<{id:string,label:string,name:string,input:string}>} */
+  let templates = [];
+  let chosenTemplate = null;
+
+  function drawTemplates() {
+    templateRow.replaceChildren();
+    if (!itemId || !templates.length) return;
+    templateRow.append(el("span", "template-label", tr("new.template")));
+    const none = el("button", "template-chip", tr("new.templateNone"));
+    none.type = "button";
+    if (!chosenTemplate) none.classList.add("on");
+    none.addEventListener("click", () => pickTemplate(null));
+    templateRow.append(none);
+    for (const t of templates) {
+      const chip = el("button", "template-chip", t.label);
+      chip.type = "button";
+      if (chosenTemplate === t.id) chip.classList.add("on");
+      chip.addEventListener("click", () => pickTemplate(t));
+      templateRow.append(chip);
+    }
+  }
+
+  /**
+   * 换一个模板：两个框都**直接覆盖**，包括手改过的内容。
+   *
+   * 选模板这个动作的意思就是"改用这一套"，为它加一道确认，是在为一个用户刚刚亲手表达
+   * 的意图设障。
+   */
+  async function pickTemplate(t) {
+    chosenTemplate = t ? t.id : null;
+    drawTemplates();
+    if (!t) {
+      initialField.value = "";
+      initialField.style.display = "none";
+      return;
+    }
+    initialField.style.display = "";
+    try {
+      const res = await fetch(`api/items/${encodeURIComponent(itemId)}/render`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: t.name, input: t.input }),
+      });
+      if (!res.ok) return; // 渲染不出来就让两个框保持原样，模板不是必需品
+      const body = await res.json();
+      nameField.value = body.name || "";
+      initialField.value = body.input || "";
+    } catch {
+      // 离线：同上，框里还是原来那些，人照样能自己打字建会话。
+    }
+  }
 
   // Deliberately unchecked every time and never remembered: this hands Claude
   // Code the machine without asking again, so it should be a decision made per
@@ -123,7 +185,7 @@ export function renderNewSession(root) {
   const resumeEntry = el("button", "resume-entry", tr("new.resumeEntry"));
   resumeEntry.style.display = "none";
 
-  step1.append(favourites, crumb, filter, list, nameField, agentRow, skipRow, resumeEntry);
+  step1.append(favourites, crumb, filter, list, nameField, templateRow, initialField, agentRow, skipRow, resumeEntry);
 
   // --- screen 2: pick a past conversation ------------------------------------
   const step2 = el("div", "sheet-step");
@@ -410,6 +472,9 @@ export function renderNewSession(root) {
     if (skipBox.checked) payload.skipPermissions = true;
     if (chosenAgent !== "claude") payload.agent = chosenAgent;
     if (resume) payload.resume = resume;
+    // 发出去的是框里**最终**那段文字，不是模板：用户改过的那一版才是他要发的。
+    const initial = initialField.value.trim();
+    if (initial) payload.initialInput = initial;
 
     try {
       const res = await fetch("api/sessions", {
@@ -490,6 +555,19 @@ export function renderNewSession(root) {
         }
       })
       .catch(() => {});
+
+    // 只在带 ?item= 时问：没有单就不会画选择器，那一发请求纯属浪费。
+    if (itemId) {
+      fetch("api/templates")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (body?.templates?.length) {
+            templates = body.templates;
+            drawTemplates();
+          }
+        })
+        .catch(() => {});
+    }
 
     let dirs = [];
     try {
