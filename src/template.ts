@@ -22,15 +22,15 @@ const PLACEHOLDER = /\{([A-Za-z0-9._-]+)\}/g;
  * 理解标点和语言。想让某一行在缺字段时消失，就把它单独写成一行——这条规则一句话说得清，
  * 也测得住。
  *
- * 删行只在模板本来就有多行时才生效。整段模板只有一行时不删——删行解决的是"这一行是模板
- * 里可有可无的一部分"，单行模板里没有"别的行"兜底，删掉就等于把整条输入敲空，那已经不是
- * 半句话的问题，是把用户没打错的字也吞了。
+ * 这条规则不区分单行多行，单行模板也算。单行恰恰是最常见的模板形状——一条模板往往就是
+ * 一行"标题：{item.ref} {jira.summary}"——如果单行时不删，`史诗：{jira.epic}` 在没挂
+ * 史诗的单上照样会渲染成"史诗："这半句话，规则要防的 bug 原样放回来。所以
+ * `render("a{nope}b", {})` 的结果是空串，不是"ab"：这一整行只有一个占位符，且它渲染
+ * 成了空，按规则整行就该消失。
  */
 export function render(template: string, fields: Record<string, string>): string {
-  const rawLines = template.split("\n");
-  const multiLine = rawLines.length > 1;
   const lines: string[] = [];
-  for (const line of rawLines) {
+  for (const line of template.split("\n")) {
     let seen = 0;
     let filled = 0;
     const out = line.replace(PLACEHOLDER, (_match, key: string) => {
@@ -39,7 +39,7 @@ export function render(template: string, fields: Record<string, string>): string
       if (value) filled++;
       return value;
     });
-    if (multiLine && seen > 0 && filled === 0) continue;
+    if (seen > 0 && filled === 0) continue;
     lines.push(out);
   }
   // 截断发生在这里而不是发送时：创建页框里那段文字必须就是最终会敲进去的那段，
