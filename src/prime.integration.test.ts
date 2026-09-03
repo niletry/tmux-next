@@ -67,6 +67,38 @@ test("会话就绪之后，字被敲进去了", async () => {
   expect(screen.stdout).toContain("tplprime-ok");
 }, 30_000);
 
+// Task 4: SessionTemplate.input 号称可多行（MAX_INPUT=4000，render 用
+// lines.join("\n") 保留换行，创建页给的是 4 行 textarea），但 sendText 的注释写的是
+// "敲一行字"：它做的是 send-keys -l <整段文字> 再单独一个 Enter。一个嵌进去的 \n
+// 到达 pane 时是一个字面 LF，是插入换行还是直接提交，取决于对面的 TUI/tty 行规程。
+// 这条测试第一次让这条链路真的跑一遍多行文字，把两行都读回来看实际发生了什么。
+test("多行首条输入：两行都读得回来吗", async () => {
+  const name = await makeSession();
+  await Bun.sleep(500);
+
+  await primeSession(name, "echo tplprime-line1\necho tplprime-line2", "pi");
+
+  await Bun.sleep(1000);
+  const screen = await tmux(["capture-pane", "-p", "-t", `=${name}:`]);
+  expect(screen.ok).toBe(true);
+  console.log("[多行首条输入] 屏幕内容：\n" + screen.stdout);
+
+  // 两行各自的输出都读得回来——sendText 没有把内容整个吞掉。
+  const lines = screen.stdout.split("\n").map((l) => l.trim());
+  const i1 = lines.indexOf("tplprime-line1");
+  const i2 = lines.indexOf("tplprime-line2");
+  expect(i1).toBeGreaterThanOrEqual(0);
+  expect(i2).toBeGreaterThanOrEqual(0);
+
+  // 这条是留证据、不是留通过的：判断"插入换行"还是"提前提交"，看的是两次输出
+  // 之间有没有插进一次新的 shell 提示符。有，就说明第一行是在整段文字还没发完
+  // （sendText 的 -l 那一次调用内部）就已经被 tty 的行规程当成一次 Enter 提交、
+  // 执行完毕了，而不是被当作同一条输入里的一个字面换行符。
+  const between = lines.slice(Math.min(i1, i2) + 1, Math.max(i1, i2)).join("\n");
+  const promptBetween = /\$|❯/.test(between);
+  console.log(`[多行首条输入] 两次输出之间是否夹了一次新提示符（=提前提交的证据）：${promptBetween}`);
+}, 30_000);
+
 test("这个会话确实是本次建的，清理只碰它", async () => {
   const others = await tmux(["list-sessions", "-F", "#{session_name}"]);
   const mine = others.stdout.split("\n").filter((n) => n.startsWith(PREFIX));
