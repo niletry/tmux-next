@@ -18,7 +18,8 @@
   <header id="header">
   </header>
   <main id="settings"></main>
-  <script type="module" src="theme-apply.js"></script>
+  <!-- 不预加载 theme-apply.js：这个标签只是 import，模块顶层没有调用，谁看见它
+       都会以为这一页的配色已经有人管了——实际上是 settings.js 调的 initTheme()。 -->
   <script type="module" src="settings.js"></script>
 </body>
 </html>

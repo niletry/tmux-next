@@ -556,19 +556,23 @@ export function startServer(
         return new Response(null, { status: 204 });
       }
 
-      // The colour theme this machine uses. The name only — the colours
-      // themselves are in public/themes.js, which the browser imports directly.
+      // The colour themes this machine uses — `name` for the terminal palette,
+      // `ui` for the page chrome. The names only: the colours themselves are in
+      // public/themes.js, which the browser imports directly.
+      //
+      // POST 收的是补丁，一个字段或两个都行，服务端合并到已存的那份上——设置页
+      // 一次只点一款，而覆盖会让改界面外观顺手把终端调色板打回默认。
       if (url.pathname === "/api/theme" && req.method === "GET") {
-        return Response.json({ name: await readTheme() });
+        return Response.json(await readTheme());
       }
       if (url.pathname === "/api/theme" && req.method === "POST") {
-        let body: { name?: unknown };
+        let body: unknown;
         try {
           body = await req.json();
         } catch {
           return Response.json({ error: "invalid" }, { status: 400 });
         }
-        if (!(await writeTheme(body.name))) {
+        if (!(await writeTheme(body))) {
           return Response.json({ error: "unknown" }, { status: 400 });
         }
         return new Response(null, { status: 204 });
@@ -749,7 +753,8 @@ export function startServer(
       // the one palette themes.test.ts cannot see, and it would go stale the
       // moment the machine's theme changed.
       if (url.pathname === "/manifest.webmanifest") {
-        const theme = themeOf(await readTheme());
+        // 界面主题，不是终端主题：这是启动图和地址栏的颜色，属于外壳。
+        const theme = themeOf((await readTheme()).ui);
         return new Response(
           JSON.stringify({
             name: "tmux-next",

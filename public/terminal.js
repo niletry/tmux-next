@@ -26,7 +26,9 @@ document.getElementById("title").textContent = target || "";
 // times tells you nothing. Home-screen bookmarks pick this up as well.
 document.title = target || "tmux";
 
-const initialTheme = cachedTheme();
+// 终端画布只关心两个名字里的第一个：外壳那半由 theme-apply.js 写在 :root 上，
+// 这一页的顶栏和软键条跟别的页面一样从角色令牌取色。
+const initialTheme = cachedTheme().name;
 
 const term = new Terminal({
   // Starting grid only; fit() replaces both before the socket opens.
@@ -78,7 +80,7 @@ function applyBack() {
 applyBack();
 initLang().then(applyBack);
 
-initTheme().then((name) => {
+initTheme().then(({ name }) => {
   if (name !== initialTheme) term.options.theme = xtermTheme(name);
 });
 

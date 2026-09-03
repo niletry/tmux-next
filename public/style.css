@@ -1553,6 +1553,36 @@ body.no-select {
   overflow: hidden;
 }
 
+/* 界面配色的缩略图：一张真卡片的样子，不是一段终端输出。所以它用界面的字体、
+   会换行，也就不需要上面那个 pre/clip。颜色全部由 settings.js 从 uiVars 内联
+   写进来——这个文件里除了顶部兜底那一块不许出现颜色字面量。 */
+.theme-prev.is-chrome {
+  padding: 9px;
+  font: 11px/1.5 -apple-system, system-ui, sans-serif;
+  white-space: normal;
+}
+
+.theme-prev-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 8px;
+  padding: 8px 9px;
+  border: 1px solid;
+  border-radius: 7px;
+}
+
+.theme-prev-card b { flex: 1 0 100%; font-size: 12px; }
+.theme-prev-meta { font-size: 11px; }
+
+.theme-prev-btn {
+  margin-left: auto;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .sheet-note { margin: 0 0 12px; color: var(--text-2); font-size: 12.5px; }
 
 /* Offered in place of "no matching directory": by then the name is already

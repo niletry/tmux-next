@@ -613,17 +613,27 @@ test("theme endpoint round-trips a name and refuses an unknown one", async () =>
       body: JSON.stringify(body),
     });
 
+  const read = async () => (await (await fetch(url)).json()) as { name: string; ui: string };
+
   // Fresh machine: no file yet, so the default comes back rather than an error.
-  const first = (await (await fetch(url)).json()) as { name: string };
-  expect(first.name).toBe("tokyo-night");
+  expect(await read()).toEqual({ name: "tokyo-night", ui: "tokyo-night" });
 
   expect((await post({ name: "nord" })).status).toBe(204);
-  expect(((await (await fetch(url)).json()) as { name: string }).name).toBe("nord");
+  // 界面外观没被指定过，跟着终端走——这是老机器升级后外观不变的那条规则。
+  expect(await read()).toEqual({ name: "nord", ui: "nord" });
+
+  // 两个旋钮各自独立：只发一个字段，另一个不动。
+  expect((await post({ ui: "catppuccin-latte" })).status).toBe(204);
+  expect(await read()).toEqual({ name: "nord", ui: "catppuccin-latte" });
+  expect((await post({ name: "one-dark" })).status).toBe(204);
+  expect(await read()).toEqual({ name: "one-dark", ui: "catppuccin-latte" });
 
   // A name we do not ship must not be stored, and must not disturb the stored one.
   expect((await post({ name: "solarized-mango" })).status).toBe(400);
+  expect((await post({ ui: "solarized-mango" })).status).toBe(400);
   expect((await post({ name: 42 })).status).toBe(400);
-  expect(((await (await fetch(url)).json()) as { name: string }).name).toBe("nord");
+  expect((await post({})).status).toBe(400);
+  expect(await read()).toEqual({ name: "one-dark", ui: "catppuccin-latte" });
 });
 
 test("theme endpoint rejects a malformed body", async () => {
@@ -911,22 +921,31 @@ test("the manifest colours follow the machine's chosen theme", async () => {
   // Generated rather than a static file so no colour literal escapes themes.js
   // — the stylesheet and the xterm theme are both derived from there, and a
   // hard-coded manifest would be the one palette src/themes.test.ts cannot see.
-  const post = (name: string) =>
+  const post = (body: unknown) =>
     fetch(`http://127.0.0.1:${server.port}/api/theme`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(body),
     });
   const colours = async () =>
     (await (
       await fetch(`http://127.0.0.1:${server.port}/manifest.webmanifest`)
     ).json()) as { background_color: string; theme_color: string };
 
-  expect((await post("nord")).status).toBe(204);
+  // 两个字段都写死：这一份 theme.json 是整个文件共用的，上一条测试可能已经在
+  // 里面留下了一个显式的 ui。
+  expect((await post({ name: "nord", ui: "nord" })).status).toBe(204);
   expect((await colours()).background_color).toBe(THEMES["nord"]!.background);
 
-  expect((await post("one-dark")).status).toBe(204);
+  expect((await post({ name: "one-dark", ui: "one-dark" })).status).toBe(204);
   expect((await colours()).background_color).toBe(THEMES["one-dark"]!.background);
+
+  // 启动图和地址栏是**外壳**，不是终端画布，所以跟界面主题走：只改界面那半，
+  // 颜色跟着动；只改终端那半，颜色不动。
+  expect((await post({ ui: "catppuccin-latte" })).status).toBe(204);
+  expect((await colours()).background_color).toBe(THEMES["catppuccin-latte"]!.background);
+  expect((await post({ name: "nord" })).status).toBe(204);
+  expect((await colours()).background_color).toBe(THEMES["catppuccin-latte"]!.background);
 });
 
 test("插件清单能被浏览器取到，别的 plugins 路径取不到", async () => {
