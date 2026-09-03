@@ -20,6 +20,17 @@ export type Plugin = {
    */
   facetDims?: string[];
   /**
+   * 这个插件的 `fields()` 会产出哪些键，例如 `["jira.summary", "jira.description"]`。
+   *
+   * 设置页拿它列出"可用字段"给模板作者点选。跟 facetDims、titleKey、provides 同一步棋：
+   * 凡是内核需要知道、又不该写死的东西，由插件在清单里声明。
+   *
+   * 跟 facetDims 有一点不同：这些**不是 i18n 键**，原样显示，不翻译——模板作者要打的
+   * 就是这串字，给它配一份译文只会让人对不上号。src/i18n.test.ts 只扫 `titleKey:` 和
+   * `facetDims:` 两个字面量，不会把这里的值当成待翻译的键。
+   */
+  fieldKeys?: string[];
+  /**
    * 这个插件搬家前占用过的地址，例如 `gallery.html`。
    *
    * 内核据此发 301 到 `p/<id>/`，所以手机上存了书签、装了 PWA 的人不会撞 404。
@@ -161,3 +172,15 @@ export type ItemRef = { id: string; source: { provider: string; ref: string } | 
 
 /** 插件可选导出的维度函数。不认识的单不必出现在返回值里。 */
 export type PluginEnricher = (items: ItemRef[]) => Promise<Record<string, Facet[]>>;
+
+/**
+ * 插件可选导出的字段函数，喂给模板渲染。
+ *
+ * **单条，不是批量**——跟 enrich(items[]) 相反。enrich 批量是因为它服务的是一次画整页；
+ * fields 只在一张单上被按下，批量除了让插件为几十张不相干的单多做功没有别的作用，而
+ * 单条还让它能发一次针对性请求（Jira 拿描述正文正是 /issue/{key} 一发）。
+ *
+ * 键名由插件自己命名（`jira.summary`），但不许以 `item.` 开头——那是内核的命名空间。
+ * 值是纯文本；内核不解释它是什么意思，只保证它不会撑破页面。
+ */
+export type PluginFieldSource = (item: ItemRef) => Promise<Record<string, string>>;
