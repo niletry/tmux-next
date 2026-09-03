@@ -9,12 +9,16 @@ import {
   SERVERS,
   enabledPlugins,
   collectFacets,
+  collectFields,
   runSync,
   refreshFromSource,
   pluginSettings,
   savePluginSettings,
 } from "../plugins/handlers";
 import type { Facet } from "../plugins/types";
+import { readTemplates, writeTemplates } from "./templates";
+import { render, sanitiseName } from "./template";
+import { kernelFields, KERNEL_FIELD_KEYS } from "./item-fields";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { sendText } from "./tmux/send-text";
@@ -333,6 +337,25 @@ export function startServer(
         return Response.json(item, { status: 201 });
       }
 
+      if (url.pathname === "/api/templates" && req.method === "GET") {
+        // fieldKeys 跟模板一起下发：设置页要把"可用字段"列给模板作者，而内核字段名
+        // 是内核的事实。让页面自己抄一份，两处就会飘，飘了之后列出来的键名依然长得
+        // 很像真的，没有任何东西会红。
+        return Response.json({ templates: await readTemplates(), fieldKeys: KERNEL_FIELD_KEYS });
+      }
+
+      if (url.pathname === "/api/templates" && req.method === "PUT") {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return new Response("bad json", { status: 400 });
+        }
+        // 整份替换。回的是净化之后的那一份，页面据此更新，不必自己猜净化结果。
+        const templates = await writeTemplates((body as Record<string, unknown>)?.templates);
+        return Response.json({ templates });
+      }
+
       // 这条 DELETE 必须排在下面的 PATCH（^/api/items/([^/]+)$）之前，否则
       // "bind" 会被那条正则当成一个 item id 吞掉。方法不同实际不会撞，但顺序
       // 写对，省掉一次将来的踩坑。
@@ -385,6 +408,43 @@ export function startServer(
         const ok = await refreshFromSource(found.source.provider, found.source.ref);
         if (!ok) return new Response("no source", { status: 404 });
         return Response.json({ ok: true });
+      }
+
+      const itemRender = url.pathname.match(/^\/api\/items\/([^/]+)\/render$/);
+      if (itemRender && req.method === "POST") {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return new Response("bad json", { status: 400 });
+        }
+        const b = body as Record<string, unknown>;
+        const id = decodeURIComponent(itemRender[1]!);
+        const item = (await readItems()).find((i) => i.id === id);
+        if (!item) return new Response("no such item", { status: 404 });
+
+        // 收的是模板串，不是 templateId：渲染因此跟"模板存在哪"完全解耦，设置页能边编辑
+        // 边看真实预览而不必先存盘。
+        const nameTpl = typeof b?.name === "string" ? b.name : "";
+        const inputTpl = typeof b?.input === "string" ? b.input : "";
+
+        // 插件的字段先铺，内核的后盖。collectFields 已经挡住了 item.* 前缀，这个顺序
+        // 只是第二道——两道都在，是因为这张表最终会被当成"这张单的事实"用。
+        const fields = {
+          ...(await collectFields({
+            id: item.id,
+            source: item.source ? { provider: item.source.provider, ref: item.source.ref } : null,
+          })),
+          ...kernelFields(item),
+        };
+        // 会话名那一半还要过 sanitiseName：框里显示的必须就是最终真正会用的名字，否则
+        // 模板渲染出"修登录页。"这种带点号的名字，用户会在提交时撞上一个
+        // validateRequestedName 的 400——而那个错不是他造成的。净化不出来（null）时给空串,
+        // 等于"没提供名字"，服务端按目录生成，正是既有的默认路径。
+        //
+        // validateRequestedName 本身不改：人手打一个点号仍然该得到诚实的报错。
+        const name = sanitiseName(render(nameTpl, fields)) ?? "";
+        return Response.json({ name, input: render(inputTpl, fields) });
       }
 
       // PATCH /api/items/:id：只挑允许改的字段，绝不把请求体整个 Object.assign
