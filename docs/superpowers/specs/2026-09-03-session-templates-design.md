@@ -83,10 +83,16 @@ export type PluginFieldSource = (item: ItemRef) => Promise<Record<string, string
 纯函数 `render(template, fields) → string`。占位符 `{key}`，key 匹配 `[a-zA-Z0-9._-]+`。
 不认识的键、空值，一律渲染成空串 —— 不留 `{}`，不报错。
 
-一条额外规则，因为 input 是多行的：**渲染后整行只剩标点和空白就删掉这一行**。
+一条额外规则，因为 input 是多行的：**一行里的占位符如果全都渲染成空，这一行整个删掉**
+（没有占位符的行永远保留）。
 
 没有它，`史诗：{jira.epic}` 在一张没挂史诗的单上会留下"史诗："这么半句话，而这正是模板最
 常见的翻车方式。有了它，模板可以放心地一行写一个可选字段。
+
+规则是**按行全有或全无**，不是"删掉剩下的标点"：`修 {item.ref}：{jira.summary}` 在
+summary 为空时仍然整行保留（末尾留一个"："）。要判断"剩下的算不算半句话"就得让内核去理解
+标点和语言，而按行全有全无是一句能说清、也测得住的规则——想要那一行在缺字段时消失，就把它
+单独写成一行。
 
 ### 会话名多走一步：`sanitiseName()`
 
@@ -190,7 +196,8 @@ chips，点一下把 `{jira.description}` 插进光标处。
 
 无头的（大头）：
 
-- `src/template.test.ts` —— 渲染、未知键、空值删行、截断到 2000；`sanitiseName` 的 `.` / `:` /
+- `src/template.test.ts` —— 渲染、未知键、"占位符全空则删行"（含"部分为空则保留"这条反面
+  用例）、无占位符的行永远保留、截断到 2000；`sanitiseName` 的 `.` / `:` /
   `web-` 前缀 / 折叠后为空退回 `null`。
 - `src/item-fields.test.ts` —— 内核六字段，含 `source` 为 null 的本地单。
 - `src/plugin-fields.test.ts` —— 照 `src/plugin-enrich.test.ts` 那份：一个会抛的假插件、一个
