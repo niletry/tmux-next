@@ -6,6 +6,7 @@ import { dimensionsOf, valuesOf, groupItems, filterItems, pruneSelection } from 
 import { openPicker } from "./pick-sheet.js";
 import { icon } from "./icons.js";
 // 卡片的画法从这里来，浮层用的也是同一份——见 public/item-card.js 顶上的注释。
+// 表格视图（itemTable）画的也是这几件，只是换个排法摆进格子里。
 import {
   ITEM_DIM_LABEL,
   AGENT_VALUE,
@@ -14,6 +15,7 @@ import {
   sessionRow,
   itemHead,
 } from "./item-card.js";
+import { tableColumns, facetsIn } from "./item-table.js";
 import { PLUGINS } from "../plugins/registry.js";
 
 // Before anything renders: paints the cached theme synchronously, then
@@ -398,13 +400,7 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
   // 行里留常用的两个：开会话和刷新。关联已有会话、归档进了右上角的 ⋯——四个
   // 按钮并排时谁都不显眼，而那两个是偶尔才用一次的。
   const actions = el("div", "item-actions");
-  const more = el("a", "item-new");
-  more.innerHTML = icon("plus");
-  more.append(
-    document.createTextNode(sessions.length ? tr("items.newSession") : tr("items.firstSession")),
-  );
-  more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
-  actions.append(more);
+  actions.append(newSessionLink(item, sessions.length));
   if (item.source && claimed.has(item.source.provider)) {
     actions.append(refreshButton(item, onChange));
   }
@@ -413,10 +409,23 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
 }
 
 /**
+ * 「再开一个会话」/「开第一个会话」。文案随这张单此刻有没有会话变，但动作是同一
+ * 个——一张单多个会话是常态，不是边角情况。卡片和表格共用。
+ */
+function newSessionLink(item, count) {
+  const more = el("a", "item-new");
+  more.innerHTML = icon("plus");
+  more.append(document.createTextNode(count ? tr("items.newSession") : tr("items.firstSession")));
+  more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
+  return more;
+}
+
+/**
  * 分组/筛选的选择存在哪块屏幕上，是设备的事——跟字号同类，不是"这台机器"的事
  * （主题才是）。两把键各管一半状态，互不影响对方的降级路径。
  */
 const GROUP_KEY = "tmux-next.items.groupBy";
+const VIEW_KEY = "tmux-next.items.view";
 const FILTER_KEY = "tmux-next.items.filter";
 const FIELDS_KEY = "tmux-next.items.fields";
 const SHOW_ARCHIVED_KEY = "tmux-next.items.showArchived";
@@ -447,6 +456,34 @@ function loadGroupBy(dims) {
   if (stored === null) return DEFAULT_GROUP_DIM;
   if (stored === "" || dims.includes(stored)) return stored;
   return DEFAULT_GROUP_DIM;
+}
+
+/**
+ * 卡片还是表格。
+ *
+ * 默认卡片，认不出来的值也当卡片：存的东西可能来自旧版本、也可能被人手改过，而
+ * 卡片是任何宽度上都成立的那一种。表格的切换器在 900px 以下不画（样式里那一条），
+ * 所以手机上永远存不进 `table`；桌面把窗口拖窄时存着的 table 仍会画，那时靠
+ * `.table-wrap` 的横滚兜住——不读 matchMedia，那要自己管窗口变化和重画时机，
+ * 而这个判断背后没有任何状态（同 CLAUDE.md 里卡片动作行那条）。
+ */
+const VIEW_VALUES = ["cards", "table"];
+
+function loadView() {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY) ?? "";
+    return VIEW_VALUES.includes(raw) ? raw : "cards";
+  } catch {
+    return "cards";
+  }
+}
+
+function saveView(value) {
+  try {
+    localStorage.setItem(VIEW_KEY, value);
+  } catch {
+    // 隐私窗口：记不住就记不住，不是页面能崩的理由。
+  }
 }
 
 function saveGroupBy(dim) {
@@ -859,6 +896,30 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   groupWrap.append(select);
   actions.append(groupWrap);
 
+  // 视图切换跟「分组」并排：两个都是"这份列表怎么排给我看"，不跟同步那种动作混。
+  // 900px 以下整个控件不画（.view-mode-wrap），手机上表格没有意义。
+  const viewWrap = el("label", "toolbar-control is-field view-mode-wrap");
+  viewWrap.append(el("span", "toolbar-label", tr("items.view")));
+  const viewSelect = document.createElement("select");
+  viewSelect.id = "view-mode";
+  // 字面量的 tr()，不是 tr(变量)——死键扫描只认字面量（同 list.js:52 的写法）。
+  for (const [value, label] of [
+    ["cards", () => tr("items.viewCards")],
+    ["table", () => tr("items.viewTable")],
+  ]) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label();
+    viewSelect.append(opt);
+  }
+  viewSelect.value = loadView();
+  viewSelect.addEventListener("change", () => {
+    saveView(viewSelect.value);
+    onChange();
+  });
+  viewWrap.append(viewSelect);
+  actions.append(viewWrap);
+
   bar.append(actions);
   // 状态文案自己一行，有内容才画。
   if (syncMessage) bar.append(el("p", "sync-status", syncMessage));
@@ -938,6 +999,105 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   filters.append(body);
   bar.append(filters);
   return bar;
+}
+
+/**
+ * 表格视图：同一份数据的第二种排法。
+ *
+ * 卡片是给手机的，一张单一块、纵向读；坐在电脑前扫二十张单时要的是另一件事——
+ * 同一个字段在所有单上对齐成一列，一眼看出哪几张卡在同一个状态上。所以这里跟卡片
+ * 共用全部构件（item-card.js 的 itemHead / facetChip / sessionRow，加上这里的
+ * newSessionLink / refreshButton / itemMore），
+ * 换的只是排法：两边各画一套的话，"这颗 chip 什么时候带明细"这类判断迟早在一边被
+ * 改、另一边没跟上，而那是安静的——两种视图看着都对，只是说法不一样了。
+ *
+ * 分组是一行贯通全表的标题行，不是每组另起一张表：另起一张表的话每组都带一次表头，
+ * 列就不再在整页上对齐，而对齐正是选表格的理由。
+ *
+ * @param {Array<{value: string | null, items: any[]}>} groups value 为 null 表示不分组
+ * @param {string} groupBy
+ * @param {string[]} cols facet 列的维度
+ */
+function itemTable(groups, groupBy, cols, mine, facets, claimed, onChange, link) {
+  // 横滚在包一层上，不在 <table> 上：桌面把窗口拖窄到 900px 以下时（那时切换器
+  // 已经不画了，但存着的选择还在生效）表格靠它退化成横滚，而不是撑破整页布局。
+  const wrap = el("div", "table-wrap");
+  const table = el("table", "item-table");
+  const span = 4 + cols.length;
+
+  const thead = el("thead");
+  const hr = el("tr");
+  hr.append(el("th", "col-item", tr("items.colItem")));
+  // 这两列的表头就是维度自己的名字——固定列和 facet 列在表头上没有两套说法。
+  hr.append(el("th", "col-agent", tr("item.agent")));
+  hr.append(el("th", "col-sessions", tr("item.sessions")));
+  for (const dim of cols) hr.append(el("th", "col-facet", dimLabel(dim)));
+  hr.append(el("th", "col-actions", tr("items.colActions")));
+  thead.append(hr);
+  table.append(thead);
+
+  for (const group of groups) {
+    const body = el("tbody");
+    if (group.value !== null) {
+      const row = el("tr", "group-row");
+      const cell = el("th", "group-name", groupLabel(groupBy, group.value));
+      cell.colSpan = span;
+      row.append(cell);
+      body.append(row);
+    }
+    for (const item of group.items) {
+      body.append(itemRow(item, mine.get(item.id) ?? [], facets[item.id], cols, claimed, onChange, link));
+    }
+    table.append(body);
+  }
+
+  wrap.append(table);
+  return wrap;
+}
+
+/** 表格里的一张单。构件全部来自卡片那一套，见 itemTable 顶上的注释。 */
+function itemRow(item, sessions, facets, cols, claimed, onChange, link) {
+  const row = el("tr", "item-row");
+
+  // 标题格就是卡片的头部，只是会话数传 0——那件事在这里有自己的一列，画两遍
+  // 就是同一句话说两次。徽标（来源+类型）跟着一起来，跟卡片上是同一枚。
+  const first = el("td", "col-item");
+  first.append(itemHead(item, facets, 0));
+  row.append(first);
+
+  // agent 和会话数这两个维度不再画进 facet 列（tableColumns 已经把它们挡掉了），
+  // 它们在这里各有自己的固定列。agent 走 facetChip 而不是自己拼一个词：tone 是
+  // 它带的，颜色跟卡片上那颗必须是同一颗。
+  const agent = el("td", "col-agent");
+  for (const f of facetsIn(facets, "item.agent")) agent.append(facetChip(f));
+  row.append(agent);
+
+  // 会话格里是链接本身，不是一个数字：数字回答"有几个"，而在这份列表里下一步动作
+  // 永远是"点进去看某一个"。
+  // onChange 传下去，所以行里那个解绑 × 跟卡片上是同一颗，不是只读的复制品。
+  const cell = el("td", "col-sessions");
+  for (const session of sessions) cell.append(sessionRow(session, onChange));
+  row.append(cell);
+
+  for (const dim of cols) {
+    const td = el("td", "facet-cell");
+    // 一个维度可以有多个取值（标签就是），全画——只画第一个等于在表格里悄悄丢数据。
+    for (const f of facetsIn(facets, dim)) td.append(facetChip(f));
+    row.append(td);
+  }
+
+  // 动作跟卡片一样分两档：常用的两个摊在行里，关联/归档收在 ⋯ 后面。表格里
+  // ⋯ 也进这一格——卡片上它绝对定位在右上角，那是卡片的角，表格没有那个角。
+  const actions = el("td", "col-actions");
+  const wrap = el("div", "item-actions");
+  wrap.append(newSessionLink(item, sessions.length));
+  if (item.source && claimed.has(item.source.provider)) {
+    wrap.append(refreshButton(item, onChange));
+  }
+  wrap.append(itemMore(item, onChange, link));
+  actions.append(wrap);
+  row.append(actions);
+  return row;
 }
 
 /** 没有绑定的会话。不变成假单、也不藏起来——一个明确的待归类区。 */
@@ -1106,6 +1266,23 @@ async function render(fromSync = false) {
         empty.append(clear);
       }
       root.append(empty);
+    } else if (loadView() === "table") {
+      // 分组在表格下照旧生效，只是画成跨列的标题行；不分组时就是一组、没有标题行。
+      const groups = groupBy
+        ? groupItems(filtered, visibleFacets, groupBy)
+        : [{ value: null, items: filtered }];
+      root.append(
+        itemTable(
+          groups,
+          groupBy,
+          tableColumns(dims, loadFields()),
+          mine,
+          visibleFacets,
+          claimed,
+          render,
+          link,
+        ),
+      );
     } else if (groupBy) {
       for (const group of groupItems(filtered, visibleFacets, groupBy)) {
         const section = el("section");

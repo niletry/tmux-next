@@ -2092,6 +2092,99 @@ a.detail-label:hover {
    两项都会报 true，只查 hover 会把它误判成纯鼠标设备。
    ========================================================================== */
 
+/* ---- 表格视图 ----
+
+   同一份数据的第二种排法：卡片纵向读一张单，表格横向对齐同一个字段。构件跟卡片
+   共用（.item-source / .facet / .item-session / .item-actions），这里只负责把它们
+   放进格子里，并把卡片里那些"我是块状元素"的假设收回来。 */
+
+/* 切换器在 900px 以下不画：表格是坐在电脑前扫一屏用的东西，手机上横滚一张表是
+   最糟的那种交互。窄屏因此永远存不进 table。桌面把窗口拖窄时存着的选择仍然生效，
+   那时靠 .table-wrap 的横滚兜住——不读 matchMedia（同卡片动作行那条）。 */
+.view-mode-wrap {
+  display: none;
+}
+
+/* 横滚在包一层上，不在 <table> 上：表格自己滚会把 sticky 表头一起滚走。 */
+.table-wrap {
+  overflow-x: auto;
+  padding-inline: 12px;
+}
+
+.item-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.item-table th,
+.item-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+/* 表头不钉住。`position: sticky` 在这里是个假动作：.table-wrap 有
+   `overflow-x: auto`，`overflow-y` 就跟着算成 auto，于是 sticky 的参照系变成这个
+   高度自适应的包一层而不是视口，表头哪儿也不会钉——一条看着有道理、其实什么都不做
+   的规则，比没有更糟。真要钉，得先把横滚和纵滚分到两层上去。 */
+.item-table thead th {
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 组标题行：一行贯通全表，靠底色跟数据行分开。.group-name 的字号、字距、颜色
+   沿用列表页那一套，两份列表的组标题因此长得一样。 */
+.item-table .group-row th {
+  background: var(--surface-2);
+  padding-block: 6px;
+}
+
+.item-table .col-item {
+  min-width: 280px;
+}
+
+/* 卡片里标题是撑满一行的 flex 项，表格里它得跟单号徽标并排、自己占一行。 */
+.item-table .item-title {
+  display: block;
+  font-size: 14px;
+}
+
+.item-table .item-source {
+  display: inline-block;
+  margin-bottom: 4px;
+}
+
+/* 会话格：链接一行一条，去掉卡片里那条分隔线——格子的边框已经在分了。 */
+.item-table .col-sessions {
+  min-width: 200px;
+}
+
+.item-table .item-session {
+  border-top: none;
+  padding: 2px 0;
+}
+
+/* 动作格：按钮不换行、不撑高，也不再靠 margin-right:auto 把自己顶到最左——
+   那是卡片底部整行的排法，在一个格子里只会拉出一道空沟。 */
+.item-table .col-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.item-table .item-actions {
+  margin-top: 0;
+  flex-wrap: nowrap;
+}
+
+.item-table .item-new {
+  margin-right: 0;
+}
+
 @media (min-width: 900px) {
   /* 内容列，不是铺满。一行文本超过 ~90 个字符就难读，卡片标题横穿 1440px
      只会让眼睛在行末找不到下一行的行首。 */
@@ -2137,6 +2230,11 @@ a.detail-label:hover {
      内层只负责排列。 */
   #items > section {
     padding-inline: 0;
+  }
+
+  /* 表格视图的切换器只在这里放出来，理由见 .view-mode-wrap 那条。 */
+  .view-mode-wrap {
+    display: inline-flex;
   }
 
   #items > *,
