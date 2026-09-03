@@ -5,6 +5,7 @@ import { handle as notifications } from "./notifications/server";
 import {
   handle as jira,
   enrich as jiraEnrich,
+  fields as jiraFields,
   start as jiraStart,
   sync as jiraSync,
   refreshItem as jiraRefreshItem,
@@ -59,6 +60,7 @@ export const SERVERS: Record<string, PluginServer> = {
   jira: {
     handle: jira,
     enrich: jiraEnrich,
+    fields: jiraFields,
     start: jiraStart,
     sync: jiraSync,
     refreshItem: jiraRefreshItem,

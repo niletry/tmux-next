@@ -1,5 +1,5 @@
 import { readJiraConfig, writeJiraConfig, DEFAULT_JQL, type JiraConfig } from "./config";
-import { fetchIssue, fetchIssues, type Issue, type IssuesResult } from "./client";
+import { fetchIssue, fetchIssues, fetchIssueDescription, type Issue, type IssuesResult } from "./client";
 import { fetchDev, type DevResult } from "./dev";
 import { syncIssues } from "./sync";
 import { readItems, ensureItemForSource } from "../../src/items";
@@ -306,6 +306,46 @@ export async function enrich(items: ItemRef[]): Promise<Record<string, Facet[]>>
     const facets = facetsFor(item, issueMap, devMap);
     if (facets.length) out[item.id] = facets;
   }
+  return out;
+}
+
+/**
+ * 描述正文的缓存。跟 dev 那份同样的道理：它要一次真实的请求，而模板选择器在同一张单上
+ * 很可能被点好几下（换个模板看看）。
+ */
+const DESC_CACHE_MS = 5 * 60_000;
+const descCache = new Map<string, { at: number; text: string | null }>();
+
+/**
+ * 一张单喂给模板的字段。
+ *
+ * 便宜的那几格直接从工单列表的缓存里取——它们本来就在内存里。只有描述正文要发一次请求，
+ * 这也正是 fields 的预算是 5 秒而不是 enrich 的 300 毫秒的原因。
+ */
+export async function fields(item: ItemRef): Promise<Record<string, string>> {
+  if (item.source?.provider !== "jira") return {};
+  const key = item.source.ref;
+
+  const out: Record<string, string> = {};
+  const issue = cache?.result.ok ? cache.result.issues.find((i) => i.key === key) : undefined;
+  if (issue) {
+    out["jira.summary"] = issue.summary;
+    out["jira.status"] = issue.status;
+    out["jira.type"] = issue.type;
+    if (issue.assignee) out["jira.assignee"] = issue.assignee;
+    // 史诗只在父级确实是史诗（hierarchy 1）时才算——把子任务的父任务标成史诗是错的。
+    if (issue.parent && issue.parent.hierarchy === 1) out["jira.epic"] = issue.parent.summary;
+  }
+
+  const hit = descCache.get(key);
+  let description = hit && Date.now() - hit.at < DESC_CACHE_MS ? hit.text : undefined;
+  if (description === undefined) {
+    const config = await readJiraConfig();
+    description = config ? await fetchIssueDescription(config, key) : null;
+    descCache.set(key, { at: Date.now(), text: description });
+  }
+  if (description) out["jira.description"] = description;
+
   return out;
 }
 
