@@ -68,10 +68,24 @@ test("会话就绪之后，字被敲进去了", async () => {
 }, 30_000);
 
 // Task 4: SessionTemplate.input 号称可多行（MAX_INPUT=4000，render 用
-// lines.join("\n") 保留换行，创建页给的是 4 行 textarea），但 sendText 的注释写的是
-// "敲一行字"：它做的是 send-keys -l <整段文字> 再单独一个 Enter。一个嵌进去的 \n
-// 到达 pane 时是一个字面 LF，是插入换行还是直接提交，取决于对面的 TUI/tty 行规程。
-// 这条测试第一次让这条链路真的跑一遍多行文字，把两行都读回来看实际发生了什么。
+// lines.join("\n") 保留换行，创建页给的是 4 行 textarea），但 sendText 的注释曾经写的是
+// "敲一行字"：它做的是 send-keys -l <整段文字> 再单独一个 Enter。这条测试第一次让这条
+// 链路真的跑一遍多行文字，把两行都读回来看实际发生了什么。
+//
+// 这里跑的是一个 **shell**（见文件头注释），不是目标 agent 的 TUI，这一点对下面怎么读
+// 这条测试的结果是要紧的：shell 的 tty 处于 canonical mode，有行规程（line discipline）——
+// 内核会把 LF 当成"这一行输入到此为止"，立刻把它交给正在读的程序，不管这个 LF 是键盘
+// 敲出来的还是像这里一样由 send-keys -l 一次性写进去的。下面会看到第一行提前被执行、
+// 提示符插在第二行文字中间，那是**这个 shell 的行规程**在起作用，不是 sendText 本身的
+// 行为，也不能外推到这个功能的真实目标：claude / pi / opencode 的 TUI 全部跑在
+// raw mode，没有行规程，LF 原样作为字节交给程序。传输层已经单独用一个 raw-mode 探针
+// 程序验证过：`send-keys -l 'line1\nline2'` 送到的是完整一整段 `"line1\nline2"`，
+// 嵌入的换行没有被拆开、没有提前提交——这才是 sendText 实际要负责的那一层，见
+// src/tmux/send-text.ts 头部注释。
+//
+// 仍然未知、这条测试没有覆盖、也覆盖不了（要真起一个 agent 会话）的是：raw-mode 的
+// TUI 收到这个 LF 字节之后，自己把它当成"插入换行"还是"提交"——那是各 agent 应用层
+// 自己的按键绑定，跟这里测的传输层是两回事。
 test("多行首条输入：两行都读得回来吗", async () => {
   const name = await makeSession();
   await Bun.sleep(500);
@@ -90,13 +104,13 @@ test("多行首条输入：两行都读得回来吗", async () => {
   expect(i1).toBeGreaterThanOrEqual(0);
   expect(i2).toBeGreaterThanOrEqual(0);
 
-  // 这条是留证据、不是留通过的：判断"插入换行"还是"提前提交"，看的是两次输出
-  // 之间有没有插进一次新的 shell 提示符。有，就说明第一行是在整段文字还没发完
-  // （sendText 的 -l 那一次调用内部）就已经被 tty 的行规程当成一次 Enter 提交、
-  // 执行完毕了，而不是被当作同一条输入里的一个字面换行符。
+  // 这条只是留证据、不断言死：两次输出之间有没有插进一次新的 shell 提示符。有，
+  // 说明第一行在整段文字还没发完时就被这个 shell 的**行规程**当成一次 Enter 提交、
+  // 执行完毕了——这是 canonical mode 的 tty 行为，不是 sendText 的行为，也不代表
+  // raw-mode 的目标 TUI 会同样把嵌入的 LF 当成提交（见上面文件顶部这条测试的说明）。
   const between = lines.slice(Math.min(i1, i2) + 1, Math.max(i1, i2)).join("\n");
   const promptBetween = /\$|❯/.test(between);
-  console.log(`[多行首条输入] 两次输出之间是否夹了一次新提示符（=提前提交的证据）：${promptBetween}`);
+  console.log(`[多行首条输入] 两次输出之间是否夹了一次新提示符（shell 行规程的证据，不是 sendText 的行为）：${promptBetween}`);
 }, 30_000);
 
 test("这个会话确实是本次建的，清理只碰它", async () => {
