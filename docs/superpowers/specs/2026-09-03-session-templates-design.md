@@ -127,8 +127,25 @@ export type PluginFieldSource = (item: ItemRef) => Promise<Record<string, string
 ### `src/tmux/prime.ts`
 
 两层。纯函数 `waitForReady(capture, marker, budget)` 注入 capture 函数因此可以无头测；外壳每
-250ms `capture-pane` 一次，`agent.screen.idleMarker` 命中就 `sendText`，`PRIME_TIMEOUT_MS =
+250ms `capture-pane` 一次，`agent.screen.readyMarker` 命中就 `sendText`，`PRIME_TIMEOUT_MS =
 20_000` 耗尽就**放弃，不发**。
+
+#### `readyMarker` 是新字段，不能复用 `idleMarker`
+
+`src/agents/index.ts` 的 `Agent.screen` 加一个 `readyMarker: RegExp`。**不复用 `idleMarker`**，
+这一条是实测证伪出来的，不是洁癖：
+
+claude 的 `idleMarker`（`src/agents/index.ts:136`）是 `/^\s*[✻✽✢·*]\s+\S+ for \d/`，它匹配的是
+**"一轮跑完了"**（屏幕上的 `✻ Sautéed for 9s · done 3:05 PM`），而不是"可以收输入了"。一个
+刚起来、还没跑过任何一轮的会话**从来不打印这行**——照 `idleMarker` 写，prime 对 claude 会
+100% 走到超时放弃，功能等于没做。pi 和 opencode 碰巧不受影响：它们的 `idleMarker` 本来就是
+空提示行。
+
+三个 agent 的 `readyMarker` 取值都是 `/^\s*(?:>|❯)\s*$/`（空提示行）。claude 这一取值有实证：
+一个空闲等待中的真实会话，屏幕底部就是孤零零一行 `❯`。
+
+顺带一条白捡的安全性质：正在弹选择菜单的屏幕（`Enter to select · ↑/↓ to navigate`）两个标记
+都不匹配，所以"菜单亮着时绝不敲字"不需要额外写判断就成立——这正是本节想要的那条保证。
 
 放弃而不是"超时也发"，是这一节唯一需要辩护的决定。超时的含义是 agent 还没到能收输入的
 状态 —— 还在装依赖、卡在"信任这个目录吗"、或者根本没起来。往那里敲一行字不是无害的：
@@ -136,7 +153,7 @@ export type PluginFieldSource = (item: ItemRef) => Promise<Record<string, string
 它没进去，手动补一次远比误答一个 y/n 便宜。
 
 顺带一个必然会遇到的情形：不勾 skip-permissions 时 claude 常常先问信任目录，
-`idleMarker`（"等你输入"）在那个画面上不会命中，于是自然走到超时放弃 —— 正是想要的行为。
+`readyMarker`（空提示行）在那个画面上不会命中，于是自然走到超时放弃 —— 正是想要的行为。
 
 **`created === false` 时不 prime。** `createSession` 会复用同名的既有会话，往一个正在跑的
 会话里敲字是错的。
@@ -181,6 +198,9 @@ chips，点一下把 `{jira.description}` 插进光标处。
   条数封顶（合并后封顶，不是每插件封顶）。
 - `src/templates-api.test.ts` —— 读写往返、坏 JSON 读成空、上限。
 - `src/prime.test.ts` —— `waitForReady` 注入假 capture：命中即发、耗尽预算即放弃。
+- `src/agents/agents.test.ts` 扩 —— 每个 agent 都有 `readyMarker`；拿三段**真实屏幕**（空闲的
+  `❯`、刚跑完的 `✻ Sautéed for 9s`、弹着选择菜单的 `Enter to select`）断言：只有第一段命中。
+  这条测试存在的理由就是上面那次证伪——它把"ready 不等于 idle"钉成一条会红的断言。
 - `src/new-page.test.ts` 扩 —— happy-dom 挂载创建页：有模板画选择器、选中后两个框被填、
   无 `?item=` 不画。这是 CLAUDE.md 明写的要求（"会渲染的浏览器模块必须有渲染它的测试"），
   不是可选项。DOM shim 必须还原它替换掉的全局对象。
