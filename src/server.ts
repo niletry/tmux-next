@@ -22,6 +22,7 @@ import { kernelFields, KERNEL_FIELD_KEYS } from "./item-fields";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { sendText } from "./tmux/send-text";
+import { primeSession } from "./tmux/prime";
 import { dedupeBySession, readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { createDirectory, listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
@@ -108,6 +109,7 @@ async function createSessionResponse(req: Request): Promise<Response> {
     skipPermissions?: unknown;
     resume?: unknown;
     agent?: unknown;
+    initialInput?: unknown;
   };
   try {
     body = await req.json();
@@ -146,6 +148,18 @@ async function createSessionResponse(req: Request): Promise<Response> {
   const result = await createSession(dir.path, body.name, await sessionNames(), command);
   if (!result.ok) {
     return Response.json({ error: result.reason }, { status: CREATE_STATUS[result.reason] ?? 400 });
+  }
+
+  // 首条输入。收的是**最终文本**而不是模板——用户在创建页的框里改过的那一版才是他要发
+  // 的，服务端再渲染一次会把那些修改悄悄丢掉。
+  //
+  // 不 await：会话已经建好了，页面该立刻跳过去。等 agent 就绪要二十秒，把响应压在那里
+  // 等于让人盯着一个转圈的按钮看。失败一律无声——跟 new.js 里绑定失败不拦导航同一条
+  // 语义：会话本身已经是用户要的东西。
+  const initial = typeof body.initialInput === "string" ? body.initialInput.trim() : "";
+  // created 为假意味着复用了一个已经存在的会话。往一个正在跑的会话里敲字是错的。
+  if (initial && result.created) {
+    void primeSession(result.name, initial, body.agent).catch(() => {});
   }
 
   return Response.json({ name: result.name, created: result.created });
