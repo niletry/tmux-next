@@ -27,6 +27,9 @@
       </svg>
     </a>
     <span class="title" id="title"></span>
+    <!-- 这条会话挂着的那张单。空着，由 item-panel.js 的 mountItemEntry 填——没挂
+         单时它就一直是空的，不占宽度。 -->
+    <span class="term-item-slot" id="item-slot"></span>
     <span class="status" id="status"></span>
     <!-- The connection state as a dot. It used to be a word that sat in the bar
          for the session's whole life; "up" is the boring case and does not earn

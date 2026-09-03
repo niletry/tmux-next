@@ -232,6 +232,10 @@ export async function collectFacets(
               ...(tone ? { tone } : {}),
               ...(detail.length ? { detail } : {}),
               ...(iconPaths ? { icon: iconPaths } : {}),
+              // 布尔就一个用途：这条画成单号前的徽标而不是一格 chip。它不能
+              // 让插件多说任何话——徽标里画的还是同一个 value 和同一个图标，
+              // 两者都已经过上面的限长与净化。
+              ...(f?.badge === true ? { badge: true } : {}),
             });
           }
           if (facets.length) clean[id] = facets;

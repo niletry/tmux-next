@@ -4,7 +4,16 @@ import { renderHeader } from "./nav.js";
 import { url } from "./root.js";
 import { dimensionsOf, valuesOf, groupItems, filterItems, pruneSelection } from "./facet-view.js";
 import { openPicker } from "./pick-sheet.js";
-import { icon, svgShell } from "./icons.js";
+import { icon } from "./icons.js";
+// 卡片的画法从这里来，浮层用的也是同一份——见 public/item-card.js 顶上的注释。
+import {
+  ITEM_DIM_LABEL,
+  AGENT_VALUE,
+  facetChip,
+  chipVisible,
+  sessionRow,
+  itemHead,
+} from "./item-card.js";
 import { PLUGINS } from "../plugins/registry.js";
 
 // Before anything renders: paints the cached theme synchronously, then
@@ -42,112 +51,7 @@ const setCount = (text) => {
   if (node) node.textContent = text;
 };
 
-/**
- * 一条会话此刻的状态词。
- *
- * 跟 src/item-facets.ts 的 stateOf 同一套判断：turn 优先（它读的是 transcript 的
- * stop_reason，是记录格式的一部分），读不到才退回屏幕推出来的 idle。两边说法必须
- * 一致——同一个会话在卡片上和在维度里给出不同状态，比没有状态更糟。
- */
-function stateOf(session) {
-  return session.turn ?? (session.idle ? "waiting" : "working");
-}
 
-/**
- * 字面量映射而不是拼接键名：src/i18n.test.ts 的死键扫描只认字符串字面量调用，
- * 模板字符串拼出来的键名它看不见，会把这两个键判成没人用。
- */
-const AGENT_LABEL = {
-  waiting: () => tr("items.agent.waiting"),
-  working: () => tr("items.agent.working"),
-};
-
-function sessionState(session) {
-  return AGENT_LABEL[stateOf(session)]();
-}
-
-/**
- * item.agent 的取值也是内部词（waiting/working/none），字面量映射，理由同
- * AGENT_LABEL 和 list.js:52——死键扫描只认字符串字面量。waiting/working 已经
- * 给 AGENT_LABEL 用过，这里加的是 none：一张单没有会话时那个 chip 该说什么。
- */
-const AGENT_VALUE = {
-  waiting: () => tr("items.agent.waiting"),
-  working: () => tr("items.agent.working"),
-  none: () => tr("items.agent.none"),
-};
-
-/**
- * 内核维度的字面量映射表：内核只认识这五个维度，写成表而不是拼 `item.${dim}`，
- * 理由同上——死键扫描看不见拼出来的键名。插件维度不在这张表里，它们的显示名
- * 走 tr(facet.dim) 的通用查找，查不到就退回 dim 本身（下面 facetChip 里）。
- */
-const ITEM_DIM_LABEL = {
-  "item.agent": () => tr("item.agent"),
-  "item.sessions": () => tr("item.sessions"),
-  "item.source": () => tr("item.source"),
-  "item.tag": () => tr("item.tag"),
-};
-
-/**
- * 一个维度 chip。
- *
- * `dim` 是 i18n 键不是显示文本，查不到就退回显示 dim 本身——内核里没有"哪个插件
- * 有哪些维度"的表，维度名跟着数据一起来，这条是这套设计不违反插件界线的关键。
- *
- * `item.agent` 的取值也走字典（waiting/working/none 是内部词，不该给人看）；
- * 别的维度的取值是数据（工单状态、史诗名），原样显示。
- */
-/**
- * 一个通用浮层：标题 + 若干行明细 + 关闭。
- *
- * 内核自己的，不复用工单页那个 openSheet——那在插件的 public/ 里，内核 import
- * 插件代码就是把界线反过来越了。几十行的重复，换的是方向正确。
- *
- * 这些行的含义内核一概不知道：它只把 label / value 按 textContent 放进去，
- * tone 决定颜色。是 CI 检查还是别的，只有给出它的插件知道。
- */
-function openDetailSheet(title, rows) {
-  const back = el("div", "sheet-backdrop");
-  const sheet = el("div", "sheet");
-  const close = () => back.remove();
-
-  sheet.append(el("h2", "sheet-title", title));
-  const list = el("div", "detail-list");
-  for (const row of rows) {
-    const line = el("div", "detail-row");
-    if (row.url) {
-      // 内核只放行 http/https（plugins/handlers.ts 的 safeHttpUrl），到这里已经是
-      // 绝对地址。noopener 是因为 target=_blank 会把 window.opener 交给对面。
-      const a = document.createElement("a");
-      a.className = "detail-label";
-      a.href = row.url;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.textContent = row.label;
-      line.append(a);
-    } else {
-      line.append(el("span", "detail-label", row.label));
-    }
-    line.append(el("span", row.tone ? `detail-state ${row.tone}` : "detail-state", row.value));
-    list.append(line);
-  }
-  sheet.append(list);
-
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "sheet-close";
-  btn.textContent = tr("items.close");
-  btn.addEventListener("click", close);
-  sheet.append(btn);
-
-  // 点背板关闭，但点浮层自身不关——否则想选段文字都会把它关掉。
-  back.addEventListener("click", (e) => {
-    if (e.target === back) close();
-  });
-  back.append(sheet);
-  document.body.append(back);
-}
 
 /**
  * 新建一张本地单：只要一个标题。
@@ -240,73 +144,8 @@ function openNewItemSheet(onDone) {
   input.focus();
 }
 
-function facetChip(facet) {
-  // tr() 本身查不到键就退回键名，插件维度（开放集合）和真正没配置的 dim 都
-  // 落到这条路；内核的五个维度走上面的字面量表，只是为了不被死键扫描误判。
-  const label = ITEM_DIM_LABEL[facet.dim]?.() ?? tr(facet.dim);
-  const value = facet.dim === "item.agent" ? (AGENT_VALUE[facet.value]?.() ?? facet.value) : facet.value;
-  // 带明细的画成按钮：明细只有点得开才算存在，跟工单页那条检查汇总同一个道理。
-  // 内核不知道这些行是什么，只知道"这个维度还有东西可看"。
-  const rows = Array.isArray(facet.detail) ? facet.detail : [];
-  const chip = rows.length
-    ? document.createElement("button")
-    : el("span", facet.tone ? `facet ${facet.tone}` : "facet");
-  if (rows.length) {
-    chip.type = "button";
-    chip.className = facet.tone ? `facet has-detail ${facet.tone}` : "facet has-detail";
-    chip.addEventListener("click", () => openDetailSheet(`${label}: ${value}`, rows));
-  }
-  // 插件可以给这个 chip 一个形状。内核不问它是什么意思——史诗和缺陷的区别是
-  // Jira 的概念，内核一旦认识 epic 就等于认识了一个插件。它只负责套上跟全站
-  // 一致的外壳，形状本身已经在服务端被限过长、过滤过标签（见 handlers.ts 的
-  // safeIconPaths）。
-  if (facet.icon) {
-    const mark = el("span", "f-icon");
-    mark.innerHTML = svgShell(facet.icon, 13);
-    chip.append(mark);
-  }
-  // 默认只画值，维度名进 title。一行 chip 里"Status / Epic / Assignee"这些词每张
-  // 卡片都一样，重复七遍换不来任何信息，却把史诗名和状态挤到了第三行去。
-  //
-  // 唯一留下名字的情况：值自己说不出话。"1"、"0/9" 这种光秃秃的数字脱离维度名就
-  // 什么都不是——除非插件给了图标，那时图标已经说明了它是什么，字就多余了。
-  if (!facet.icon && BARE_NUMBER.test(value)) chip.append(el("span", "f-dim", label));
-  chip.append(el("span", "f-value", value));
-  chip.title = `${label}: ${value}`;
-  return chip;
-}
 
-/** 纯数字或比值：`1`、`0/9`。这种值离了维度名就读不出意思。 */
-const BARE_NUMBER = /^\d+(?:\/\d+)?$/;
 
-/**
- * 这颗 chip 该不该画出来。**只管显示，不动数据**——被挡下的维度照样参与分组和
- * 筛选，否则"按会话数筛"这类能力会跟着一起没了。
- *
- * 目前只有一条：没有会话时不画 `item.sessions`。`item.agent` 那颗已经写着"无会话"，
- * 两颗 chip 说同一件事，是这张卡片上密度最低的一处。这是内核对**自己**那几个维度
- * 的判断（它们是封闭集合），不涉及任何插件维度——插件的 chip 一律照画。
- */
-function chipVisible(facet) {
-  return !(facet.dim === "item.sessions" && facet.value === "0");
-}
-
-/**
- * 一张单下的一行会话：它现在什么状态，点进去。别的动作在会话页上。
- *
- * 参数名是 `target`，不是 `session`——terminal.js 只读 `target`（见它开头那行
- * `searchParams.get("target")`），会话列表与通知落点用的也都是它。这里曾经写成
- * `session=`，结果链接看着对、点进去却打不开会话，而当时的测试只断言了 href 里
- * 含会话名，没断言参数名，所以没抓住。
- */
-function sessionRow(session) {
-  const row = el("a", "item-session");
-  row.href = url(`terminal.html?target=${encodeURIComponent(session.name)}`);
-  row.append(el("span", "s-name", session.name));
-  row.append(el("span", "s-state", sessionState(session)));
-  row.append(el("span", "s-open", tr("items.open")));
-  return row;
-}
 
 /**
  * 服务端到底认领了哪些 source.provider。
@@ -340,113 +179,195 @@ async function claimedProviders() {
 }
 
 /**
- * 单张单的动作：刷新（有来源、且有启用的插件认领那个来源才画）、归档/取消归档
- * （永远画）。
+ * 把一个已经跑着的会话挂到这张单下。
  *
- * 两个动作都是"点了就打一次接口，成功了就整页重新 render()"——不在本地拼装
- * 变化后的状态，因为服务端才是真相（尤其刷新，它可能把标题、状态都换了）。
- * 失败复用 push.js 已有的 push.actionFailed：这是唯一一个已经存在、语义是
- * "操作失败"的通用键，没有必要为这两个动作各造一个新键。
+ * 后端按会话名覆盖写，所以选一个已经挂在别处的会话就是"改挂"——这正是想要的
+ * 语义，一个会话同时属于两张单说不通。
  *
  * @param {*} item
- * @param {Set<string>} claimed
+ * @param {*} link
  * @param {() => Promise<void>} onChange
  */
-function itemActions(item, claimed, onChange, link) {
-  const wrap = el("div", "item-actions");
-
-  // 把一个已经跑着的会话挂到这张单下。后端按会话名覆盖写，所以选一个已经挂在
-  // 别处的会话就是"改挂"——这正是想要的语义，一个会话同时属于两张单说不通。
-  const linkBtn = document.createElement("button");
-  linkBtn.type = "button";
-  linkBtn.className = "item-link";
-  linkBtn.innerHTML = icon("link");
-  linkBtn.append(document.createTextNode(tr("items.linkSession")));
-  linkBtn.addEventListener("click", () => {
-    openPicker({
-      title: tr("items.linkSession"),
-      options: link.sessions.map((s) => {
-        const holder = link.itemOf.get(s.name);
-        return {
-          id: s.name,
-          label: s.name,
-          note:
-            holder && holder !== item.id
-              ? tr("items.boundTo", { title: link.titleOf.get(holder) ?? holder })
-              : undefined,
-          current: holder === item.id,
-        };
-      }),
-      emptyText: tr("items.noSessions"),
-      cancelText: tr("items.cancel"),
-      failedText: tr("items.linkFailed"),
-      onPick: async (name) => {
-        const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}/bind`), {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ session: name }),
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        await onChange();
-      },
-    });
-  });
-  wrap.append(linkBtn);
-
-  if (item.source && claimed.has(item.source.provider)) {
-    const refresh = document.createElement("button");
-    refresh.type = "button";
-    refresh.className = "item-refresh";
-    refresh.innerHTML = icon("refresh");
-    refresh.append(document.createTextNode(tr("items.refresh")));
-    refresh.title = tr("items.refresh");
-    refresh.addEventListener("click", async () => {
-      refresh.disabled = true;
-      try {
-        const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}/refresh`), { method: "POST" });
-        if (res.ok) {
-          await onChange();
-          return;
-        }
-        // 404 = 那张单没有可刷的东西（单没了、没来源、没有插件认领这个来源）。
-        // 三种情况故意收拢成一种：提示一次，不重画——那张单没变，重画只会抖一下
-        // 又变回原样。
-        alert(tr("push.actionFailed"));
-      } catch {
-        alert(tr("push.actionFailed"));
-      } finally {
-        refresh.disabled = false;
-      }
-    });
-    wrap.append(refresh);
-  }
-
-  const archived = Boolean(item.closedAt);
-  const archive = document.createElement("button");
-  archive.type = "button";
-  archive.className = "item-archive";
-  archive.innerHTML = icon("archive");
-  archive.append(document.createTextNode(archived ? tr("items.unarchive") : tr("items.archive")));
-  archive.addEventListener("click", async () => {
-    archive.disabled = true;
-    try {
-      const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}`), {
-        method: "PATCH",
+function pickSessionFor(item, link, onChange) {
+  openPicker({
+    title: tr("items.linkSession"),
+    options: link.sessions.map((s) => {
+      const holder = link.itemOf.get(s.name);
+      return {
+        id: s.name,
+        label: s.name,
+        note:
+          holder && holder !== item.id
+            ? tr("items.boundTo", { title: link.titleOf.get(holder) ?? holder })
+            : undefined,
+        current: holder === item.id,
+      };
+    }),
+    emptyText: tr("items.noSessions"),
+    cancelText: tr("items.cancel"),
+    failedText: tr("items.linkFailed"),
+    onPick: async (name) => {
+      const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}/bind`), {
+        method: "POST",
         headers: { "content-type": "application/json" },
-        // 归档不是删除：取消归档就是把 closedAt 送回 null，绑定和标签原样留着。
-        body: JSON.stringify({ closedAt: archived ? null : Math.floor(Date.now() / 1000) }),
+        body: JSON.stringify({ session: name }),
       });
-      if (res.ok) await onChange();
-      else alert(tr("push.actionFailed"));
-    } catch {
-      alert(tr("push.actionFailed"));
+      if (!res.ok) throw new Error(String(res.status));
+      await onChange();
+    },
+  });
+}
+
+/**
+ * 去外部来源那边重新问一次这张单。
+ *
+ * 成功了整页重画，不在本地拼装变化后的状态——服务端才是真相，刷新可能把标题、
+ * 状态、检查全换掉。
+ *
+ * 404 = 那张单没有可刷的东西（单没了、没来源、没有插件认领这个来源）。三种情况
+ * 故意收拢成一种：提示一次，不重画——那张单没变，重画只会抖一下又变回原样。
+ * 失败复用 push.actionFailed，那是站里唯一一个已有的"操作失败"通用键。
+ *
+ * @param {*} item
+ * @param {() => Promise<void>} onChange
+ */
+async function refreshItem(item, onChange) {
+  try {
+    const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}/refresh`), { method: "POST" });
+    if (res.ok) {
+      await onChange();
+      return;
+    }
+    alert(tr("push.actionFailed"));
+  } catch {
+    alert(tr("push.actionFailed"));
+  }
+}
+
+/**
+ * 归档 / 取消归档。归档不是删除：取消归档就是把 closedAt 送回 null，绑定和标签
+ * 原样留着。
+ *
+ * @param {*} item
+ * @param {() => Promise<void>} onChange
+ */
+async function toggleArchive(item, onChange) {
+  const archived = Boolean(item.closedAt);
+  try {
+    const res = await fetch(url(`api/items/${encodeURIComponent(item.id)}`), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ closedAt: archived ? null : Math.floor(Date.now() / 1000) }),
+    });
+    if (res.ok) await onChange();
+    else alert(tr("push.actionFailed"));
+  } catch {
+    alert(tr("push.actionFailed"));
+  }
+}
+
+/**
+ * 卡片行上的「刷新这一个单」。
+ *
+ * 它从 ⋯ 里搬回来了：盯着一张单的 PR 或状态时，这是几分钟就要按一次的动作，
+ * 而 ⋯ 是"偶尔用一次"的抽屉——把每分钟要按的东西放进抽屉，等于每次都多两步。
+ * 关联已有会话（一张单一辈子按几次）和归档（按一次就再也见不到这张单）留在里面。
+ *
+ * 只在有来源、且真有启用的插件认领那个来源时才画（见 claimedProviders）：一个
+ * 必然 404 的按钮比没有这个按钮更糟。
+ *
+ * 请求期间禁用自己，而不是拦一个"正在刷"的标志位——按钮就是这个状态唯一的宿主，
+ * 它自己灰掉既是防重复点击，也是唯一需要的反馈。
+ *
+ * @param {*} item
+ * @param {() => Promise<void>} onChange
+ */
+function refreshButton(item, onChange) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "item-refresh";
+  btn.innerHTML = icon("refresh");
+  btn.append(document.createTextNode(tr("items.refresh")));
+  btn.title = tr("items.refresh");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      await refreshItem(item, onChange);
     } finally {
-      archive.disabled = false;
+      btn.disabled = false;
     }
   });
-  wrap.append(archive);
+  return btn;
+}
 
-  return wrap;
+/**
+ * 卡片右上角的 ⋯ 和它掀起的动作浮层。
+ *
+ * 卡片底部那一行原本并排四个按钮——开会话、关联已有会话、刷新、归档——在手机上
+ * 挤成两行，而后三个都是偶尔才用一次的：关联已有会话是"这单我已经开着终端了"，
+ * 刷新是盯着某个 PR 时才按，归档一张单一辈子按一次。它们跟"再开一个会话"抢的是
+ * 同一片视觉重量，结果四个按钮谁都不显眼。
+ *
+ * 所以只留主动作在行里，其余收进右上角——跟会话卡片的 ⋯ 同一个位置、同一个
+ * 36px、同一套 .sheet-menu，两份列表的手势因此是一样的。
+ *
+ * 这里不分宽窄屏：会话卡片那套"窄屏 ⋯、宽屏摊开一行"是因为它的三个动作里有两个
+ * 是常用的（置顶、结束）；这三个不是，宽屏上摊开它们只是把不常用的东西放大。
+ *
+ * @param {*} item
+ * @param {() => Promise<void>} onChange
+ * @param {*} link
+ */
+function itemMore(item, onChange, link) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "item-more";
+  btn.innerHTML = icon("more", 18);
+  btn.title = tr("items.more");
+  btn.setAttribute("aria-label", tr("items.more"));
+  btn.addEventListener("click", () => openItemActions(item, onChange, link));
+  return btn;
+}
+
+function openItemActions(item, onChange, link) {
+  const back = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet");
+  sheet.append(el("p", "sheet-name", item.title));
+
+  const menu = el("div", "sheet-menu");
+  const close = () => back.remove();
+
+  const linkBtn = el("button", "btn item-link", tr("items.linkSession"));
+  linkBtn.type = "button";
+  linkBtn.addEventListener("click", () => {
+    close();
+    pickSessionFor(item, link, onChange);
+  });
+  menu.append(linkBtn);
+
+  const archive = el(
+    "button",
+    "btn item-archive",
+    tr(item.closedAt ? "items.unarchive" : "items.archive"),
+  );
+  archive.type = "button";
+  archive.addEventListener("click", () => {
+    close();
+    toggleArchive(item, onChange);
+  });
+  menu.append(archive);
+
+  const cancel = el("button", "btn", tr("items.cancel"));
+  cancel.type = "button";
+  cancel.addEventListener("click", close);
+  menu.append(cancel);
+
+  sheet.append(menu);
+  back.addEventListener("click", (e) => {
+    if (e.target === back) close();
+  });
+  back.append(sheet);
+  document.body.append(back);
 }
 
 /**
@@ -457,30 +378,10 @@ function itemActions(item, claimed, onChange, link) {
 function itemCard(item, sessions, facets, claimed, onChange, link) {
   const card = el("article", "item-card");
 
-  const head = el("div", "item-head");
-  // 链接只从 source.url 来，且只在它存在时才画成链接：url 是那个外部系统自己的
-  // 路由，只有产生这个 source 的一方才知道怎么拼——内核不该替它猜（尤其不该假定
-  // "provider 名字就是插件 id、插件页都在 p/<id>/ 下接受 ?key="，那是两回事，也没
-  // 有任何插件的页面真的读 ?key=）。source.ref 的徽标不管有没有 url 都画，它本身
-  // 就是有用的信息。
-  head.append(el("h2", "item-title", item.title));
-  if (item.source) {
-    // 链接挂在单号徽标上，不挂标题：徽标本来就是"远端那个东西的标识"，而点一段
-    // 长标题跳去外部系统是意料之外的事——标题读起来像标题，不像出口。
-    // 新窗口打开：那是另一个系统，把人从这份列表里带走等于让他重新找回原来的位置。
-    // target=_blank 必须配 rel=noopener，否则对面拿得到 window.opener。
-    if (item.source.url) {
-      const link = el("a", "item-source is-link", item.source.ref);
-      link.href = item.source.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.title = item.source.url;
-      head.append(link);
-    } else {
-      head.append(el("span", "item-source", item.source.ref));
-    }
-  }
-  if (sessions.length) head.append(el("span", "item-count", tr("items.sessions", { n: sessions.length })));
+  const head = itemHead(item, facets, sessions.length);
+  // 不常用的三个动作收在右上角。绝对定位（.item-more），所以标题不管截断还是
+  // 换行，它都待在同一个角上。浮层里没有这一颗：那边是只读的。
+  head.append(itemMore(item, onChange, link));
   card.append(head);
 
   // facets 可能是 undefined（老后端没这个字段）或空数组——两种都不画这行容器，
@@ -492,19 +393,21 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
     card.append(row);
   }
 
-  for (const session of sessions) card.append(sessionRow(session));
+  for (const session of sessions) card.append(sessionRow(session, onChange));
 
-  // 三个动作并成一行：开会话是主动作（保留 accent 底色），刷新和归档是维护动作，
-  // 都收成小按钮靠右。之前它们占了三行——两个半宽按钮加一条整宽的开会话——在
-  // 一屏几十张卡片的列表里，光是卡片自己的操作区就吃掉了大半屏。
-  const actions = itemActions(item, claimed, onChange, link);
+  // 行里留常用的两个：开会话和刷新。关联已有会话、归档进了右上角的 ⋯——四个
+  // 按钮并排时谁都不显眼，而那两个是偶尔才用一次的。
+  const actions = el("div", "item-actions");
   const more = el("a", "item-new");
   more.innerHTML = icon("plus");
   more.append(
     document.createTextNode(sessions.length ? tr("items.newSession") : tr("items.firstSession")),
   );
   more.href = url(`new.html?item=${encodeURIComponent(item.id)}`);
-  actions.prepend(more);
+  actions.append(more);
+  if (item.source && claimed.has(item.source.provider)) {
+    actions.append(refreshButton(item, onChange));
+  }
   card.append(actions);
   return card;
 }

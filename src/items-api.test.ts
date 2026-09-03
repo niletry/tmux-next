@@ -202,3 +202,60 @@ test("刷新一张来源无人认领的单给 404", async () => {
   const res = await json(`/api/items/${created.id}/refresh`, "POST", {});
   expect(res.status).toBe(404);
 });
+
+// --- 一张单的全貌：反向入口（会话列表的 chip、终端页的徽标）要的就是这个 ---
+
+test("GET /api/items/:id 给出这张单、它的 facets 与它的会话", async () => {
+  const created = await makeItem("看一眼这张单");
+  const res = await fetch(at(`/api/items/${created.id}`));
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as Record<string, any>;
+  expect(Object.keys(body).sort()).toEqual(["facets", "item", "sessions"]);
+  expect(body.item.id).toBe(created.id);
+  expect(body.item.title).toBe("看一眼这张单");
+  // facets 是这一张单的那一列，不是首页那种 { itemId: Facet[] } 的表。
+  expect(Array.isArray(body.facets)).toBe(true);
+  expect(body.facets).toContainEqual({ dim: "item.agent", value: "none", tone: "dim" });
+  // 没绑任何会话，所以是空表——不是整台机器的会话。
+  expect(body.sessions).toEqual([]);
+});
+
+test("GET 一张不存在的单给 404", async () => {
+  const res = await fetch(at("/api/items/it-nope"));
+  expect(res.status).toBe(404);
+});
+
+// by-session 必须排在 ^/api/items/([^/]+)$ 之前，否则 "by-session" 会被那条正则
+// 当成一个单号吞掉——同一个坑，/api/items/bind 与 /api/items/sync 都踩过。这条
+// 测试就是那个顺序的证据：被吞掉的话这里拿到的是 404，而不是这张单。
+test("GET /api/items/by-session 按会话名认回它挂着的那张单", async () => {
+  const created = await makeItem("终端页要认回的单");
+  await Bun.write(
+    process.env.TMUX_NEXT_BINDINGS_PATH!,
+    JSON.stringify({ "web-1-abc": { itemId: created.id, sessionId: "$9", boundAt: 1 } }),
+  );
+  const res = await fetch(at("/api/items/by-session?session=web-1-abc"));
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as Record<string, any>;
+  expect(body.item.id).toBe(created.id);
+});
+
+test("没挂在任何单下的会话给 404", async () => {
+  const res = await fetch(at("/api/items/by-session?session=web-1-none"));
+  expect(res.status).toBe(404);
+});
+
+test("by-session 不带 session 参数给 400", async () => {
+  const res = await fetch(at("/api/items/by-session"));
+  expect(res.status).toBe(400);
+});
+
+// 绑定记录指向一张已经被扫掉的单：不能 500，跟"没挂"是同一种回答。
+test("绑定指向不存在的单也给 404", async () => {
+  await Bun.write(
+    process.env.TMUX_NEXT_BINDINGS_PATH!,
+    JSON.stringify({ "web-1-ghost": { itemId: "it-gone", sessionId: "$9", boundAt: 1 } }),
+  );
+  const res = await fetch(at("/api/items/by-session?session=web-1-ghost"));
+  expect(res.status).toBe(404);
+});

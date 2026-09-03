@@ -238,6 +238,80 @@ test("一张单可以挂多个会话", async () => {
   expect(root.querySelectorAll(".item-session").length).toBe(2);
 });
 
+/**
+ * 挂错单是常态（同步来的单、名字相近的会话），所以解开必须在看得见错的地方——
+ * 也就是这张卡片的会话行上，而不是只在会话页的挑单浮层里。
+ */
+test("单下的会话行带解绑按钮，确认后打 DELETE /api/items/bind", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    sessions: [session({ name: "跑测试" })],
+    bindings: [{ session: "跑测试", itemId: "it-1", live: true }],
+  }));
+  const unbind = root.querySelector(".item-unbind") as unknown as HTMLElement;
+  expect(unbind).toBeTruthy();
+  expect(unbind.getAttribute("aria-label")).toBe(tr("items.unlink"));
+  unbind.click();
+
+  // 先出确认浮层，此时还没有任何写请求发出去。
+  const sheet = document.querySelector(".sheet-backdrop") as unknown as HTMLElement;
+  expect(sheet).toBeTruthy();
+  expect(sheet.textContent).toContain("跑测试");
+  expect(posted.some((p) => p.method === "DELETE")).toBe(false);
+
+  const confirm = [...sheet.querySelectorAll("button")].find(
+    (b) => b.textContent === tr("items.unlinkConfirm"),
+  ) as unknown as HTMLElement;
+  expect(confirm).toBeTruthy();
+  confirm.click();
+  await new Promise((r) => setTimeout(r, 50));
+  const call = posted.find((p) => p.method === "DELETE");
+  expect(call).toBeTruthy();
+  expect(call!.url).toContain(`api/items/bind?session=${encodeURIComponent("跑测试")}`);
+  expect(document.querySelector(".sheet-backdrop")).toBeNull();
+});
+
+// 取消就是什么都没发生：浮层关掉，绑定原封不动。
+test("解绑确认里点取消不发请求", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    sessions: [session({ name: "跑测试" })],
+    bindings: [{ session: "跑测试", itemId: "it-1", live: true }],
+  }));
+  (root.querySelector(".item-unbind") as unknown as HTMLElement).click();
+  const sheet = document.querySelector(".sheet-backdrop") as unknown as HTMLElement;
+  const cancel = [...sheet.querySelectorAll("button")].find(
+    (b) => b.textContent === tr("items.cancel"),
+  ) as unknown as HTMLElement;
+  cancel.click();
+  await new Promise((r) => setTimeout(r, 50));
+  expect(document.querySelector(".sheet-backdrop")).toBeNull();
+  expect(posted.some((p) => p.method === "DELETE")).toBe(false);
+});
+
+// 会话行本身还是那条链接：解绑按钮不能嵌进 <a> 里，否则点它会顺带跳进终端。
+test("解绑按钮在链接外面，不在链接里", async () => {
+  const root = await mount(payload({
+    items: [item()],
+    sessions: [session({ name: "跑测试" })],
+    bindings: [{ session: "跑测试", itemId: "it-1", live: true }],
+  }));
+  expect(root.querySelector(".item-session")?.tagName).toBe("A");
+  expect(root.querySelector(".item-session .item-unbind")).toBeNull();
+  expect(root.querySelector(".item-session-row .item-unbind")).toBeTruthy();
+});
+
+// 未归单的会话没挂在任何单下，给一个解不开东西的 × 只会让人怀疑自己记错了。
+test("未归单那一区不画解绑按钮", async () => {
+  const root = await mount(payload({
+    items: [],
+    sessions: [session({ name: "散的" })],
+    bindings: [],
+  }));
+  expect(root.querySelector(".unassigned .item-session")).toBeTruthy();
+  expect(root.querySelector(".unassigned .item-unbind")).toBeNull();
+});
+
 test("已经死掉的绑定不画成会话行", async () => {
   const root = await mount(payload({
     items: [item()],
@@ -303,6 +377,50 @@ test("服务挂了时给离线提示，不是空白页", async () => {
 test("响应缺字段时降级而不是抛", async () => {
   const root = await mount({ items: [item()] });
   expect(root.querySelector(".item-title")?.textContent).toBe("修登录页");
+});
+
+/**
+ * 来源和类型不再各占一格 chip：它们是"这张单是个什么东西"，一张单从生到死都不变，
+ * 而 chip 那一行要留给会变的东西。合并后仍然可读——全部维度都写进 title。
+ */
+test("badge 维度画成单号前的一枚图标，不再进 chip 行", async () => {
+  const root = await mount(payload({
+    items: [item({ source: { provider: "tracker", ref: "AB-1" } })],
+    facets: {
+      "it-1": [
+        { dim: "item.source", value: "tracker", badge: true },
+        { dim: "x.type", value: "Bug", badge: true, icon: "M2 2h10v10H2z" },
+        { dim: "x.status", value: "In Progress" },
+      ],
+    },
+  }));
+  const badge = root.querySelector(".item-badge") as unknown as HTMLElement;
+  expect(badge).toBeTruthy();
+  expect(badge.querySelector("svg")).toBeTruthy();
+  expect(badge.getAttribute("title")).toContain("tracker");
+  expect(badge.getAttribute("title")).toContain("Bug");
+
+  // 徽标排在单号前面。
+  const head = root.querySelector(".item-head")!;
+  const kids = [...head.children].map((k) => k.className);
+  expect(kids.indexOf("item-badge")).toBeGreaterThanOrEqual(0);
+  expect(kids.indexOf("item-badge")).toBeLessThan(kids.indexOf("item-source"));
+
+  // chip 行里只剩会变的那一格。
+  const chips = [...root.querySelectorAll(".facet")].map((c) => c.textContent);
+  expect(chips.join("|")).toContain("In Progress");
+  expect(chips.join("|")).not.toContain("Bug");
+  expect(chips.join("|")).not.toContain("tracker");
+});
+
+// 没有插件给形状时徽标不能是空的——那样本地单和有来源的单看起来一模一样。
+test("badge 维度都没有图标时，徽标退回画值本身", async () => {
+  const root = await mount(payload({
+    items: [item({ source: { provider: "tracker", ref: "AB-1" } })],
+    facets: { "it-1": [{ dim: "item.source", value: "tracker", badge: true }] },
+  }));
+  const badge = root.querySelector(".item-badge") as unknown as HTMLElement;
+  expect(badge?.textContent).toBe("tracker");
 });
 
 // 内核不认识具体插件——这是接缝的方向，值得由测试守着而不是靠自觉，同 list.js
@@ -579,6 +697,18 @@ const withSource = () => item({ source: { provider: "jira", ref: "EXAMPLE-1" } }
 const clickable = (root: any, sel: string) =>
   root.querySelector(sel)?.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
 
+/**
+ * 打开卡片右上角的 ⋯，返回它掀起的那张浮层。
+ *
+ * 关联已有会话 / 刷新 / 归档都住在这里面了——卡片底部那一行只剩「再开一个会话」。
+ * 这些断言因此全部改成"先开 ⋯ 再找按钮"，而不是直接在卡片上找：如果哪天有人把
+ * 某个动作偷偷搬回卡片行上，这些测试会红，这正是想要的。
+ */
+function openMore(root: any) {
+  clickable(root, ".item-more");
+  return document.querySelector(".sheet-backdrop")!;
+}
+
 test("顶栏有同步按钮", async () => {
   await mount(payload({ items: [item()] }));
   expect(document.getElementById("sync-items")).not.toBeNull();
@@ -605,9 +735,12 @@ test("同步返回 truncated 时说出来", async () => {
   syncReply = { created: 0, updated: 0, total: 0, truncated: false };
 });
 
-test("有来源的单画刷新按钮", async () => {
+// 刷新在卡片行上，不在 ⋯ 里：盯一张单的 PR 时这是几分钟按一次的动作，收进抽屉
+// 等于每次多两步。
+test("有来源的单在动作行上画刷新", async () => {
   const root = await mount(payload({ items: [withSource()] }));
-  expect(root.querySelector(".item-refresh")).not.toBeNull();
+  expect(root.querySelector(".item-actions .item-refresh")).not.toBeNull();
+  expect(openMore(root).querySelector(".item-refresh")).toBeNull();
 });
 
 // 没有来源就没有可刷的东西——画一个必然失败的按钮比不画更糟。
@@ -634,7 +767,7 @@ test("点刷新会 POST 到那张单的 refresh 路由", async () => {
 
 test("点归档会 PATCH 一个 closedAt", async () => {
   const root = await mount(payload({ items: [item()] }));
-  clickable(root, ".item-archive");
+  clickable(openMore(root), ".item-archive");
   await new Promise((r) => setTimeout(r, 60));
   const patch = posted.find((p) => p.method === "PATCH");
   expect(patch?.url).toContain("api/items/it-1");
@@ -656,7 +789,7 @@ test("打开显示已归档后画出来", async () => {
 test("已归档的单上是取消归档，PATCH 的 closedAt 为 null", async () => {
   const store = { "tmux-next.items.showArchived": "1" };
   const root = await mount(payload({ items: [item({ closedAt: 1787000000 })] }), store);
-  clickable(root, ".item-archive");
+  clickable(openMore(root), ".item-archive");
   await new Promise((r) => setTimeout(r, 60));
   const patch = posted.find((p) => p.method === "PATCH");
   expect(JSON.parse(patch?.body ?? "{}").closedAt).toBeNull();
@@ -937,7 +1070,7 @@ test("卡片上的关联按钮列出所有会话，并标出别人已经占着�
     bindings: [{ session: "乙", itemId: "it-2", live: true }],
   }));
 
-  click(root.querySelector(".item-link"));
+  click(openMore(root).querySelector(".item-link"));
   await new Promise((r) => setTimeout(r, 20));
 
   const rows = [...document.querySelectorAll(".pick-row")];
@@ -953,7 +1086,7 @@ test("选一个会话就 POST 到这张单的 bind 上", async () => {
     sessions: [session({ name: "甲" })],
   }));
 
-  click(root.querySelector(".item-link"));
+  click(openMore(root).querySelector(".item-link"));
   await new Promise((r) => setTimeout(r, 20));
   click(document.querySelector(".pick-row"));
   await new Promise((r) => setTimeout(r, 60));
@@ -972,7 +1105,7 @@ test("已经挂在本单下的会话标成当前项", async () => {
     bindings: [{ session: "甲", itemId: "it-1", live: true }],
   }));
 
-  click(root.querySelector(".item-link"));
+  click(openMore(root).querySelector(".item-link"));
   await new Promise((r) => setTimeout(r, 20));
   const row = document.querySelector(".pick-row")!;
   expect(row.className).toContain("current");
@@ -981,7 +1114,7 @@ test("已经挂在本单下的会话标成当前项", async () => {
 
 test("一个会话都没有时说清楚", async () => {
   const root = await mount(payload({ items: [item()], sessions: [] }));
-  click(root.querySelector(".item-link"));
+  click(openMore(root).querySelector(".item-link"));
   await new Promise((r) => setTimeout(r, 20));
   expect(document.querySelector(".sheet-warn")?.textContent).toBe(tr("items.noSessions"));
 });
@@ -1001,7 +1134,7 @@ test("会话现挂在哪张单下，优先用单号说", async () => {
     ],
   }));
 
-  click(root.querySelector(".item-link"));
+  click(openMore(root).querySelector(".item-link"));
   await new Promise((r) => setTimeout(r, 20));
   const notes = [...document.querySelectorAll(".pick-note")].map((n) => n.textContent);
   expect(notes[0]).toContain("EXAMPLE-45943");
@@ -1015,6 +1148,50 @@ test("单卡片的动作按钮都带图标", async () => {
   expect(acts.every((a) => a.querySelector("svg"))).toBe(true);
   // 文字必须还在——图标是给扫视用的，不是替代标签。
   expect(acts.every((a) => (a.textContent ?? "").trim().length > 0)).toBe(true);
+});
+
+/**
+ * 卡片底部只留主动作，其余进右上角。四个按钮并排时谁都不显眼，而这三个是偶尔
+ * 才用一次的：关联已有会话、刷新、归档。
+ */
+test("卡片底部动作行只留常用的两个", async () => {
+  const root = await mount(payload({ items: [withSource()] }));
+  const acts = [...root.querySelectorAll(".item-actions button, .item-actions a")];
+  expect(acts.map((a) => a.className)).toEqual(["item-new", "item-refresh"]);
+});
+
+// 没有来源的本地单没什么可刷的，那一行就只剩主动作。
+test("没有来源时动作行只有主动作", async () => {
+  const root = await mount(payload({ items: [item()] }));
+  const acts = [...root.querySelectorAll(".item-actions button, .item-actions a")];
+  expect(acts.map((a) => a.className)).toEqual(["item-new"]);
+});
+
+test("⋯ 里装着关联已有会话和归档", async () => {
+  const root = await mount(payload({ items: [withSource()] }));
+  const more = root.querySelector(".item-more");
+  expect(more).not.toBeNull();
+  expect(more!.getAttribute("aria-label")).toBe(tr("items.more"));
+
+  const sheet = openMore(root);
+  const labels = [...sheet.querySelectorAll(".sheet-menu .btn")].map((b) => b.textContent);
+  expect(labels).toEqual([
+    tr("items.linkSession"),
+    tr("items.archive"),
+    tr("items.cancel"),
+  ]);
+});
+
+test("⋯ 浮层点取消就关掉，什么都不发", async () => {
+  const root = await mount(payload({ items: [item()] }));
+  const sheet = openMore(root);
+  const cancel = [...sheet.querySelectorAll("button")].find(
+    (b) => b.textContent === tr("items.cancel"),
+  );
+  click(cancel as unknown as { dispatchEvent: (e: any) => unknown });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(document.querySelector(".sheet-backdrop")).toBeNull();
+  expect(posted.length).toBe(0);
 });
 
 test("工具条的新建和同步都带图标", async () => {

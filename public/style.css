@@ -64,9 +64,7 @@
    用 align-items:center 而不是 baseline——SVG 没有基线，baseline 会让它掉下去。 */
 .card-act,
 .item-new,
-.item-link,
 .item-refresh,
-.item-archive,
 .toolbar-label,
 .dir-make {
   display: inline-flex;
@@ -300,9 +298,24 @@ header .count {
 
 .row { display: flex; align-items: center; gap: 8px; }
 
-/* The name owns its row, so it can take the whole width before truncating. */
-.name-row { min-width: 0; }
-.meta-row { margin-top: 4px; }
+/* 名字独占它那一行的宽度，两行元信息都可换行，窄屏也一样。
+
+   名字和它挂着的单标题挤在同一行时，两个都是可收缩的 flex 项，而单标题长得多，
+   按比例收缩的结果是名字先被榨干——实机上一张卡的会话名只剩「E…」一个字母，
+   而那正是这张卡最该说清的东西。开了 wrap 之后，放不下的那个（通常是单标题）
+   整块落到下一行，两边都完整。
+
+   代价是卡片可能高一行。这比"一行整齐但读不出是哪个会话"划算——密度的意义
+   是一屏看到更多**能认出来**的卡片，认不出就不算看到。 */
+.name-row {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.meta-row {
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
 
 .name {
   flex: 1 1 auto;
@@ -322,15 +335,12 @@ header .count {
   background: var(--ok);
 }
 
-.sid {
-  flex: 0 0 auto;
-  color: var(--text-2);
-  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  opacity: 0.7;
-}
+/* The work item a session is bound to, when the kernel knows one.
 
-/* The work item a session is bound to, when the kernel knows one. */
+   `max-width: 100%` 是配合 .name-row 的换行的：单独占一行时它照样可能比卡片宽，
+   没有这条就撑破卡片而不是省略号收尾。 */
 .item-chip {
+  max-width: 100%;
   flex: 0 1 auto;
   min-width: 0;
   padding: 1px 7px;
@@ -354,21 +364,20 @@ header .count {
   letter-spacing: 0.02em;
 }
 
-/* The agent's build, when knowable (Claude's pane command, or --version). */
-.agent-ver {
+/* 会话此刻的状态：一个图标，等你回话时后面跟一个数字（见 list.js 的 stateCell）。
+   词进了 title——这一行还要装 agent 名、版本和 sha，五个字的"等待你的回复"是它
+   最贵的一块地方。 */
+.state {
   flex: 0 0 auto;
-  color: var(--text-2);
-  font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
-  opacity: 0.75;
-}
-
-/* Precise state in words: working / waiting / unsent input. */
-.status {
-  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text-2);
   font-size: 12px;
   white-space: nowrap;
 }
+
+.state-num { font-variant-numeric: tabular-nums; }
 
 .time { margin-left: auto; color: var(--text-2); font-size: 13px; white-space: nowrap; }
 
@@ -693,15 +702,38 @@ header .count {
   border-radius: 12px;
   margin: 0 12px 12px;
   padding: 14px;
+  /* ⋯ 是相对卡片定位的，见 .item-more。 */
+  position: relative;
 }
 
+/* 右上角留出 ⋯ 的位置：绝对定位不占流，不给 padding 的话标题会从它下面穿过去。
+   跟会话卡片的 .more 同一个位置、同一个 36px 可点尺寸。 */
 .item-head {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 6px;
+  padding-right: 30px;
 }
+
+.item-more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.item-more:active { background: var(--surface-4); color: var(--text-1); }
 
 /* Shared by both the link and the plain-text form, so a long title truncates
    the same way whichever element it lands on. */
@@ -729,6 +761,25 @@ a.item-source.is-link {
 
 a.item-source.is-link:hover {
   text-decoration: underline;
+}
+
+/* 来源+类型合成的徽标，紧贴单号左边。跟单号之间不留 gap：它们读作一件东西
+   （"一个 Jira 缺陷 ABC-123"），中间有空隙就散成两样。 */
+.item-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-2);
+  margin-right: -3px;
+}
+
+/* 没有插件给形状时的退路：画值本身，小一号、不抢单号。 */
+.item-badge.is-text {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-4);
+  font-size: 11px;
+  margin-right: 0;
 }
 
 .item-source,
@@ -816,6 +867,37 @@ a.item-source.is-link:hover {
   border-top: 1px solid color-mix(in srgb, var(--text-1) 8%, transparent);
 }
 
+/* 会话行 + 解绑按钮。border-top 移到外层，否则两条线会叠在一起；`.item-session`
+   仍是里面那条链接，单独出现时（未归单那一区）自己带线。 */
+.item-session-row {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid color-mix(in srgb, var(--text-1) 8%, transparent);
+}
+
+.item-session-row .item-session {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-top: none;
+}
+
+/* 小、靠边：解绑不是你来这一页要做的事，但挂错了得能就地解开。
+   36px 是这个仓库里可点目标的下限，跟 .more 一样。 */
+.item-unbind {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.item-unbind:active { background: var(--surface-1); color: var(--text-1); }
+.item-unbind:disabled { opacity: 0.5; }
+
 .s-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -838,10 +920,8 @@ a.item-source.is-link:hover {
   white-space: nowrap;
 }
 
-/* 刷新/归档：跟 .item-new 一样是卡片底部的按钮行，但两个动作横排而不是各占
-   一整行——它们不是"下一步"，是维护动作，不该抢 .item-new 的视觉分量。 */
-/* 一行装下三个动作，靠右——卡片的主角是标题、维度和会话，操作区不该跟它们抢
-   分量。之前两个半宽按钮加一条整宽横幅共占三行，一屏里全是按钮。 */
+/* 卡片底部的动作行：主动作「再开一个会话」和「刷新这一个单」。关联已有会话和
+   归档收在右上角的 ⋯（.item-more）里——那两个是偶尔才用一次的。 */
 .item-actions {
   display: flex;
   flex-wrap: wrap;
@@ -851,9 +931,8 @@ a.item-source.is-link:hover {
   margin-top: 10px;
 }
 
-.item-refresh,
-.item-link,
-.item-archive {
+/* 维护动作的小 pill：跟主动作同高同形，只靠没有 accent 底色区分主次。 */
+.item-refresh {
   flex: 0 0 auto;
   border: 1px solid var(--border-1);
   border-radius: 999px;
@@ -864,14 +943,12 @@ a.item-source.is-link:hover {
   cursor: pointer;
 }
 
-.item-refresh:disabled,
-.item-link:disabled,
-.item-archive:disabled {
+.item-refresh:disabled {
   opacity: 0.6;
   cursor: default;
 }
 
-/* 主动作：跟另外两个同高同形，只靠 accent 底色区分主次，并排在最左。 */
+/* 主动作：跟旁边那颗同高同形，只靠 accent 底色区分主次，排在最左。 */
 .item-new {
   margin-right: auto;
   padding: 4px 12px;
@@ -982,6 +1059,31 @@ a.item-source.is-link:hover {
   color: var(--text-2);
   font-size: 13px;
 }
+
+/* 顶栏上那枚"这条会话挂着的单"。写的是单号（本地单退回标题），点开是那张单此刻
+   的样子。跟 .term-rename 同一档外观——它们是同一条栏上同一类次要按钮——只是文字
+   走 accent，因为它是通往别处的入口而不是就地的动作。
+
+   会话没挂单时 #item-slot 一直是空的，所以这枚按钮不占任何宽度：顶栏在最窄的屏幕
+   上每一格都要用在刀刃上。 */
+.term-item {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--surface-4);
+  color: var(--accent-text);
+  font-size: 13px;
+}
+
+/* 槽本身不参与布局，好让按钮直接当 .term-bar 的 flex 项——包一层 span 只是为了
+   给 mountItemEntry 一个不会被 applyLang 重刷的落点。 */
+.term-item-slot { display: contents; }
 
 /* Tapping 改名 turns the title into this field, prefilled with the name. */
 .title-edit {
@@ -2153,14 +2255,8 @@ a.detail-label:hover {
     color: var(--danger);
   }
 
-  /* 会话卡片的两行元信息改成可换行。卡片在网格里被 overflow:hidden 裁住之后，
-     放不下的东西不再画到隔壁卡片上，但也就被切掉了——「waiting 5m」被切成
-     「wait」，而那恰恰是这张卡最该说清楚的一件事。换行是唯一两头都顾得上的解法：
-     窄屏一行放得下，宽屏放不下就落到下一行，没有任何信息消失。 */
-  .name-row,
-  .meta-row {
-    flex-wrap: wrap;
-  }
+  /* （.name-row / .meta-row 的换行以前写在这里，只给宽屏。窄屏同样需要——
+     见基础规则那一段——所以它搬到了上面，两种宽度共用一条。） */
 
   /* 单标题在窄卡片里换行，不再省略号截断。窄屏时它必须是一行——一屏就那么高，
      一个三行的标题会把下面的卡片全推下去；宽屏是横向紧、纵向松，反过来了，
@@ -2262,6 +2358,7 @@ a.detail-label:hover {
   .term-back,
   .term-kill,
   .term-rename,
+  .term-item,
   .status-relogin,
   .copy-link,
   .dir-row,
@@ -2273,9 +2370,7 @@ a.detail-label:hover {
   .sheet-create:not(:disabled),
   .toolbar-control:not(:disabled),
   .restore-btn:not(:disabled),
-  .item-refresh,
-  .item-link,
-  .item-archive {
+  .item-refresh:not(:disabled) {
     cursor: pointer;
   }
 
@@ -2293,7 +2388,10 @@ a.detail-label:hover {
 
   header .hbell:not(.on):hover,
   .term-kill:hover,
-  .term-rename:hover {
+  .term-rename:hover,
+  .term-item:hover,
+  .item-more:hover,
+  .item-unbind:not(:disabled):hover {
     background: var(--surface-4);
     color: var(--text-1);
   }
@@ -2494,9 +2592,7 @@ a.detail-label:hover {
 /* 卡片上的动作 pill。28px 而不是 44：它们一张卡片一行，44 会让每张卡片长高
    一大截——而"卡片别占这么多地方"正是这一行当初收成小按钮的原因。 */
 .item-new,
-.item-link,
-.item-refresh,
-.item-archive {
+.item-refresh {
   min-height: 28px;
   box-sizing: border-box;
 }

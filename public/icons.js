@@ -60,6 +60,15 @@ export const ICON_PATHS = {
   // 垃圾桶会让人以为有什么东西被丢掉了。
   power: '<path d="M12 3.5v8.5"/><path d="M18.4 7a9 9 0 1 1-12.8 0"/>',
   more: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+  // 会话此刻的状态，三个形状。它们替掉的是"等待你的回复""工作中""待发送"三个词
+  // ——卡片那一行原来要写满一句话才说得清的事，现在一个字宽。
+  hourglass:
+    '<path d="M7 3h10"/><path d="M7 21h10"/>' +
+    '<path d="M8 3v3.5L12 11l4-4.5V3"/><path d="M8 21v-3.5L12 13l4 4.5V21"/>',
+  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  pencil:
+    '<path d="M12 20h9"/>' +
+    '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   x: '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
   chevronRight: '<path d="M9 5l7 7-7 7"/>',
   chevronDown: '<path d="M5 9l7 7 7-7"/>',

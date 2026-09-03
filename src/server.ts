@@ -41,7 +41,7 @@ import {
 } from "./tmux/session-list";
 import { reapOrphanWebSessions } from "./tmux/session-manager";
 import { createItem, readItems, updateItem } from "./items";
-import { bindSession, resolveBindings, unbindSession } from "./session-binding";
+import { bindSession, readBindings, resolveBindings, unbindSession } from "./session-binding";
 import { kernelFacets } from "./item-facets";
 
 type WsData = { session: PaneSession | null };
@@ -210,6 +210,36 @@ const PLUGINS_DIR = new URL("../plugins/", import.meta.url).pathname;
  * 路径一律相对 `../../`：页面在 `/p/<id>/` 下，两层深；写成绝对路径会弄断反代的
  * 子路径挂载。
  */
+/**
+ * 一张单的全貌：单本身、它此刻活着的会话、以及它这一列 facet。
+ *
+ * 首页那条 /api/items 是整表算一次；这里把入参收成一张单，算法一模一样（内核的
+ * kernelFacets 加插件的 collectFacets），所以浮层里的 chip 和首页卡片上的不会是
+ * 两套说法。facets 给的是这一张单的那一列数组，不是 { itemId: Facet[] } 的表——
+ * 只问一张单的人不该再去表里取一次键。
+ *
+ * 单不存在就 404，包括"绑定还指着一张已经被扫掉的单"这种：那跟"这个会话没挂单"
+ * 对调用方是同一件事，页面两种情况都是不画那个入口。
+ */
+async function itemDetail(id: string): Promise<Response> {
+  const items = await readItems();
+  const item = items.find((i) => i.id === id);
+  if (!item) return new Response("no such item", { status: 404 });
+  const live = await listSessions();
+  const bindings = await resolveBindings(
+    live.map((s) => ({ name: s.name, sessionId: s.sessionId })),
+  );
+  const mine = new Set(
+    bindings.filter((b) => b.live && b.itemId === item.id).map((b) => b.session),
+  );
+  const sessions = live.filter((s) => mine.has(s.name));
+  const kernel = kernelFacets([item], live, bindings)[item.id] ?? [];
+  const theirs = await collectFacets([
+    { id: item.id, source: item.source ? { provider: item.source.provider, ref: item.source.ref } : null },
+  ]);
+  return Response.json({ item, sessions, facets: [...kernel, ...(theirs[item.id] ?? [])] });
+}
+
 function pluginShell(id: string, titleKey: string, mainId: string, hasCss: boolean): string {
   return `<!doctype html>
 <html lang="zh">
@@ -385,6 +415,26 @@ export function startServer(
         const ok = await refreshFromSource(found.source.provider, found.source.ref);
         if (!ok) return new Response("no source", { status: 404 });
         return Response.json({ ok: true });
+      }
+
+      // 这条必须排在下面的 ^/api/items/([^/]+)$ 之前，否则 "by-session" 会被那
+      // 条正则当成一个单号吞掉——同一个坑，/api/items/bind 与 /api/items/sync 都
+      // 踩过。终端页只知道自己的会话名，它认单的入口就是这里。
+      //
+      // 按**名字**认，不走 resolveBindings 的 id 优先：那一套是为了跨改名与跨
+      // tmux server 重启把记录接回去，需要一份活会话清单；这里问的人手上正拿着
+      // 一个当下的会话名，多打一次 tmux 只为绕回同一个答案。
+      if (url.pathname === "/api/items/by-session" && req.method === "GET") {
+        const session = url.searchParams.get("session");
+        if (!session) return new Response("missing session", { status: 400 });
+        const binding = (await readBindings())[session];
+        if (!binding) return new Response("not bound", { status: 404 });
+        return itemDetail(binding.itemId);
+      }
+
+      const itemGet = url.pathname.match(/^\/api\/items\/([^/]+)$/);
+      if (itemGet && req.method === "GET") {
+        return itemDetail(decodeURIComponent(itemGet[1]!));
       }
 
       // PATCH /api/items/:id：只挑允许改的字段，绝不把请求体整个 Object.assign

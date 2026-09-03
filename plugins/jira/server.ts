@@ -224,6 +224,10 @@ export function facetsFor(
       dim: "jira.type",
       value: issue.type,
       icon: TYPE_ICONS[typeKey(issue)],
+      // 画成单号前的徽标，不占 chip 行：类型是"这是什么"，一张单从生到死都不变，
+      // 而 chip 那一行要留给会变的东西（状态、检查、PR）。图标本身就是这里唯一
+      // 被画出来的形状——内核挑徽标图标时挑的就是它。
+      badge: true,
     },
     {
       dim: "jira.status",

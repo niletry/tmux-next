@@ -15,6 +15,7 @@ import { connClass } from "./conn-state.js";
 import { backTarget } from "./back-target.js";
 import { PLUGINS } from "../plugins/registry.js";
 import { url } from "./root.js";
+import { mountItemEntry } from "./item-panel.js";
 
 const target = new URLSearchParams(location.search).get("target");
 const statusEl = document.getElementById("status");
@@ -78,7 +79,21 @@ function applyBack() {
 }
 
 applyBack();
-initLang().then(applyBack);
+initLang().then(() => {
+  applyBack();
+  // 这条会话挂在哪张单下——顶栏上的一枚入口，点开是那张单此刻的样子：状态、PR、
+  // 检查。等语言落定之后再画，它的说明文字走 tr()；没挂单就什么都不画。
+  //
+  // 浮层开着时要把 modalOpen 抬起来：终端页默认把被抢走的焦点抢回来，不然点浮层
+  // 里的链接会先被终端夺回焦点（见 focus-restore.js）。
+  const slot = document.getElementById("item-slot");
+  if (target && slot) {
+    mountItemEntry(target, slot, {
+      onOpen: () => { modalOpen = true; },
+      onClose: () => { modalOpen = false; },
+    });
+  }
+});
 
 initTheme().then(({ name }) => {
   if (name !== initialTheme) term.options.theme = xtermTheme(name);

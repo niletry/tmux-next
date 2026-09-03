@@ -305,3 +305,22 @@ test("chip 图标：过长的一律当没给", async () => {
   const got = await collectFacets(items, { p: withIcon(huge) });
   expect(got["it-1"]![0]!.icon).toBeUndefined();
 });
+
+/**
+ * badge 是显示上的一个分流开关（单号前的徽标，而不是一格 chip），所以它跟别的
+ * 字段一样只认一个确定的值：`true`。给别的东西就当没说——一个真值不明的开关会让
+ * 同一条维度在两个位置之间跳。
+ */
+const withBadge = (badge: unknown): PluginEnricher =>
+  async () => ({ "it-1": [{ dim: "jira.type", value: "Epic", badge } as unknown as Facet] });
+
+test("badge：true 原样带过去", async () => {
+  const got = await collectFacets(items, { p: withBadge(true) });
+  expect(got["it-1"]![0]!.badge).toBe(true);
+});
+
+test.each([["yes"], [1], [{}], [false]])("badge：%p 当没给", async (bad) => {
+  const got = await collectFacets(items, { p: withBadge(bad) });
+  expect(got["it-1"]![0]!.badge).toBeUndefined();
+  expect(got["it-1"]![0]!.value).toBe("Epic");
+});

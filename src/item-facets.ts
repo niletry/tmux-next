@@ -84,7 +84,10 @@ export function kernelFacets(
       // items.js 的 chipVisible），但维度本身照留——按会话数分组和筛选还得靠它。
       { dim: "item.sessions", value: String(mine.length), icon: SESSION_ICON },
     ];
-    if (item.source) facets.push({ dim: "item.source", value: item.source.provider });
+    // badge：来源跟类型一起收进单号前面那枚徽标。这颗 chip 从来只写着 "jira"，
+    // 而它旁边就是 JIRA-123 这个单号本身——同一件事说两遍，占的却是卡片上最贵的
+    // 那一行。维度照留：按来源分组、筛选走的是数据，不是 chip。
+    if (item.source) facets.push({ dim: "item.source", value: item.source.provider, badge: true });
     for (const tag of item.tags) facets.push({ dim: "item.tag", value: tag });
     out[item.id] = facets;
   }

@@ -3,6 +3,9 @@ import { initLang, tr } from "./i18n-apply.js";
 import { renderHeader } from "./nav.js";
 import { openPicker } from "./pick-sheet.js";
 import { icon } from "./icons.js";
+// 反过来看那一半：这条会话挂在哪张单下，那张单此刻怎么样。只读的一眼，改绑定
+// 仍然是旁边那个「挂到单下」。
+import { openItemPanel } from "./item-panel.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
@@ -87,10 +90,49 @@ function timeCell(session) {
   const action = session.lastAction ?? null;
   const epoch = action ? action.epoch : session.lastActivityEpoch;
 
-  if (session.idle) return tr("list.waitingFor", { t: duration(epoch) });
+  // 等你回话时这一格是空的：状态图标旁边已经写着等了多久（见 stateCell），
+  // 再画一遍"等你 3 分钟"就是同一件事说两遍，而它占的是这一行最右边那块地方。
+  if (session.idle) return "";
 
   const phrase = actionPhrase(action);
   return phrase ? `${relativeTime(epoch)} · ${phrase}` : relativeTime(epoch);
+}
+
+/** 三种状态各自的形状。文字进 title，行里只留图标。 */
+const STATE_ICON = { pending: "pencil", waiting: "hourglass", working: "activity" };
+
+/**
+ * 状态那一格：一个图标，等你回话时后面跟一个数字。
+ *
+ * 原来这里是"等待你的回复"五个字，右边另有一格"等你 3 分钟"——两格说的是同一件
+ * 事，加起来吃掉半行，而这一行还要装 agent 名、版本和 sha。图标 + 数字之后
+ * 是"⏳ 3 分钟"一格。
+ *
+ * 词没有消失，进了 title 和 aria-label：读屏和长按拿到的仍然是整句话，省掉的只是
+ * 每张卡片都一样、扫一眼就够的那几个字。
+ */
+function stateCell(session) {
+  const kind = session.pendingInput ? "pending" : session.idle ? "waiting" : "working";
+  const words =
+    kind === "pending"
+      ? tr("list.pendingInput")
+      : kind === "waiting"
+        ? tr("list.waitingDot")
+        : tr("list.working");
+
+  const cell = el("span", "state");
+  cell.innerHTML = icon(STATE_ICON[kind], 13);
+
+  if (session.idle) {
+    const epoch = session.lastAction ? session.lastAction.epoch : session.lastActivityEpoch;
+    const span = duration(epoch);
+    cell.append(el("span", "state-num", span));
+    cell.title = tr("list.waitingFor", { t: span });
+  } else {
+    cell.title = words;
+  }
+  cell.setAttribute("aria-label", cell.title);
+  return cell;
 }
 
 function el(tag, className, text) {
@@ -271,6 +313,14 @@ function cardActions(session, itemsById) {
   open.append(document.createTextNode(tr("list.openSession")));
   bar.append(open);
 
+  // 只在真的挂着一张认得出的单时才画：itemId 指着一张已经被扫掉的单时，这个
+  // 入口点开只会是一句"看不到"，跟卡片上那枚标记同一条降级规矩（见 card()）。
+  if (session.itemId && itemsById?.has(session.itemId)) {
+    const view = act("card-act", "items", tr("list.viewItem"));
+    view.addEventListener("click", () => openItemPanel({ id: session.itemId }));
+    bar.append(view);
+  }
+
   const pin = act("card-act", "pin", tr(session.pinned ? "list.unpin" : "list.pin"));
   pin.addEventListener("click", () => pinSession(session));
   bar.append(pin);
@@ -294,11 +344,17 @@ function openActions(session, itemsById) {
   sheet.append(el("p", "sheet-name", session.name));
 
   const menu = el("div", "sheet-menu");
+  // 窄屏上这是唯一的入口——动作行在 900px 以下是隐藏的，见 cardActions 的注释。
+  const viewBtn =
+    session.itemId && itemsById?.has(session.itemId)
+      ? el("button", "btn", tr("list.viewItem"))
+      : null;
   const pinBtn = el("button", "btn", tr(session.pinned ? "list.unpin" : "list.pin"));
   // 挂到一张单下。反方向（在单上挑会话）在首页，两边打的是同一个接口。
   const linkBtn = el("button", "btn", tr(session.itemId ? "list.relinkItem" : "list.linkItem"));
   const endBtn = el("button", "btn danger", tr("list.endSession"));
   const cancel = el("button", "btn", tr("list.cancel"));
+  if (viewBtn) menu.append(viewBtn);
   menu.append(pinBtn, linkBtn, endBtn, cancel);
   sheet.append(menu);
   dialog.append(sheet);
@@ -308,6 +364,11 @@ function openActions(session, itemsById) {
   cancel.addEventListener("click", close);
   dialog.addEventListener("click", (e) => {
     if (e.target === dialog) close();
+  });
+
+  viewBtn?.addEventListener("click", () => {
+    close();
+    openItemPanel({ id: session.itemId });
   });
 
   pinBtn.addEventListener("click", () => {
@@ -360,32 +421,25 @@ function card(session, itemsById) {
   if (session.agentLabel) {
     // Which agent runs in here — from the binding record, so a session with no
     // record (or one that predates multi-agent support) simply shows nothing.
-    // The version rides on the same badge when it is knowable.
+    //
+    // 版本号不画：它每张卡片上都一样（同一台机器上的 Claude 是同一个版本），
+    // 一个月也变不了两次，却占着这一行里 agent 名旁边最显眼的位置。数据照旧
+    // 从后端来（session.version），只是这一行不再花地方说它——真要看版本，
+    // 那是"这台机器装的什么"，不是"这个会话怎么样"。
     const badge = el("span", "agent", session.agentLabel);
     badge.title = tr("list.agent");
     row.append(badge);
-    if (session.version) {
-      const ver = el("span", "agent-ver", session.version);
-      ver.title = tr("list.agentVersion");
-      row.append(ver);
-    }
   }
-  // Precise state, in words rather than only the small dot: working on a turn,
-  // waiting on the user, or holding unsent input.
-  const statusText = session.pendingInput
-    ? tr("list.pendingInput")
-    : session.idle
-      ? tr("list.waitingDot")
-      : tr("list.working");
-  row.append(el("span", "status", statusText));
-  if (session.claudeId) {
-    // Short prefix only — enough to eyeball and to match the transcript file
-    // under ~/.claude/projects; the full id is on the title for a long-press.
-    const sid = el("span", "sid", session.claudeId.slice(0, 8));
-    sid.title = session.claudeId;
-    row.append(sid);
-  }
-  row.append(el("span", "time", timeCell(session)));
+  // 状态：一个图标，等你回话时带上等了多久。整句话在 title 里。
+  row.append(stateCell(session));
+  // Claude 会话 UUID 的前 8 位曾经画在这里。去掉了：它排版得像个 git sha，实际是
+  // ~/.claude/projects 下那个 transcript 的文件名，扫列表的时候没有人在读它，而这
+  // 一行的宽度是手机上最紧的资源。session.claudeId 照常从后端来——恢复会话的挑选器
+  // 用的就是它，只是这一行不再花地方画它。
+  // 等你回话时 timeCell 是空的（那句话已经在状态格里），空字符串就别画这一格——
+  // 画一个空 span 会因为 margin-left:auto 仍然占住右端的位置。
+  const when = timeCell(session);
+  if (when) row.append(el("span", "time", when));
   link.append(row);
 
   // What it was last asked to do, above the screen preview: mid-task the

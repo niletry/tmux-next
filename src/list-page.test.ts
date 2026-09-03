@@ -59,6 +59,14 @@ function stubFetch(sessions: unknown[], restorable: unknown[] = [], items: unkno
     // 的旧页面会打到新服务器，反过来也会。
     if (url.includes("api/sessions"))
       return new Response(JSON.stringify({ sessions, items }));
+    // 会话卡上的单标记点开时问的那条：{item, sessions, facets}，跟
+    // /api/items/:id 与 /api/items/by-session 的响应同一个形状。
+    if (url.includes("api/items/"))
+      return new Response(JSON.stringify({
+        item: items[0] ?? null,
+        sessions: [],
+        facets: [{ dim: "jira.status", value: "In Review" }],
+      }));
     if (url.includes("api/restorable")) return new Response(JSON.stringify(restorable));
     if (url.includes("api/language")) return new Response(JSON.stringify({ lang: "en" }));
     if (url.includes("api/version"))
@@ -166,15 +174,60 @@ test("the time cell names what the session last did", async () => {
   expect(text).toContain("3");
 });
 
+/**
+ * 等你回话的会话：状态格里一个沙漏加一个数字，而不是"等待你的回复"加右边一格
+ * "等你 10 分钟"——两格说同一件事，加起来吃掉半行。
+ */
 test("an idle session says how long it has been waiting on you", async () => {
   const root = await mount([
     session({ idle: true, lastAction: { kind: "run", target: "bun", epoch: NOW - 600 } }),
   ]);
-  const text = timeText(root);
-  expect(text).toContain("waiting");
-  expect(text).toContain("10");
+  const state = root.querySelector(".state") as unknown as HTMLElement;
+  expect(state).toBeTruthy();
+  expect(state.querySelector("svg")).toBeTruthy();
+  expect(state.textContent).toContain("10");
+  // 词没消失，进了 title / aria-label。
+  expect(state.getAttribute("title")).toContain("waiting");
+  expect(state.getAttribute("aria-label")).toBe(state.getAttribute("title"));
+  // 右边那一格整个不画了，而不是画一个空的——它带 margin-left:auto，空着也占位。
+  expect(root.querySelector(".time")).toBeNull();
   // Not the "ran bun" phrasing: idle is the one state that asks for action.
-  expect(text).not.toContain("ran");
+  expect(state.textContent).not.toContain("ran");
+});
+
+// 干活中和有未发送输入：只有图标，词在 title 里；右边那格照旧说它在干什么。
+// Claude 会话 UUID 的前缀也不画了：它长得像 git sha，实际是 transcript 文件名，
+// 扫列表时没人读它。数据仍在（恢复挑选器要用），只是卡片这一行不画。
+test("the card no longer prints the claude session id", async () => {
+  const root = await mount([session({ claudeId: "10c14050-c895-477c-8625-f7d1d30b3a62" })]);
+  expect(root.querySelector(".sid")).toBeNull();
+  expect(root.textContent ?? "").not.toContain("10c14050");
+});
+
+// 版本号每张卡片都一样、一个月变不了两次，却占着 agent 名旁边最显眼的位置。
+// 数据还在（后端照常给 session.version），只是这一行不再画它。
+test("the agent badge no longer prints the version", async () => {
+  const root = await mount([session({ agentLabel: "Claude Code", version: "2.1.258" })]);
+  expect(root.querySelector(".agent")?.textContent).toBe("Claude Code");
+  expect(root.querySelector(".agent-ver")).toBeNull();
+  expect(root.textContent ?? "").not.toContain("2.1.258");
+});
+
+test("a working session shows an icon, not the word", async () => {
+  const root = await mount([
+    session({ lastAction: { kind: "edit", target: "list.js", epoch: NOW - 180 } }),
+  ]);
+  const state = root.querySelector(".state") as unknown as HTMLElement;
+  expect(state.querySelector("svg")).toBeTruthy();
+  expect((state.textContent ?? "").trim()).toBe("");
+  expect(state.getAttribute("title")).toBe("Working");
+  expect(timeText(root)).toContain("list.js");
+});
+
+test("a session holding unsent input says so in the title", async () => {
+  const root = await mount([session({ pendingInput: "post 一下" })]);
+  const state = root.querySelector(".state") as unknown as HTMLElement;
+  expect(state.getAttribute("title")).toBe("unsent");
 });
 
 test("a session with no transcript falls back to a bare timestamp", async () => {
@@ -435,6 +488,38 @@ test("绑了单的会话行上显示单标题", async () => {
   expect(root.querySelector(".item-chip")?.textContent).toContain("把登录页的报错文案改掉");
 });
 
+// 反向那一半：一条会话通往它那张单的入口。卡片主链接里塞不下一个按钮（button
+// 嵌在 anchor 里既不合法，点它还会顺带把人送进终端页），所以它跟置顶、改挂、结束
+// 一样是一个具名动作，两个入口都画——宽屏露动作行，窄屏露 ⋯，由 CSS 决定。
+test("绑了单的会话，动作行和 ⋯ 里都有「查看这张单」", async () => {
+  const root = await mount([session({ name: "orbit", itemId: "it-1" })], {}, [], [ITEM]);
+  const inRow = [...root.querySelectorAll(".card-actions .card-act")]
+    .map((b) => b.textContent);
+  expect(inRow.some((text) => text?.includes("View the work item"))).toBe(true);
+
+  (root.querySelector(".more") as unknown as HTMLElement).click();
+  const inSheet = [...document.querySelectorAll(".sheet-menu .btn")].map((b) => b.textContent);
+  expect(inSheet).toContain("View the work item");
+});
+
+test("没绑单的会话不给这个入口", async () => {
+  const root = await mount([session({ name: "orbit", itemId: null })], {}, [], [ITEM]);
+  const labels = [...root.querySelectorAll(".card-actions .card-act")].map((b) => b.textContent);
+  expect(labels.some((text) => text?.includes("View the work item"))).toBe(false);
+});
+
+test("点「查看这张单」开出那张单的浮层", async () => {
+  const root = await mount([session({ name: "orbit", itemId: "it-1" })], {}, [], [ITEM]);
+  const view = [...root.querySelectorAll(".card-actions .card-act")]
+    .find((b) => b.textContent?.includes("View the work item")) as unknown as HTMLElement;
+  view.click();
+  await new Promise((r) => setTimeout(r, 50));
+  const panel = document.querySelector(".panel-backdrop")!;
+  expect(panel).toBeTruthy();
+  expect(panel.textContent).toContain("把登录页的报错文案改掉");
+  expect(panel.textContent).toContain("In Review");
+});
+
 test("没绑单的会话不画标记，也不炸", async () => {
   const root = await mount([session({ name: "orbit", itemId: null })], {}, [], [ITEM]);
   expect(root.querySelector(".name")?.textContent).toBe("orbit");
@@ -506,6 +591,16 @@ test("选一张单就 POST 到那张单的 bind 上，带的是这个会话名",
   expect(JSON.parse(req!.body)).toEqual({ session: "orbit" });
 });
 
+/**
+ * 菜单里按文字找那一格。
+ *
+ * 原先是 `.btn:nth-child(2)`——菜单里多一格（比如「查看这张单」只在挂着单时才画）
+ * 就会指到别的动作上，而那种错位不会报错，只会让测试悄悄测了另一个按钮。
+ */
+function menuItem(text: string) {
+  return [...document.querySelectorAll(".sheet-menu .btn")].find((b) => b.textContent === text);
+}
+
 // 已经挂着的会话，菜单上的字要变——「挂到单下」在这时候是句错话。
 test("已经挂着时菜单说的是改挂，并且给解除", async () => {
   const root = await mount([session({ itemId: "it-1" })], {}, [], [workItem()]);
@@ -513,7 +608,7 @@ test("已经挂着时菜单说的是改挂，并且给解除", async () => {
   const labels = [...document.querySelectorAll(".sheet-menu .btn")].map((b) => b.textContent);
   expect(labels).toContain("Move to another item");
 
-  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  clickIt(menuItem("Move to another item"));
   await new Promise((r) => setTimeout(r, 20));
   expect(document.querySelector(".pick-row")?.className).toContain("current");
   expect(document.querySelector(".btn.danger")?.textContent).toBe("Unlink");
@@ -522,7 +617,7 @@ test("已经挂着时菜单说的是改挂，并且给解除", async () => {
 test("解除关联走 DELETE，按会话名", async () => {
   const root = await mount([session({ name: "orbit", itemId: "it-1" })], {}, [], [workItem()]);
   await openMenu(root as never);
-  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  clickIt(menuItem("Move to another item"));
   await new Promise((r) => setTimeout(r, 20));
   clickIt(document.querySelector(".btn.danger"));
   await new Promise((r) => setTimeout(r, 60));
@@ -535,7 +630,7 @@ test("解除关联走 DELETE，按会话名", async () => {
 test("没挂着的时候不画解除", async () => {
   const root = await mount([session()], {}, [], [workItem()]);
   await openMenu(root as never);
-  clickIt(document.querySelector(".sheet-menu .btn:nth-child(2)"));
+  clickIt(menuItem("Link to a work item"));
   await new Promise((r) => setTimeout(r, 20));
   expect(document.querySelector(".btn.danger")).toBeNull();
 });
