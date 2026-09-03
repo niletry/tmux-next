@@ -36,6 +36,7 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 | **Session list** | A separate tab (`sessions.html`): every tmux session on the machine, what each was last asked to do, a preview of the last lines, a "waiting on you" dot, unsent input, last-active time |
 | **Interface language** | English or Chinese, switched from Settings; guessed from the browser on first visit |
 | **New session** | Pick an agent (Claude Code / opencode / pi), tap to pick a directory (drill down, or create one on the spot), optional name, optional skip-permissions, or resume a past conversation |
+| **Session templates** | Start a session from a work item with its name and first line of input pre-filled from a template — `{item.title}`, `{jira.summary}`, and so on. Created and edited from Settings |
 | **Terminal** | Width that adapts to the window, a soft-keyboard toolbar (Esc / Tab / ⇧Tab / Ctrl / arrows / ^C / ⏎), drag to scroll full-screen programs |
 | **Reconnect** | No buffering, no replay — a reconnect re-captures the whole screen from tmux |
 | **Lock-screen push** | Session ended, a turn finished and it's waiting, or Claude needs confirmation — pushed to your phone (Web Push; needs the hook + a subscription) |
@@ -181,6 +182,10 @@ On first startup, if `items.json` does not exist yet, tmux-next migrates any bin
 ### Syncing, refreshing, and archiving items
 
 The **Sync** button on the work-item list asks every enabled plugin that's backed by an external tracker to pull its issues and create or update the matching items; with no tracker configured it comes back reporting zero rather than failing. A single item with a `source` also gets its own **Refresh** button, for re-checking just that one issue's status, PRs, and checks without paying for a full sync — an item with no `source` (a local, unclaimed one) shows no refresh button at all. Any item can be archived and unarchived from its card; the toolbar's "Show archived" checkbox toggles whether archived items are included in the list.
+
+### Session templates
+
+Starting a session from a work item's card can offer a template picker: pick one, and it fills in the session name and the first line of input before you even reach the new-session page, using placeholders like `{item.title}`, `{item.ref}`, or a plugin's own fields (`{jira.summary}`, `{jira.description}`). A line whose only placeholders all came back empty is dropped rather than left half-written; a line with no placeholders is always kept. Templates are created and edited from Settings, where the available placeholders are listed for you to tap in — there are none until you add one, and with none defined the picker doesn't appear at all.
 
 ### Grouping and filtering the work-item list
 
