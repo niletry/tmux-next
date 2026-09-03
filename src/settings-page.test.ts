@@ -55,6 +55,13 @@ async function mount(search = "", opts: { settingsStatus?: number } = {}) {
       const href = String(u);
       if (init?.method && init.method !== "GET") {
         posted.push({ url: href, body: String(init.body ?? "") });
+        // PUT api/templates 学服务端的净化规则：label 为空的条目直接丢掉不存，
+        // 回净化后的那一份——这是"保存后拿响应重画列表"这条修复要验的行为。
+        if (href.includes("api/templates")) {
+          const sent = JSON.parse(String(init.body ?? "{}")).templates ?? [];
+          const clean = sent.filter((t: { label?: string }) => (t.label ?? "").trim() !== "");
+          return new Response(JSON.stringify({ templates: clean }));
+        }
         return new Response(JSON.stringify({ ok: true }));
       }
       if (href.includes("/settings")) {
@@ -77,6 +84,15 @@ async function mount(search = "", opts: { settingsStatus?: number } = {}) {
         return new Response(JSON.stringify({ name: "nord", ui: "catppuccin-latte" }));
       }
       if (href.includes("api/key-usage")) return new Response(JSON.stringify({}));
+      if (href.includes("api/templates")) {
+        return new Response(JSON.stringify({
+          templates: [{ id: "t1", label: "修 bug", name: "fix-{item.title}", input: "看看 {jira.summary}" }],
+          fieldKeys: [
+            "item.title", "item.id", "item.source", "item.agent", "item.sessions", "item.tag",
+            "jira.summary", "jira.status", "jira.epic", "jira.description",
+          ],
+        }));
+      }
       return new Response("{}");
     }) as typeof fetch,
   };
@@ -294,8 +310,16 @@ test("认不出来路就回默认页", async () => {
 test("声明了配置的插件各画一节", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
-  // 内核四节（语言、终端配色、界面配色、虚拟按键），加上声明了 settings 的那个插件
-  expect(headNames(root)).toEqual(["语言", "终端配色", "界面配色", "虚拟按键", "工单"]);
+  // 内核四节（语言、终端配色、界面配色、虚拟按键），加上声明了 settings 的那个插件，
+  // 再加上会话模板一节——后两节都要问服务端，跟插件几节一起晚一步到，所以顺序在最后。
+  expect(headNames(root)).toEqual([
+    "语言",
+    "终端配色",
+    "界面配色",
+    "虚拟按键",
+    "工单",
+    "会话模板",
+  ]);
 });
 
 test("密钥画成 password，且输入框是空的", async () => {
@@ -352,6 +376,133 @@ test("保存后给一句回执", async () => {
 test("读不到配置就不画那一节", async () => {
   const root = await mount("", { settingsStatus: 404 });
   await new Promise((r) => setTimeout(r, 80));
-  expect(root.querySelectorAll(".settings-head").length).toBe(4);
+  // 内核四节 + 模板一节（它跟 jira 设置是两条独立的请求，jira 答不上来不连累它）。
+  expect(root.querySelectorAll(".settings-head").length).toBe(5);
   expect(root.querySelector(".settings-form")).toBeNull();
+});
+
+/**
+ * 会话模板一节。
+ *
+ * 可用字段（内核的 + 已启用插件的）整份都来自服务端 GET /api/templates 的响应——
+ * 这里的 fetch 垫片模拟的就是 /api/server.ts 已经把两半拼好之后下发的样子，页面
+ * 自己不再读 registry.js 抄插件那一半。这里没有断言任何一个插件名，断言的只是
+ * "两半都出现了"。
+ */
+
+test("模板一节列出已有模板", async () => {
+  const doc = await mount();
+  expand(doc, "会话模板");
+  const labels = [...doc.querySelectorAll(".template-item input.settings-input")].map(
+    (n) => (n as unknown as HTMLInputElement).value,
+  );
+  expect(labels).toContain("修 bug");
+});
+
+test("可用字段既有内核的也有插件的", async () => {
+  const doc = await mount();
+  expand(doc, "会话模板");
+  const keys = [...doc.querySelectorAll(".template-key")].map((n) => n.textContent);
+  expect(keys).toContain("{item.title}");   // 服务端下发的
+  expect(keys).toContain("{jira.summary}"); // 插件清单里声明的
+});
+
+test("新建按钮多加一条", async () => {
+  const doc = await mount();
+  expand(doc, "会话模板");
+  const before = doc.querySelectorAll(".template-item").length;
+  (doc.querySelector(".template-new") as unknown as HTMLElement).click();
+  expect(doc.querySelectorAll(".template-item").length).toBe(before + 1);
+});
+
+test("删除按钮少一条", async () => {
+  const doc = await mount();
+  expand(doc, "会话模板");
+  const before = doc.querySelectorAll(".template-item").length;
+  (doc.querySelector(".template-item .template-del") as unknown as HTMLElement).click();
+  expect(doc.querySelectorAll(".template-item").length).toBe(before - 1);
+});
+
+// 服务端 sanitise() 会把 label 为空的条目直接丢掉不存（fetch 垫片照这条规则模拟）。
+// 保存按钮以前只看 res.ok 就说"已保存"，那一行原样留在屏幕上——磁盘上其实已经
+// 没有它了，界面在撒谎。修完之后保存要拿服务端吐回来的净化结果重画列表。
+test("保存后，label 是空的那一行被服务端丢掉，界面跟着消失", async () => {
+  const doc = await mount();
+  expand(doc, "会话模板");
+  (doc.querySelector(".template-new") as unknown as HTMLElement).click();
+  const rows = [...doc.querySelectorAll(".template-item")];
+  expect(rows.length).toBe(2);
+  // 新加的第二行：只填会话名，故意不填模板名（label）。
+  const secondInputs = rows[1]!.querySelectorAll("input.settings-input, textarea.settings-input");
+  (secondInputs[1] as unknown as HTMLInputElement).value = "no-label-session";
+
+  // 模板一节永远排在最后一节，它的保存按钮是文档里最后一个 .btn.primary——
+  // jira 插件配置那一节的保存按钮也叫这个类名，不能靠类名单独选。
+  const save = [...doc.querySelectorAll(".btn.primary")].at(-1) as unknown as HTMLElement;
+  save.click();
+  await new Promise((r) => setTimeout(r, 60));
+
+  expect(doc.querySelectorAll(".template-item").length).toBe(1);
+  const remaining = doc.querySelector(".template-item input.settings-input") as unknown as HTMLInputElement;
+  expect(remaining.value).toBe("修 bug");
+});
+
+// 删除的那一行如果正握着"chip 插到哪"的焦点记忆，得放掉——不然点 chip 会在一个
+// 已经脱离文档树的输入框上写 .value，既不报错也不生效，用户看到的就是"点了没
+// 反应"，而且这个 bug 不会体现在任何一个既有断言里（都是数 DOM 节点数）。
+test("删除正被记着焦点的那一行之后，点可用字段不会静默写到已经消失的输入框上", async () => {
+  const doc = await mount();
+  expand(doc, "会话模板");
+  (doc.querySelector(".template-new") as unknown as HTMLElement).click();
+  const rows = [...doc.querySelectorAll(".template-item")];
+  const row2 = rows[1]!;
+  const input2 = row2.querySelector("textarea.settings-input") as unknown as HTMLTextAreaElement;
+  const before = input2.value;
+
+  input2.dispatchEvent(new (globalThis as any).window.Event("focus", { bubbles: true }));
+  (row2.querySelector(".template-del") as unknown as HTMLElement).click();
+
+  // row2 连同它的输入框已经从文档里移走，点任意一个字段 chip 不该再改到它。
+  (doc.querySelector(".template-key") as unknown as HTMLElement).click();
+  expect(input2.value).toBe(before);
+});
+
+// 删光之后要把"还没有模板"那句放回来，否则这一节就剩一个空标题，看不出是
+// "没有模板"还是"没画出来"。
+test("删光所有模板，占位文案回来", async () => {
+  const doc = await mount();
+  expand(doc, "会话模板");
+  (doc.querySelector(".template-item .template-del") as unknown as HTMLElement).click();
+  expect(doc.querySelectorAll(".template-item").length).toBe(0);
+  const notes = [...doc.querySelectorAll(".template-list .settings-note")];
+  expect(notes.length).toBe(1);
+  expect(notes[0]!.textContent).toBe("还没有模板");
+});
+
+// readers 数组跟 DOM 行的同步是这一节最容易出错的地方：把 readers.splice 那行
+// 整个删掉，前面几条只数 DOM 节点数的测试也不会红一条。这条断言实际发出去的
+// body——删掉中间一行之后，PUT 里既不带被删的那条，其余顺序也不受影响。
+test("删掉中间一行再保存，PUT 的 body 不含被删的那条，其余顺序不变", async () => {
+  const doc = await mount();
+  expand(doc, "会话模板");
+  (doc.querySelector(".template-new") as unknown as HTMLElement).click();
+  (doc.querySelector(".template-new") as unknown as HTMLElement).click();
+  const rows = [...doc.querySelectorAll(".template-item")];
+  expect(rows.length).toBe(3);
+
+  const setLabel = (row: any, val: string) => {
+    (row.querySelector("input.settings-input") as unknown as HTMLInputElement).value = val;
+  };
+  setLabel(rows[1]!, "row-b");
+  setLabel(rows[2]!, "row-c");
+
+  (rows[1]!.querySelector(".template-del") as unknown as HTMLElement).click();
+
+  const save = [...doc.querySelectorAll(".btn.primary")].at(-1) as unknown as HTMLElement;
+  save.click();
+  await new Promise((r) => setTimeout(r, 60));
+
+  const req = posted.filter((p) => p.url.includes("api/templates")).at(-1)!;
+  const labels = (JSON.parse(req.body).templates as Array<{ label: string }>).map((t) => t.label);
+  expect(labels).toEqual(["修 bug", "row-c"]);
 });

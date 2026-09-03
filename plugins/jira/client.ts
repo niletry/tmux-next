@@ -1,4 +1,5 @@
 import type { JiraConfig } from "./config";
+import { adfToText } from "./adf";
 
 /**
  * Jira Cloud 的搜索接口，裁到渲染要用的那几个字段。
@@ -179,5 +180,40 @@ export async function fetchIssue(
     return issue ? { ok: true, issue } : { ok: false, reason: "query" };
   } catch {
     return { ok: false, reason: "unreachable" };
+  }
+}
+
+/**
+ * 一个单的描述正文，纯文本。拿不到就是 null。
+ *
+ * 单独一发、单独一个 fields 参数，**不把 description 并进共享的 FIELDS**：那个常量是
+ * 工单列表用的，一次拉五十条，把正文并进去等于让每次开首页都多下载几十 KB 富文本，
+ * 而列表一个字都不显示它。
+ */
+export async function fetchIssueDescription(
+  config: JiraConfig,
+  key: string,
+  fetcher: typeof fetch = fetch,
+): Promise<string | null> {
+  const auth = "Basic " + btoa(`${config.email}:${config.token}`);
+  let res: Response;
+  try {
+    res = await fetcher(
+      `${config.url}/rest/api/3/issue/${encodeURIComponent(key)}?fields=description`,
+      {
+        headers: { authorization: auth, accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      },
+    );
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  try {
+    const body = (await res.json()) as { fields?: { description?: unknown } };
+    const text = adfToText(body?.fields?.description);
+    return text || null;
+  } catch {
+    return null;
   }
 }

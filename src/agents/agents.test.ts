@@ -110,3 +110,57 @@ test("availability is probed through a login shell, as launching will be", async
   const { PROBE_SHELL_FLAGS } = await import("./availability");
   expect(PROBE_SHELL_FLAGS).toEqual(["-lc"]);
 });
+
+/**
+ * readyMarker 跟 idleMarker 是两件事，这几条断言就是为了钉住这个区别。
+ *
+ * 起因是一次实测证伪：claude 的 idleMarker 匹配的是「一轮跑完了」（"✻ Sautéed for 9s"），
+ * 一个刚起来、还没跑过任何一轮的会话**从来不打印这行**。照 idleMarker 去判断"能不能敲
+ * 字了"，对 claude 会 100% 走到超时。下面三段屏幕都是从真实会话抓下来的。
+ */
+
+// 空闲等待中的 claude：屏幕底部就是孤零零一行 ❯。
+const READY_SCREEN = `  ⎿  Read lib/ledger.rb (111 lines)
+
+──────────────────────────────────── 查看单子问题 ─
+❯
+────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)`;
+
+// 刚跑完一轮、但输入框里已经有字：idleMarker 命中，readyMarker 不该命中。
+const DONE_SCREEN = `  没有待办。五个 PR 开着、CI 全绿。
+
+✻ Sautéed for 9s · done 3:05 PM
+
+────────────────────────────────────────────────────
+❯ 清理 worktree 和容器
+────────────────────────────────────────────────────`;
+
+// 弹着选择菜单：两个标记都不该命中——菜单亮着的时候敲字会变成对菜单的回答。
+const MENU_SCREEN = `  4. Type something.
+──────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel`;
+
+const hits = (screen: string, re: RegExp) => screen.split("\n").some((line) => re.test(line));
+
+test("每个 agent 都声明了 readyMarker", () => {
+  for (const id of ["claude", "pi", "opencode"]) {
+    expect(agentOf(id).screen.readyMarker).toBeInstanceOf(RegExp);
+  }
+});
+
+test("空提示行是 claude 的就绪信号", () => {
+  expect(hits(READY_SCREEN, agentOf("claude").screen.readyMarker)).toBe(true);
+});
+
+test("「一轮跑完了」不等于就绪：输入框里有字时不该敲进去", () => {
+  expect(hits(DONE_SCREEN, agentOf("claude").screen.idleMarker)).toBe(true);
+  expect(hits(DONE_SCREEN, agentOf("claude").screen.readyMarker)).toBe(false);
+});
+
+test("弹着菜单时两个标记都不命中", () => {
+  expect(hits(MENU_SCREEN, agentOf("claude").screen.readyMarker)).toBe(false);
+  expect(hits(MENU_SCREEN, agentOf("claude").screen.idleMarker)).toBe(false);
+});

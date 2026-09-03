@@ -1,5 +1,5 @@
 import { readJiraConfig, writeJiraConfig, DEFAULT_JQL, type JiraConfig } from "./config";
-import { fetchIssue, fetchIssues, type Issue, type IssuesResult } from "./client";
+import { fetchIssue, fetchIssues, fetchIssueDescription, type Issue, type IssuesResult } from "./client";
 import { fetchDev, type DevResult } from "./dev";
 import { syncIssues } from "./sync";
 import { readItems, ensureItemForSource } from "../../src/items";
@@ -205,6 +205,18 @@ function typeKey(issue: Issue): string {
   return "";
 }
 
+/**
+ * 一张单的史诗名，不是史诗就是 null。
+ *
+ * `facetsFor`（卡片上的 chip）和 `fields()`（模板占位符）都要这条判断，抽出来是
+ * 因为两处各写一份迟早会飘——只有父级层级确实是史诗（`hierarchy >= 1`）才算，把
+ * 子任务的父任务标成史诗是错的；summary 拿不到就退到 key，好过一个空字符串。
+ */
+function epicSummaryOf(issue: Issue): string | null {
+  if (!issue.parent || issue.parent.hierarchy < 1) return null;
+  return issue.parent.summary || issue.parent.key;
+}
+
 export function facetsFor(
   item: ItemRef,
   issues: Map<string, Issue>,
@@ -239,9 +251,8 @@ export function facetsFor(
   // 史诗名走 `parent`，不是一个独立的 epicName 字段：`parent` 同时装着普通工单的
   // 史诗和子任务的父任务，`hierarchy >= 1` 才是史诗——跟 public/filter.js 的
   // epicKeyOf 和 public/jira.js 里卡片上的判断保持一致。
-  if (issue.parent && issue.parent.hierarchy >= 1) {
-    facets.push({ dim: "jira.epic", value: issue.parent.summary || issue.parent.key });
-  }
+  const epic = epicSummaryOf(issue);
+  if (epic) facets.push({ dim: "jira.epic", value: epic });
   // 未分配是 null，不产出维度——"没有负责人"和"负责人是某个空值"是两回事，
   // 混成一个维度会让卡片上出现一个读不出意思的 chip。
   if (issue.assignee) {
@@ -310,6 +321,68 @@ export async function enrich(items: ItemRef[]): Promise<Record<string, Facet[]>>
     const facets = facetsFor(item, issueMap, devMap);
     if (facets.length) out[item.id] = facets;
   }
+  return out;
+}
+
+/**
+ * 描述正文的缓存。跟 dev 那份同样的道理：它要一次真实的请求，而模板选择器在同一张单上
+ * 很可能被点好几下（换个模板看看）。
+ *
+ * `text` 存的是 `string | null`，跟"这个键在不在 Map 里"是两件不同的事：一个单
+ * 真的没有描述，缓存值就是 `null`，跟"还没问过"（`descCache` 里根本没有这个键）
+ * 分得清清楚楚——混起来会让"没有描述的单"每次 fields() 都当成没问过，重新发一次
+ * 请求，而这在页面上完全看不出来，只有 Jira 那边的调用量会悄悄涨。
+ */
+export const DESC_CACHE_MS = 5 * 60_000;
+const descCache = new Map<string, { at: number; text: string | null }>();
+
+/**
+ * 取一个单的描述正文：读配置、发一次请求。`fields()` 默认用它，测试注入一个假的
+ * 进去——理由跟这个仓库别处的默认参数一样（`collectFields(item, sources =
+ * FIELD_SOURCES)`、`fetchIssues(config, fetcher = fetch)`）：不注入就没法在不出网
+ * 的前提下证明缓存那几条边界（命中不重问、过期才重问、null 也走缓存）真的成立。
+ */
+async function fetchDescription(key: string): Promise<string | null> {
+  const config = await readJiraConfig();
+  return config ? await fetchIssueDescription(config, key) : null;
+}
+
+/**
+ * 一张单喂给模板的字段。
+ *
+ * 便宜的那几格直接从工单列表的缓存里取——它们本来就在内存里。只有描述正文要发一次请求，
+ * 这也正是 fields 的预算是 5 秒而不是 enrich 的 300 毫秒的原因。
+ *
+ * `getDescription` 和 `now` 都是可选的注入点，真实现（发请求、`Date.now`）做默认值：
+ * 前者让测试不用出网就能断言请求发没发；后者让测试不用真的等 5 分钟就能断言缓存过期。
+ */
+export async function fields(
+  item: ItemRef,
+  getDescription: (key: string) => Promise<string | null> = fetchDescription,
+  now: () => number = Date.now,
+): Promise<Record<string, string>> {
+  if (item.source?.provider !== "jira") return {};
+  const key = item.source.ref;
+
+  const out: Record<string, string> = {};
+  const issue = cache?.result.ok ? cache.result.issues.find((i) => i.key === key) : undefined;
+  if (issue) {
+    out["jira.summary"] = issue.summary;
+    out["jira.status"] = issue.status;
+    out["jira.type"] = issue.type;
+    if (issue.assignee) out["jira.assignee"] = issue.assignee;
+    const epic = epicSummaryOf(issue);
+    if (epic) out["jira.epic"] = epic;
+  }
+
+  const hit = descCache.get(key);
+  let description = hit && now() - hit.at < DESC_CACHE_MS ? hit.text : undefined;
+  if (description === undefined) {
+    description = await getDescription(key);
+    descCache.set(key, { at: now(), text: description });
+  }
+  if (description) out["jira.description"] = description;
+
   return out;
 }
 

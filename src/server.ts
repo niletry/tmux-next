@@ -9,15 +9,20 @@ import {
   SERVERS,
   enabledPlugins,
   collectFacets,
+  collectFields,
   runSync,
   refreshFromSource,
   pluginSettings,
   savePluginSettings,
 } from "../plugins/handlers";
 import type { Facet } from "../plugins/types";
+import { readTemplates, writeTemplates } from "./templates";
+import { render, sanitiseName } from "./template";
+import { kernelFields, KERNEL_FIELD_KEYS } from "./item-fields";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { sendText } from "./tmux/send-text";
+import { primeSession } from "./tmux/prime";
 import { dedupeBySession, readSessionRecords, restorable, restoreRecord } from "./claude-sessions";
 import { createDirectory, listDirectories, resolveDirectory } from "./paths";
 import { PaneSession } from "./tmux/pane-session";
@@ -104,6 +109,7 @@ async function createSessionResponse(req: Request): Promise<Response> {
     skipPermissions?: unknown;
     resume?: unknown;
     agent?: unknown;
+    initialInput?: unknown;
   };
   try {
     body = await req.json();
@@ -142,6 +148,18 @@ async function createSessionResponse(req: Request): Promise<Response> {
   const result = await createSession(dir.path, body.name, await sessionNames(), command);
   if (!result.ok) {
     return Response.json({ error: result.reason }, { status: CREATE_STATUS[result.reason] ?? 400 });
+  }
+
+  // 首条输入。收的是**最终文本**而不是模板——用户在创建页的框里改过的那一版才是他要发
+  // 的，服务端再渲染一次会把那些修改悄悄丢掉。
+  //
+  // 不 await：会话已经建好了，页面该立刻跳过去。等 agent 就绪要二十秒，把响应压在那里
+  // 等于让人盯着一个转圈的按钮看。失败一律无声——跟 new.js 里绑定失败不拦导航同一条
+  // 语义：会话本身已经是用户要的东西。
+  const initial = typeof body.initialInput === "string" ? body.initialInput.trim() : "";
+  // created 为假意味着复用了一个已经存在的会话。往一个正在跑的会话里敲字是错的。
+  if (initial && result.created) {
+    void primeSession(result.name, initial, body.agent).catch(() => {});
   }
 
   return Response.json({ name: result.name, created: result.created });
@@ -363,6 +381,31 @@ export function startServer(
         return Response.json(item, { status: 201 });
       }
 
+      if (url.pathname === "/api/templates" && req.method === "GET") {
+        // fieldKeys 跟模板一起下发：设置页要把"可用字段"列给模板作者，而内核字段名
+        // 是内核的事实。让页面自己抄一份，两处就会飘，飘了之后列出来的键名依然长得
+        // 很像真的，没有任何东西会红。插件字段名同理——这里下发的是*启用*插件的
+        // fieldKeys，不是编译进去的全部插件；`TMUX_NEXT_DISABLE_PLUGINS` 关掉一个
+        // 插件时，它的占位符 chip 不该继续出现在设置页上，模板里插了也换不出字来。
+        const pluginFieldKeys = enabledPlugins().flatMap((p) => p.fieldKeys || []);
+        return Response.json({
+          templates: await readTemplates(),
+          fieldKeys: [...KERNEL_FIELD_KEYS, ...pluginFieldKeys],
+        });
+      }
+
+      if (url.pathname === "/api/templates" && req.method === "PUT") {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return new Response("bad json", { status: 400 });
+        }
+        // 整份替换。回的是净化之后的那一份，页面据此更新，不必自己猜净化结果。
+        const templates = await writeTemplates((body as Record<string, unknown>)?.templates);
+        return Response.json({ templates });
+      }
+
       // 这条 DELETE 必须排在下面的 PATCH（^/api/items/([^/]+)$）之前，否则
       // "bind" 会被那条正则当成一个 item id 吞掉。方法不同实际不会撞，但顺序
       // 写对，省掉一次将来的踩坑。
@@ -415,6 +458,43 @@ export function startServer(
         const ok = await refreshFromSource(found.source.provider, found.source.ref);
         if (!ok) return new Response("no source", { status: 404 });
         return Response.json({ ok: true });
+      }
+
+      const itemRender = url.pathname.match(/^\/api\/items\/([^/]+)\/render$/);
+      if (itemRender && req.method === "POST") {
+        let body: unknown;
+        try {
+          body = await req.json();
+        } catch {
+          return new Response("bad json", { status: 400 });
+        }
+        const b = body as Record<string, unknown>;
+        const id = decodeURIComponent(itemRender[1]!);
+        const item = (await readItems()).find((i) => i.id === id);
+        if (!item) return new Response("no such item", { status: 404 });
+
+        // 收的是模板串，不是 templateId：渲染因此跟"模板存在哪"完全解耦，设置页能边编辑
+        // 边看真实预览而不必先存盘。
+        const nameTpl = typeof b?.name === "string" ? b.name : "";
+        const inputTpl = typeof b?.input === "string" ? b.input : "";
+
+        // 插件的字段先铺，内核的后盖。collectFields 已经挡住了 item.* 前缀，这个顺序
+        // 只是第二道——两道都在，是因为这张表最终会被当成"这张单的事实"用。
+        const fields = {
+          ...(await collectFields({
+            id: item.id,
+            source: item.source ? { provider: item.source.provider, ref: item.source.ref } : null,
+          })),
+          ...kernelFields(item),
+        };
+        // 会话名那一半还要过 sanitiseName：框里显示的必须就是最终真正会用的名字，否则
+        // 模板渲染出"修登录页。"这种带点号的名字，用户会在提交时撞上一个
+        // validateRequestedName 的 400——而那个错不是他造成的。净化不出来（null）时给空串,
+        // 等于"没提供名字"，服务端按目录生成，正是既有的默认路径。
+        //
+        // validateRequestedName 本身不改：人手打一个点号仍然该得到诚实的报错。
+        const name = sanitiseName(render(nameTpl, fields)) ?? "";
+        return Response.json({ name, input: render(inputTpl, fields) });
       }
 
       // 这条必须排在下面的 ^/api/items/([^/]+)$ 之前，否则 "by-session" 会被那

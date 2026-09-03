@@ -34,9 +34,10 @@ happy-dom（页面测试）、真实 tmux（integration）。
   一份字典里"而变红，这正是它存在的理由。
 - **`public/` 里会渲染的模块必须有渲染它的测试**（happy-dom）。DOM shim 必须还原它替换掉的
   全局对象 —— Bun 一个进程跑所有测试文件，覆盖 `fetch` 不还原会连累别的文件。
-- 现有的红：这套测试有一条稳定的 9 失败 / 1 错误的尾巴，来自历史上某次测试删掉了 tmux
-  服务器的工作目录（见 CLAUDE.md）。**它跟本计划无关，不要去追**。判断"我有没有弄红"的
-  办法是跟改动前的失败数比，不是跟 0 比。
+- **基线是 0 失败。** 本分支的工作区实测 `bun test` = 2047 pass / 0 fail / 101 个文件。
+  CLAUDE.md 里记的那条"稳定 9 失败"的历史尾巴，依赖开发机上那台工作目录被删掉的 tmux
+  服务器，这个 worktree 里不存在。所以：**任何一条红都是本次引入的，必须修**，不许用
+  "已知的历史尾巴"解释掉。
 
 ---
 
@@ -869,7 +870,7 @@ git commit -m "模板存盘：templates.json 的读写
 - Test: `src/templates-api.test.ts`
 
 **Interfaces:**
-- Consumes: `readTemplates`/`writeTemplates`（Task 4）、`render`（Task 1）、
+- Consumes: `readTemplates`/`writeTemplates`（Task 4）、`render`/`sanitiseName`（Task 1）、
   `kernelFields`/`KERNEL_FIELD_KEYS`（Task 2）、`collectFields`（Task 3）、`readItems`（已有）
 - Produces:
   - `GET /api/templates` → `{ templates: SessionTemplate[], fieldKeys: string[] }`
@@ -985,6 +986,17 @@ test("render 对本地单也能用，来源那几格渲染成空并删行", asyn
   expect(await res.json()).toEqual({ name: "随手记一件事", input: "做 随手记一件事" });
 });
 
+// 会话名要能真的当会话名用：tmux 把 . 和 : 当 session:window.pane 的分隔符，带上它们的
+// 会话之后连 kill 都 kill 不掉。所以框里显示的必须是净化之后的那一版。
+test("render 的会话名过了净化，点号被剔除", async () => {
+  const item = await makeItem("修登录页。v2");
+  const res = await json(`/api/items/${item.id}/render`, "POST", {
+    name: "{item.title}",
+    input: "",
+  });
+  expect((await res.json()).name).toBe("修登录页v2");
+});
+
 test("单不存在是 404", async () => {
   const res = await json("/api/items/it-nope/render", "POST", { name: "x", input: "y" });
   expect(res.status).toBe(404);
@@ -1012,7 +1024,7 @@ Expected: FAIL —— `/api/templates` 走到 404
 
 ```ts
 import { readTemplates, writeTemplates } from "./templates";
-import { render } from "./template";
+import { render, sanitiseName } from "./template";
 import { kernelFields, KERNEL_FIELD_KEYS } from "./item-fields";
 import { collectFields } from "../plugins/handlers";
 ```
@@ -1072,7 +1084,14 @@ import { collectFields } from "../plugins/handlers";
           })),
           ...kernelFields(item),
         };
-        return Response.json({ name: render(nameTpl, fields), input: render(inputTpl, fields) });
+        // 会话名那一半还要过 sanitiseName：框里显示的必须就是最终真正会用的名字，否则
+        // 模板渲染出"修登录页。"这种带点号的名字，用户会在提交时撞上一个
+        // validateRequestedName 的 400——而那个错不是他造成的。净化不出来（null）时给空串,
+        // 等于"没提供名字"，服务端按目录生成，正是既有的默认路径。
+        //
+        // validateRequestedName 本身不改：人手打一个点号仍然该得到诚实的报错。
+        const name = sanitiseName(render(nameTpl, fields)) ?? "";
+        return Response.json({ name, input: render(inputTpl, fields) });
       }
 ```
 
@@ -1759,6 +1778,7 @@ git commit -m "创建页：选一个模板，会话名和首条输入一起填�
 **Files:**
 - Modify: `public/settings.js`
 - Modify: `public/i18n.js`
+- Modify: `plugins/jira/plugin.js`（加 `fieldKeys`）
 - Test: `src/settings-page.test.ts`（扩）
 
 **Interfaces:**
@@ -1795,6 +1815,28 @@ git commit -m "创建页：选一个模板，会话名和首条输入一起填�
   "settings.templateKeys": "Available fields (tap to insert)",
   "settings.templateEmpty": "No templates yet",
 ```
+
+- [ ] **Step 1b: jira 清单声明它的字段**
+
+`plugins/jira/plugin.js` 的 `facetDims` 之后加：
+
+```js
+  // 模板可以引用的字段。设置页照着这个列"可用字段"给模板作者点选。
+  // 跟 facetDims 不同：**这些不是 i18n 键**，原样显示、不翻译——模板作者要打的就是这串字。
+  // src/i18n.test.ts 只扫 titleKey: 和 facetDims: 两个字面量，不会把这里的值当成待翻译的键。
+  fieldKeys: [
+    "jira.summary",
+    "jira.status",
+    "jira.type",
+    "jira.epic",
+    "jira.assignee",
+    "jira.description",
+  ],
+```
+
+这一步放在本任务而不是 Task 11（Jira 的 `fields()` 实现），是因为下一步的测试要断言"可用
+字段里既有内核的也有插件的"，而这条断言需要清单里真的有插件字段。清单是纯数据、不引任何
+`.ts`，放在这里不破坏"清单与服务端两张表"那条界线。
 
 - [ ] **Step 2: 写失败的测试**
 
@@ -1998,7 +2040,8 @@ Expected: 全绿
 - [ ] **Step 7: 提交**
 
 ```bash
-git add public/settings.js public/i18n.js public/style.css src/settings-page.test.ts
+git add public/settings.js public/i18n.js public/style.css plugins/jira/plugin.js \\
+        src/settings-page.test.ts
 git commit -m "设置页：模板的增删改，以及可用字段的提示
 
 可用字段分两半：内核那几个由服务端下发，插件那几个从 registry.js 里读它们自己
@@ -2256,20 +2299,8 @@ import 里补上 `fetchIssueDescription`。
 `plugins/handlers.ts` 的 jira import 加 `fields as jiraFields`，`SERVERS.jira` 里加
 `fields: jiraFields,`。
 
-`plugins/jira/plugin.js` 的 `facetDims` 之后加：
-
-```js
-  // 模板可以引用的字段。设置页照着这个列"可用字段"给模板作者点选。
-  // 跟 facetDims 不同：**这些不是 i18n 键**，原样显示、不翻译。
-  fieldKeys: [
-    "jira.summary",
-    "jira.status",
-    "jira.type",
-    "jira.epic",
-    "jira.assignee",
-    "jira.description",
-  ],
-```
+（`plugins/jira/plugin.js` 的 `fieldKeys` 在 Task 10 里已经加过 —— 它是纯清单数据，放在
+设置页那个任务里，好让那一节的测试有真实的插件字段可断言。这里不必再动。）
 
 - [ ] **Step 8: 跑全套相关测试**
 
@@ -2282,7 +2313,7 @@ i18n 键** —— 它只扫 `titleKey:` 和 `facetDims:` 两个字面量，所�
 
 ```bash
 git add plugins/jira/adf.ts plugins/jira/adf.test.ts plugins/jira/client.ts \
-        plugins/jira/server.ts plugins/jira/plugin.js plugins/handlers.ts
+        plugins/jira/server.ts plugins/handlers.ts
 git commit -m "Jira：把摘要、状态、史诗和描述正文喂给模板
 
 描述正文单独一发、单独一个 fields 参数，不并进共享的 FIELDS——那个常量一次拉五十条，
@@ -2320,8 +2351,7 @@ ADF 转纯文本用迭代不用递归：描述是别人写的，嵌套深度没�
 - [ ] **Step 3: 跑全套**
 
 Run: `bun run test`
-Expected: 跟动手之前的失败数一致（记住：有一条稳定的 9 失败 / 1 错误的历史尾巴，
-跟本计划无关）。**如果多出新的失败，那是本计划引入的，要修。**
+Expected: **0 失败**（基线就是 2047 pass / 0 fail）。任何一条红都是本计划引入的，要修。
 
 - [ ] **Step 4: 提交**
 

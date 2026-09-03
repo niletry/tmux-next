@@ -100,6 +100,17 @@ export type Agent = {
     chrome: RegExp[];
     /** Printed when a turn ends and the agent is waiting on the user. */
     idleMarker: RegExp;
+    /**
+     * 这个 agent 的输入框空着、可以收一行字了。
+     *
+     * **跟 idleMarker 是两件事，不能合并。** idleMarker 说的是"一轮跑完了"，claude 用
+     * 它匹配 "✻ Sautéed for 9s" 这类行——一个刚起来、还没跑过任何一轮的会话从来不打印
+     * 它。会话建完之后自动敲一句首条输入（src/tmux/prime.ts）要问的是"能不能敲了"，用
+     * idleMarker 判断对 claude 会 100% 超时。
+     *
+     * 三个 agent 眼下取值相同（空提示行），但那是巧合，不是同一个概念。
+     */
+    readyMarker: RegExp;
   };
 };
 
@@ -134,6 +145,7 @@ const claude: Agent = {
     ],
     // e.g. "✻ Cogitated for 1m 21s"
     idleMarker: /^\s*[✻✽✢·*]\s+\S+ for \d/,
+    readyMarker: /^\s*(?:>|❯)\s*$/,
   },
 };
 
@@ -150,6 +162,7 @@ const opencode: Agent = {
   screen: {
     chrome: [BOX_ONLY, /^\s*\/help\s*$/, /esc to interrupt/i],
     idleMarker: /^\s*(?:>|❯)\s*$/,
+    readyMarker: /^\s*(?:>|❯)\s*$/,
   },
 };
 
@@ -166,6 +179,7 @@ const pi: Agent = {
   screen: {
     chrome: [BOX_ONLY, /ctrl\+c to (?:quit|interrupt)/i],
     idleMarker: /^\s*(?:>|❯)\s*$/,
+    readyMarker: /^\s*(?:>|❯)\s*$/,
   },
 };
 

@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { fetchIssue, fetchIssues } from "./client";
+import { fetchIssue, fetchIssues, fetchIssueDescription } from "./client";
 import type { JiraConfig } from "./config";
 
 /**
@@ -245,4 +245,55 @@ test("未分配时 assignee 是 null，不抛", async () => {
   const body = { issues: [{ id: "1", key: "EXAMPLE-1", fields: { assignee: null } }] };
   const res = await fetchIssues(CONFIG, fakeFetch(200, body));
   expect(res.ok && res.issues[0]!.assignee).toBeNull();
+});
+
+// ---- 描述正文 -------------------------------------------------------------
+//
+// fields 整条路的失败语义是"拿不到就当没有"：这里的每一种"拿不到"（HTTP 层错误、
+// 请求本身抛出、json 解析不出来）都必须归到同一个 null，不能有任何一种把 Jira
+// 的原始响应体透传出去（里面带账号信息，跟 fetchIssues/fetchIssue 是同一条线）。
+
+test("正常返回 ADF，转成纯文本", async () => {
+  const body = {
+    fields: {
+      description: {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "登录页在窄屏下换行" }] }],
+      },
+    },
+  };
+  const text = await fetchIssueDescription(CONFIG, "EXAMPLE-1", fakeFetch(200, body));
+  expect(text).toBe("登录页在窄屏下换行");
+});
+
+test("请求只问 description 这一个字段，不是 FIELDS 那一整份", async () => {
+  let seen: Request | undefined;
+  await fetchIssueDescription(CONFIG, "EXAMPLE-1", fakeFetch(200, { fields: {} }, (r) => (seen = r)));
+  const url = new URL(seen!.url);
+  expect(url.pathname).toBe("/rest/api/3/issue/EXAMPLE-1");
+  expect(url.searchParams.get("fields")).toBe("description");
+});
+
+test("res.ok 为假时返回 null，不抛也不透传响应体", async () => {
+  const text = await fetchIssueDescription(CONFIG, "EXAMPLE-1", fakeFetch(404, { errorMessages: ["secret account info"] }));
+  expect(text).toBeNull();
+});
+
+test("fetcher 本身抛异常（超时/DNS）时返回 null", async () => {
+  const throwing = (async () => {
+    throw new Error("network down");
+  }) as unknown as typeof fetch;
+  const text = await fetchIssueDescription(CONFIG, "EXAMPLE-1", throwing);
+  expect(text).toBeNull();
+});
+
+test("description 是 null（没写描述）时返回 null，不是空字符串", async () => {
+  const text = await fetchIssueDescription(CONFIG, "EXAMPLE-1", fakeFetch(200, { fields: { description: null } }));
+  expect(text).toBeNull();
+});
+
+test("adfToText 转出空串（比如 ADF 里只有空段落）时也当没有，不返回空字符串", async () => {
+  const body = { fields: { description: { type: "doc", content: [] } } };
+  const text = await fetchIssueDescription(CONFIG, "EXAMPLE-1", fakeFetch(200, body));
+  expect(text).toBeNull();
 });

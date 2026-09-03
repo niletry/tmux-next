@@ -40,6 +40,13 @@ function stubFetch(overrides: Record<string, unknown> = {}) {
       });
     if (url.includes("api/language")) return body("language", { lang: "zh" });
     if (url.includes("api/history")) return body("history", { conversations: [] });
+    if (url.includes("api/templates"))
+      return body("templates", {
+        templates: [{ id: "tpl-1", label: "修 bug", name: "{item.ref}", input: "修 {item.title}" }],
+        fieldKeys: ["item.title", "item.ref"],
+      });
+    if (url.includes("/render"))
+      return body("render", { name: "EXAMPLE-1", input: "修 修登录页" });
     return new Response("{}");
   }) as typeof fetch;
 }
@@ -99,6 +106,11 @@ async function mount(fetchImpl = stubFetch(), path = "/new.html") {
   await import(`${PAGE}?t=${Math.random()}`);
   await new Promise((r) => setTimeout(r, 250));
   return doc.getElementById("new")!;
+}
+
+/** `mount` 的薄封装：按 `search` 拼出 `/new.html?...` 这个路径。 */
+async function mountNewPage(opts: { search?: string; fetchImpl?: typeof fetch } = {}) {
+  return mount(opts.fetchImpl ?? stubFetch(), `/new.html${opts.search ?? ""}`);
 }
 
 test("the directory listing renders", async () => {
@@ -264,4 +276,84 @@ test("目录不存在时那行「新建」带图标，而不是运行时炸掉",
   expect(make).not.toBeNull();
   expect(make!.querySelector("svg")).not.toBeNull();
   expect(make!.textContent).toContain("brand-new-dir");
+});
+
+// ---- 会话模板（Task 9） -----------------------------------------------------
+
+test("带 ?item= 且有模板时，画出模板选择器", async () => {
+  const doc = await mountNewPage({ search: "?item=it-1" });
+  const chips = [...doc.querySelectorAll(".template-chip")].map((n) => n.textContent);
+  expect(chips).toContain("不用模板");
+  expect(chips).toContain("修 bug");
+});
+
+// 没有单就没有字段，每个占位符都会渲染成空——给一个必然产出空模板的选择器只是噪音。
+test("没有 ?item= 时不画模板选择器", async () => {
+  const doc = await mountNewPage({ search: "" });
+  expect(doc.querySelector(".template-chip")).toBeNull();
+});
+
+test("选中一个模板，会话名和首条输入都被填上", async () => {
+  const doc = await mountNewPage({ search: "?item=it-1" });
+  const chip = [...doc.querySelectorAll(".template-chip")].find(
+    (n) => n.textContent === "修 bug",
+  ) as unknown as HTMLElement;
+  chip.click();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect((doc.querySelector(".field.name-field") as unknown as HTMLInputElement).value).toBe("EXAMPLE-1");
+  expect((doc.querySelector(".field.initial") as unknown as HTMLTextAreaElement).value).toBe("修 修登录页");
+});
+
+// 点模板 A、再点"不用模板"、A 的响应晚到：晚到的响应不能把已经清空、已经隐藏的
+// 输入框重新填上——那样用户会在看不见首条输入框的情况下按下"创建"，一段他明确
+// 拒绝过的文字就这样敲进了 agent 会话。见 pickTemplate 里 `chosenTemplate !== t.id`
+// 那道守卫；这条测试专守它。
+test("选模板后又选'不用模板'，晚到的模板响应不会把输入框重新填上", async () => {
+  let resolveRender: (r: Response) => void = () => {};
+  const renderPromise = new Promise<Response>((resolve) => { resolveRender = resolve; });
+  const fetchImpl = (async (u: unknown) => {
+    const url = String(u);
+    if (url.includes("/render")) return renderPromise;
+    if (url.includes("api/directories"))
+      return new Response(JSON.stringify({ home: "/Users/x", recent: ["/tmp", "/srv"] }));
+    if (url.includes("api/dirs")) return new Response(JSON.stringify(DIRS));
+    if (url.includes("api/agents"))
+      return new Response(JSON.stringify({
+        agents: [{ id: "claude", label: "Claude Code", supportsSkipPermissions: true, available: true }],
+      }));
+    if (url.includes("api/language")) return new Response(JSON.stringify({ lang: "zh" }));
+    if (url.includes("api/history")) return new Response(JSON.stringify({ conversations: [] }));
+    if (url.includes("api/templates"))
+      return new Response(JSON.stringify({
+        templates: [{ id: "tpl-1", label: "修 bug", name: "{item.ref}", input: "修 {item.title}" }],
+        fieldKeys: ["item.title", "item.ref"],
+      }));
+    return new Response("{}");
+  }) as typeof fetch;
+
+  const doc = await mountNewPage({ search: "?item=it-1", fetchImpl });
+
+  const chipA = [...doc.querySelectorAll(".template-chip")].find(
+    (n) => n.textContent === "修 bug",
+  ) as unknown as HTMLElement;
+  chipA.click(); // A 的请求已经发出，还没回来
+
+  const chipNone = [...doc.querySelectorAll(".template-chip")].find(
+    (n) => n.textContent === "不用模板",
+  ) as unknown as HTMLElement;
+  chipNone.click(); // 用户随即改主意，框应该已经清空并隐藏
+
+  const initialField = doc.querySelector(".field.initial") as unknown as HTMLTextAreaElement;
+  expect(initialField.value).toBe("");
+  expect(initialField.style.display).toBe("none");
+
+  // 现在放行 A 的响应
+  resolveRender(new Response(JSON.stringify({ name: "EXAMPLE-1", input: "修 修登录页" })));
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(initialField.value).toBe("");
+  expect(initialField.style.display).toBe("none");
 });

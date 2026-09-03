@@ -416,6 +416,164 @@ function pluginSection(plugin, values) {
 }
 
 /**
+ * 会话模板的增删改。
+ *
+ * 可用字段（内核的 + 已启用插件的）整份由服务端跟模板一起下发（GET /api/templates 的
+ * fieldKeys）——这一页不再从同构的 registry.js 里另抄一份插件字段名，那份是编译进去的
+ * 全部插件，跟 TMUX_NEXT_DISABLE_PLUGINS 实际启用的集合不是一回事。**这一页里没有任何一个
+ * 插件名**——跟顶栏用 titleKey 画标签、卡片用 dim 画 chip 是同一步棋。
+ *
+ * 键名原样显示、不翻译：模板作者要打的就是这串字。
+ */
+function templatesSection(templates, fieldKeys) {
+  // 折叠时标题右边那句"当前值"，在这一节**从没展开过**的时候也得答得上来——而
+  // section() 是懒构建的，没展开就没有 build() 里的任何东西。所以条数留在外面，
+  // 列表一变就让 build 里回调更新它。
+  let count = templates.length;
+  const summary = () =>
+    count ? tr("settings.templateCount", { n: count }) : tr("settings.templateEmpty");
+  return section("templates", tr("settings.templates"), summary, () =>
+    buildTemplates(templates, fieldKeys, (n) => {
+      count = n;
+    }),
+  );
+}
+
+/**
+ * 模板一节的内容。
+ *
+ * 单独一个函数、而不是写在 templatesSection 里，是因为 section() 只在展开时才调
+ * build()，且**只调一次**：输了一半没保存的表单不能因为折起来再打开就没了。整段
+ * 状态（readers、lastFocused、list）因此必须都活在这一次调用的闭包里，一个都不能
+ * 留在外面被下一次展开复用。
+ */
+function buildTemplates(templates, fieldKeys, setCount) {
+  const list = el("div", "template-list");
+  /** @type {Array<() => any>} */
+  const readers = [];
+  /** @type {HTMLTextAreaElement | HTMLInputElement | null} */
+  let lastFocused = null;
+
+  function addRow(t) {
+    const row = el("div", "template-item");
+    // labelText 收的是**已经翻好的**文案，不是 i18n 键：死键扫描只认字面量
+    // `tr("…")`，键名要是从这个小工具函数的形参里转一手它就看不见了——跟
+    // section() 顶上那条注释同一个理由。
+    const mk = (labelText, value, multi) => {
+      const wrap = el("label", "settings-field");
+      wrap.append(el("span", "settings-label", labelText));
+      const input = document.createElement(multi ? "textarea" : "input");
+      input.className = "settings-input";
+      input.value = value || "";
+      if (multi) input.rows = 4;
+      input.addEventListener("focus", () => { lastFocused = input; });
+      wrap.append(input);
+      row.append(wrap);
+      return input;
+    };
+    const label = mk(tr("settings.templateLabel"), t.label, false);
+    const name = mk(tr("settings.templateName"), t.name, false);
+    const input = mk(tr("settings.templateInput"), t.input, true);
+
+    const del = el("button", "btn template-del", tr("settings.templateDelete"));
+    del.type = "button";
+    del.addEventListener("click", () => {
+      // 删的那一行如果正握着"点 chip 插到哪"的焦点，得把它放掉——不然 chip 的
+      // 处理器会在一个已经脱离文档树的输入框上悄悄写 .value，界面上什么反应
+      // 都看不到，跟真没插进去一样。
+      if (row.contains(lastFocused)) lastFocused = null;
+      row.remove();
+      const at = readers.indexOf(read);
+      if (at >= 0) readers.splice(at, 1);
+      // 删光之后要把"还没有模板"那句放回来，否则这一节就剩一个空标题，
+      // 看不出是"没有"还是"没画出来"。
+      if (!readers.length && !list.querySelector(".settings-note")) {
+        list.append(el("p", "settings-note", tr("settings.templateEmpty")));
+      }
+      setCount(readers.length);
+    });
+    row.append(del);
+
+    const read = () => ({ id: t.id, label: label.value, name: name.value, input: input.value });
+    readers.push(read);
+    list.append(row);
+  }
+
+  /**
+   * 拿一份模板数组重画整个列表——保存成功之后用这个，而不是继续显示保存前
+   * 那份。服务端 PUT 会把净化后的那一份吐回来（比如 label 是空的条目会被整条
+   * 丢掉），继续显示旧的会让界面说"已保存"而磁盘上其实没有这一行，用户要等
+   * 下次进设置页才发现东西凭空消失。重画让屏幕上的东西始终等于刚存下去的。
+   */
+  function fill(items) {
+    list.replaceChildren();
+    readers.length = 0;
+    for (const t of items) addRow(t);
+    if (!items.length) list.append(el("p", "settings-note", tr("settings.templateEmpty")));
+    setCount(items.length);
+  }
+
+  fill(templates);
+
+  // 可用字段：点一下插到刚才那个框的光标处。
+  const keys = el("div", "template-keys");
+  keys.append(el("span", "settings-label", tr("settings.templateKeys")));
+  for (const key of fieldKeys) {
+    const chip = el("button", "template-key", `{${key}}`);
+    chip.type = "button";
+    chip.addEventListener("click", () => {
+      if (!lastFocused) return;
+      const at = lastFocused.selectionStart ?? lastFocused.value.length;
+      lastFocused.value =
+        lastFocused.value.slice(0, at) + `{${key}}` + lastFocused.value.slice(at);
+      lastFocused.focus();
+    });
+    keys.append(chip);
+  }
+
+  const add = el("button", "btn template-new", tr("settings.templateNew"));
+  add.type = "button";
+  add.addEventListener("click", () => {
+    const note = list.querySelector(".settings-note");
+    if (note) note.remove();
+    addRow({ id: "", label: "", name: "", input: "" });
+    setCount(readers.length);
+  });
+
+  const note = el("p", "settings-result", "");
+  note.hidden = true;
+  const save = el("button", "btn primary", tr("settings.save"));
+  save.type = "button";
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    save.textContent = tr("settings.saving");
+    note.hidden = true;
+    let ok = false;
+    try {
+      const res = await fetch(url("api/templates"), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ templates: readers.map((r) => r()) }),
+      });
+      ok = res.ok;
+      // 用服务端净化后吐回来的那一份重画，别接着显示保存前那份——两者可能不同
+      // （比如没填模板名的那一行，服务端直接不存）。
+      if (ok) fill((await res.json()).templates || []);
+    } catch {
+      ok = false;
+    }
+    note.textContent = ok ? tr("settings.saved") : tr("settings.cfgSaveFailed");
+    note.hidden = false;
+    save.disabled = false;
+    save.textContent = tr("settings.save");
+  });
+
+  const actions = el("div", "settings-actions");
+  actions.append(add, save);
+  return [el("p", "settings-note", tr("settings.templatesNote")), list, keys, actions, note];
+}
+
+/**
  * 声明了配置的插件，各画一节。
  *
  * 值要问服务端（清单是同构的，凭据绝不在里面）。问不到就跳过这一节——那意味着这个
@@ -447,6 +605,16 @@ export function renderSettings(root) {
     // 插件那几节要问服务端，晚一步到：内核自己的三节先画出来，不为一次网络往返
     // 把整页压住。
     for (const node of await pluginSections()) root.append(node);
+    // 模板那一节也要问服务端，跟插件几节一起晚一步到。
+    try {
+      const res = await fetch(url("api/templates"));
+      if (res.ok) {
+        const body = await res.json();
+        root.append(templatesSection(body.templates || [], body.fieldKeys || []));
+      }
+    } catch {
+      // 这一节这次画不出来，别的照常。
+    }
   };
   void draw();
 }

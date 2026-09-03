@@ -2,7 +2,7 @@ import { tmux } from "./run";
 import { WEB_SESSION_PREFIX } from "./session-manager";
 
 /**
- * 往一个会话里敲一行字，然后回车。
+ * 往一个会话里敲一段字（可能带嵌入的换行），然后回车。
  *
  * 走 `tmux send-keys`，不经 WebSocket：从页面开一条 WS 会顺带建出一个
  * `web-<pid>-…` 挂载会话、附上控制客户端、并把窗口尺寸调成这个浏览器的大小——
@@ -11,6 +11,22 @@ import { WEB_SESSION_PREFIX } from "./session-manager";
  * **权限上没有新增任何东西**：任何能碰到这个服务的人本来就能通过 `/ws` 附上去随便
  * 打字，这条路只是更省事的同一件事。SECURITY.md 里那句"能碰到就等于有 shell"仍然
  * 是这里唯一要紧的判断。
+ *
+ * **`text` 里嵌的换行会原样送达，这一层已经实测过。** 会话模板的首条输入允许多行
+ * （`src/template.ts` 的 `render` 用 `lines.join("\n")` 保留换行），调用方会把带 `\n`
+ * 的整段文字一次性传进来。用一个把 stdin 设成 raw mode 的探针程序（不是 shell）接
+ * `send-keys -l 'line1\nline2'` 验证过：收到的是完整一整段 `"line1\nline2"`，嵌入的
+ * 换行没有被拆开、没有提前提交——`-l` 是逐字节写进 pty，不会在中途按下什么。这个
+ * 项目要发送目标的 agent TUI（claude / pi / opencode）全都跑在 raw mode，没有行规程，
+ * 收到的就是这个原始字节流，所以多行对它们是可用的。
+ *
+ * 但如果收件人是一个跑在 **canonical mode** 的普通 shell（比如
+ * `src/prime.integration.test.ts` 里测试用的那个假会话），内核的行规程会把每一个 LF
+ * 都当成"这一行到此为止"，立刻交给正在读的程序——这是那个 tty 的行为，不是这个函数
+ * 的行为：`sendText` 该送到的字节确实原样送到了。
+ *
+ * 仍然未知的一层：raw-mode 的 TUI 自己收到这个 LF 字节之后，会把它当成"插入换行"
+ * 还是"提交"，是各 agent 应用层自己的按键绑定，这个函数管不到、也没法替它们验证。
  */
 
 export type SendResult = { ok: true } | { ok: false; reason: "empty" | "toolong" | "internal" };

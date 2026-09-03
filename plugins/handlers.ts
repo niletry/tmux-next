@@ -1,10 +1,12 @@
 import { PLUGINS } from "./registry.js";
-import type { Facet, FacetDetail, ItemRef, Plugin, PluginEnricher, PluginHandler, SettingValue } from "./types";
+import type { Facet, FacetDetail, ItemRef, Plugin, PluginEnricher, PluginFieldSource, PluginHandler, SettingValue } from "./types";
+import { FIELD_KEY_CHARS } from "../src/template";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
 import {
   handle as jira,
   enrich as jiraEnrich,
+  fields as jiraFields,
   start as jiraStart,
   sync as jiraSync,
   refreshItem as jiraRefreshItem,
@@ -28,6 +30,10 @@ import {
 export type PluginServer = {
   handle?: PluginHandler;
   enrich?: PluginEnricher;
+  /**
+   * 一张单喂给模板的字段。用户按下按钮才走，允许一次真实的网络往返（见 FIELD_TIMEOUT_MS）。
+   */
+  fields?: PluginFieldSource;
   /** 把这个插件认领的所有来源同步一遍（新建/更新单）。显式动作，会发网络请求。 */
   sync?: () => Promise<SyncResult>;
   /** 只刷新一个单，`ref` 是 `source.ref`（比如 Jira 的 issue key）。 */
@@ -55,6 +61,7 @@ export const SERVERS: Record<string, PluginServer> = {
   jira: {
     handle: jira,
     enrich: jiraEnrich,
+    fields: jiraFields,
     start: jiraStart,
     sync: jiraSync,
     refreshItem: jiraRefreshItem,
@@ -257,6 +264,90 @@ export async function collectFacets(
   }
   for (const id of Object.keys(merged)) merged[id] = merged[id]!.slice(0, MAX_FACETS_PER_ITEM);
   return merged;
+}
+
+/** 声明了字段能力的插件。跟 ENRICHERS 一样从 SERVERS 推导，不另立一张表。 */
+export const FIELD_SOURCES: Record<string, PluginFieldSource> = Object.fromEntries(
+  Object.entries(SERVERS)
+    .filter(([, s]) => s.fields)
+    .map(([id, s]) => [id, s.fields!]),
+);
+
+/**
+ * 一个插件回答"这张单有哪些字段"能占多少时间。
+ *
+ * 既不复用 ENRICH_TIMEOUT_MS（300ms）也不复用 SOURCE_TIMEOUT_MS（30s）。300ms 是为
+ * "每次页面加载都跑"设的，短到逼插件读缓存；而 fields 是用户按下按钮才走的一次显式
+ * 动作，本来就该允许一次真实的往返。30s 是整批同步的预算，而这里有个人正盯着一个还
+ * 没填上的输入框。
+ */
+export const FIELD_TIMEOUT_MS = 5_000;
+
+/** 一个字段的长度上限。描述正文可以很长，但没有哪一段该到 4KB。 */
+export const MAX_FIELD_LEN = 4000;
+
+/** 合并**所有**插件之后，一张单最多留几个字段。不是每个插件的配额。 */
+export const MAX_FIELDS_PER_ITEM = 12;
+
+/**
+ * 占位符语法认得的键名形状，字符集从 src/template.ts 的 FIELD_KEY_CHARS 导入而不是
+ * 自己重写一条正则——两处必须相等：PLACEHOLDER 放宽了却没跟着改这里，会让语法上合法
+ * 的插件字段被这里悄悄丢掉，哪里都不报错。
+ */
+const FIELD_KEY = new RegExp(`^[${FIELD_KEY_CHARS}]+$`);
+
+/**
+ * 向每个声明了字段能力的插件要一次字段，合并成一张平表。
+ *
+ * 失败语义只有一种：**拿不到就当没有**。插件抛了、超时了、返回了不是对象的东西，都只是
+ * 这一轮没有字段，模板照常渲染，那几个占位符变成空——跟 collectFacets 完全同一条安全阀。
+ *
+ * sources 是参数而不是直接用 FIELD_SOURCES，理由跟 collectFacets 一模一样：注册表是
+ * 编译期常量，不注入假插件就没有任何办法证明超时和 try/catch 真的会兜住。
+ *
+ * timeoutMs 单独开成可注入的尾参数（默认 FIELD_TIMEOUT_MS）：真实预算是 5 秒，但测试
+ * "卡住的插件不会吊死调用方"这件事跟等多久无关，注入一个很小的值就能在毫秒级证明同一条
+ * 性质，不用真的等 5 秒。
+ */
+export async function collectFields(
+  item: ItemRef,
+  sources: Record<string, PluginFieldSource> = FIELD_SOURCES,
+  timeoutMs: number = FIELD_TIMEOUT_MS,
+): Promise<Record<string, string>> {
+  const enabled = new Set(enabledPlugins().map((p) => p.id));
+  const entries = Object.entries(sources).filter(([id]) => isConsidered(id, enabled));
+
+  const results = await Promise.all(
+    entries.map(async ([, fields]) => {
+      try {
+        const timeout = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), timeoutMs),
+        );
+        const got = await Promise.race([fields(item), timeout]);
+        if (!got || typeof got !== "object" || Array.isArray(got)) return null;
+        const clean: Record<string, string> = {};
+        for (const [key, value] of Object.entries(got)) {
+          if (typeof value !== "string" || !value) continue;
+          // 占位符写不出来的键，收下也没人能引用它。
+          if (!FIELD_KEY.test(key)) continue;
+          // item.* 是内核自己的命名空间——让插件写进来等于让它伪造这张单的标题和
+          // 单号，而模板渲染分不出是谁写的。
+          if (key.startsWith("item.")) continue;
+          clean[key] = value.slice(0, MAX_FIELD_LEN);
+        }
+        return clean;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  const merged: Record<string, string> = {};
+  for (const one of results) {
+    if (one) Object.assign(merged, one);
+  }
+  // 合并之后才封顶：上限是"一张单上最多几个"，不是"每个插件最多几个"。
+  return Object.fromEntries(Object.entries(merged).slice(0, MAX_FIELDS_PER_ITEM));
 }
 
 /** 一次同步的结果。多个来源的结果相加，truncated 只要有一个为真就是真。 */
