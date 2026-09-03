@@ -87,7 +87,10 @@ async function mount(search = "", opts: { settingsStatus?: number } = {}) {
       if (href.includes("api/templates")) {
         return new Response(JSON.stringify({
           templates: [{ id: "t1", label: "修 bug", name: "fix-{item.title}", input: "看看 {jira.summary}" }],
-          fieldKeys: ["item.title", "item.id", "item.source", "item.agent", "item.sessions", "item.tag"],
+          fieldKeys: [
+            "item.title", "item.id", "item.source", "item.agent", "item.sessions", "item.tag",
+            "jira.summary", "jira.status", "jira.epic", "jira.description",
+          ],
         }));
       }
       return new Response("{}");
@@ -283,9 +286,10 @@ test("读不到配置就不画那一节", async () => {
 /**
  * 会话模板一节。
  *
- * 可用字段分两半：内核那几个由服务端跟模板一起下发（fetch 垫片里的 fieldKeys），
- * 插件那几个从 jira 清单自己声明的 fieldKeys 里来——这里没有断言任何一个插件名，
- * 断言的只是"两半都出现了"。
+ * 可用字段（内核的 + 已启用插件的）整份都来自服务端 GET /api/templates 的响应——
+ * 这里的 fetch 垫片模拟的就是 /api/server.ts 已经把两半拼好之后下发的样子，页面
+ * 自己不再读 registry.js 抄插件那一半。这里没有断言任何一个插件名，断言的只是
+ * "两半都出现了"。
  */
 
 test("模板一节列出已有模板", async () => {

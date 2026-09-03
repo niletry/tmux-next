@@ -338,8 +338,9 @@ function pluginSection(plugin, values) {
 /**
  * 会话模板的增删改。
  *
- * 可用字段分两半：内核那几个由服务端跟模板一起下发（GET /api/templates 的 fieldKeys），
- * 插件那几个从同构的 registry.js 里读它们自己声明的 fieldKeys。**这一页里没有任何一个
+ * 可用字段（内核的 + 已启用插件的）整份由服务端跟模板一起下发（GET /api/templates 的
+ * fieldKeys）——这一页不再从同构的 registry.js 里另抄一份插件字段名，那份是编译进去的
+ * 全部插件，跟 TMUX_NEXT_DISABLE_PLUGINS 实际启用的集合不是一回事。**这一页里没有任何一个
  * 插件名**——跟顶栏用 titleKey 画标签、卡片用 dim 画 chip 是同一步棋。
  *
  * 键名原样显示、不翻译：模板作者要打的就是这串字。
@@ -413,8 +414,7 @@ function templatesSection(templates, fieldKeys) {
   // 可用字段：点一下插到刚才那个框的光标处。
   const keys = el("div", "template-keys");
   keys.append(el("span", "settings-label", tr("settings.templateKeys")));
-  const pluginKeys = PLUGINS.flatMap((p) => p.fieldKeys || []);
-  for (const key of [...fieldKeys, ...pluginKeys]) {
+  for (const key of fieldKeys) {
     const chip = el("button", "template-key", `{${key}}`);
     chip.type = "button";
     chip.addEventListener("click", () => {

@@ -354,8 +354,14 @@ export function startServer(
       if (url.pathname === "/api/templates" && req.method === "GET") {
         // fieldKeys 跟模板一起下发：设置页要把"可用字段"列给模板作者，而内核字段名
         // 是内核的事实。让页面自己抄一份，两处就会飘，飘了之后列出来的键名依然长得
-        // 很像真的，没有任何东西会红。
-        return Response.json({ templates: await readTemplates(), fieldKeys: KERNEL_FIELD_KEYS });
+        // 很像真的，没有任何东西会红。插件字段名同理——这里下发的是*启用*插件的
+        // fieldKeys，不是编译进去的全部插件；`TMUX_NEXT_DISABLE_PLUGINS` 关掉一个
+        // 插件时，它的占位符 chip 不该继续出现在设置页上，模板里插了也换不出字来。
+        const pluginFieldKeys = enabledPlugins().flatMap((p) => p.fieldKeys || []);
+        return Response.json({
+          templates: await readTemplates(),
+          fieldKeys: [...KERNEL_FIELD_KEYS, ...pluginFieldKeys],
+        });
       }
 
       if (url.pathname === "/api/templates" && req.method === "PUT") {
