@@ -86,6 +86,10 @@ export function renderNewSession(root) {
   initialField.placeholder = tr("new.inputPlaceholder");
   initialField.rows = 4;
   initialField.style.display = "none";
+  // 跟 src/template.ts 的 MAX_RENDERED（本身从 send-text.ts 的 MAX_TEXT 推导）对齐：
+  // 框里能装的必须等于最终能敲进 pane 的，否则粘一段超长文字进来会在会话建好之后
+  // 无声无息地被 sendText 拒收，用户完全看不出为什么什么都没敲进去。
+  initialField.maxLength = 2000;
   /** @type {Array<{id:string,label:string,name:string,input:string}>} */
   let templates = [];
   let chosenTemplate = null;
