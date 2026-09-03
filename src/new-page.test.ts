@@ -301,6 +301,6 @@ test("选中一个模板，会话名和首条输入都被填上", async () => {
   chip.click();
   await Promise.resolve();
   await Promise.resolve();
-  expect((doc.querySelector(".field.name") as unknown as HTMLInputElement).value).toBe("EXAMPLE-1");
+  expect((doc.querySelector(".field.name-field") as unknown as HTMLInputElement).value).toBe("EXAMPLE-1");
   expect((doc.querySelector(".field.initial") as unknown as HTMLTextAreaElement).value).toBe("修 修登录页");
 });

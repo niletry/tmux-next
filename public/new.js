@@ -71,7 +71,7 @@ export function renderNewSession(root) {
 
   const list = el("div", "dir-list");
 
-  const nameField = el("input", "field name");
+  const nameField = el("input", "field name-field");
   nameField.placeholder = tr("new.namePlaceholder");
   nameField.autocapitalize = "none";
   nameField.autocomplete = "off";
@@ -131,6 +131,10 @@ export function renderNewSession(root) {
       });
       if (!res.ok) return; // 渲染不出来就让两个框保持原样，模板不是必需品
       const body = await res.json();
+      // 落地前再确认一次：这次响应还对应着当前选中的模板吗。连点两个模板时响应可能
+      // 乱序回来，晚到的旧响应会把框填成跟高亮对不上的内容；先选模板再点"不用模板"
+      // 时，晚到的响应会把已经清空隐藏的输入框又填回来。
+      if (chosenTemplate !== t.id) return;
       nameField.value = body.name || "";
       initialField.value = body.input || "";
     } catch {
