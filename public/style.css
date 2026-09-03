@@ -2568,14 +2568,55 @@ a.detail-label:hover {
   border-bottom: 0;
 }
 
+/* 整行都是点击区，不是右边一个小箭头：这是用拇指点的，跟会话列表页的组标题
+   同一个决定。收起时右边那句"当前值"也在这一行里，所以它得能撑开。 */
 .settings-head {
-  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  /* 44px 而不是 24px：整行是进入这一节的唯一入口，点不中就等于这一节的配置都
+     够不着，所以它按独立控件要求而不是按密集列表里的一项。 */
+  min-height: 44px;
+  margin: 0;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-3);
 }
+
+.settings-chevron {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--text-3);
+}
+
+.settings-head-name { flex: 0 1 auto; min-width: 0; }
+
+/* 当前值：不大写、不加字距——它是值，不是标签，跟标题长得一样的话这一行就读不
+   出主次了。挤不下就省略，宁可截断值也不截断它属于哪一节。 */
+.settings-summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: normal;
+  text-transform: none;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+/* 空的时候不占高度：折起的节之间就只剩标题行的间距。 */
+.settings-body:not(:empty) { margin-top: 10px; }
 
 .settings-note {
   margin: 10px 0 0;

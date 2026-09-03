@@ -96,6 +96,20 @@ async function mount(search = "", opts: { settingsStatus?: number } = {}) {
   return doc.getElementById("settings")!;
 }
 
+/** 节标题的文字（不含右边那句"当前值"）。 */
+const headNames = (root: any) =>
+  [...root.querySelectorAll(".settings-head-name")].map((h: any) => h.textContent);
+
+/** 展开一节，返回它的 body。默认全折起，所以凡是要看内容的测试都得先叫它一声。 */
+function expand(root: any, name: string) {
+  const head = [...root.querySelectorAll(".settings-head")].find(
+    (h: any) => h.querySelector(".settings-head-name")?.textContent === name,
+  );
+  if (!head) throw new Error(`找不到这一节：${name}`);
+  click(head);
+  return (head as any).parentElement.querySelector(".settings-body");
+}
+
 const click = (n: unknown) =>
   (n as { dispatchEvent: (e: unknown) => void } | null)?.dispatchEvent(
     new (globalThis as any).window.Event("click", { bubbles: true }),
@@ -103,14 +117,82 @@ const click = (n: unknown) =>
 
 test("内核自己的四节排在最前", async () => {
   const root = await mount();
-  const heads = [...root.querySelectorAll(".settings-head")].map((h) => h.textContent);
   // 语言在最前：它决定这一页其余部分用什么字写。插件那几节要等一次网络往返，
   // 追加在后面——所以这里只钉前四个，不钉总数。
-  expect(heads.slice(0, 4)).toEqual(["语言", "终端配色", "界面配色", "虚拟按键"]);
+  expect(headNames(root).slice(0, 4)).toEqual(["语言", "终端配色", "界面配色", "虚拟按键"]);
+});
+
+// --- 折叠 -------------------------------------------------------------------
+
+test("默认每一节都是折起的，body 是空的", async () => {
+  const root = await mount();
+  await new Promise((r) => setTimeout(r, 80));
+  const heads = [...root.querySelectorAll(".settings-head")];
+  expect(heads.length).toBeGreaterThanOrEqual(5);
+  // 插件那一节也算在内：它是异步追加的，很容易漏掉默认态。
+  for (const head of heads) expect(head.getAttribute("aria-expanded")).toBe("false");
+  for (const body of root.querySelectorAll(".settings-body")) {
+    expect(body.children.length).toBe(0);
+  }
+});
+
+test("点标题展开这一节，再点收回去", async () => {
+  const root = await mount();
+  const body = expand(root, "终端配色");
+  expect(body.querySelectorAll(".theme-opt").length).toBe(7);
+  const head = body.parentElement.querySelector(".settings-head");
+  expect(head.getAttribute("aria-expanded")).toBe("true");
+
+  click(head);
+  expect(body.children.length).toBe(0);
+  expect(head.getAttribute("aria-expanded")).toBe("false");
+});
+
+// 存的是"展开的那几节"而不是"折起的那几节"：默认全折，于是没存过 / 存坏了 /
+// 隐私窗口读不了，三种情况自然都等于默认态，不必各写一条分支。
+test("展开的那几节存进 localStorage", async () => {
+  const root = await mount();
+  expand(root, "界面配色");
+  expect(JSON.parse(localStorage.getItem("tmux-next.settings.open")!)).toEqual(["theme-ui"]);
+  expand(root, "语言");
+  expect(JSON.parse(localStorage.getItem("tmux-next.settings.open")!).sort())
+    .toEqual(["language", "theme-ui"]);
+});
+
+// 换语言会把整页重建。要是拿翻译后的标题当键，收开的状态每换一次语言就全丢——
+// 这一条守的就是"键是稳定 id，不是标题"。
+test("换语言之后展开状态还在", async () => {
+  const root = await mount();
+  expand(root, "终端配色");
+  expand(root, "语言");
+  const langBtn = [...root.querySelectorAll(".agent-chip")].find((b) => b.textContent === "English");
+  click(langBtn);
+  await new Promise((r) => setTimeout(r, 60));
+  const head = [...root.querySelectorAll(".settings-head")].find(
+    (h) => h.querySelector(".settings-head-name")?.textContent === "Terminal colours",
+  );
+  expect(head).toBeDefined();
+  expect(head!.getAttribute("aria-expanded")).toBe("true");
+  expect(head!.parentElement!.querySelectorAll(".theme-opt").length).toBe(7);
+});
+
+// 全折是默认，所以标题行必须自己说出当前值——否则"这台机器现在什么配置"就成了
+// 要逐节点开才看得到的东西，而那正是全折想省下的动作。
+test("折起时标题右边显示当前值", async () => {
+  const root = await mount();
+  const summaryOf = (name: string) =>
+    [...root.querySelectorAll(".settings-head")]
+      .find((h) => h.querySelector(".settings-head-name")?.textContent === name)
+      ?.querySelector(".settings-summary")?.textContent;
+  expect(summaryOf("语言")).toBe("中文");
+  expect(summaryOf("终端配色")).toBe("Nord");
+  expect(summaryOf("界面配色")).toBe("Catppuccin Latte");
 });
 
 test("两节各列出每一款配色", async () => {
   const root = await mount();
+  expand(root, "终端配色");
+  expand(root, "界面配色");
   const lists = root.querySelectorAll(".theme-list");
   expect(lists.length).toBe(2);
   for (const list of lists) {
@@ -127,6 +209,8 @@ test("两节各列出每一款配色", async () => {
 // 谁也没调 initTheme()，于是它画的是兜底调色板、勾的是缓存。
 test("两节各自勾住服务端那一份", async () => {
   const root = await mount();
+  expand(root, "终端配色");
+  expand(root, "界面配色");
   const [term, ui] = [...root.querySelectorAll(".theme-list")];
   const picked = (list: any) => list.querySelector(".theme-opt.on b")?.textContent;
   expect(picked(term)).toBe("Nord");
@@ -135,6 +219,7 @@ test("两节各自勾住服务端那一份", async () => {
 
 test("点一款配色会存起来", async () => {
   const root = await mount();
+  expand(root, "终端配色");
   const list = root.querySelector(".theme-list");
   const off = [...list!.querySelectorAll(".theme-opt")].find((o) => !o.className.includes("on"));
   click(off);
@@ -150,6 +235,8 @@ test("点一款配色会存起来", async () => {
 // 所以改界面外观这一下不该在请求里提到终端调色板。
 test("每一节只写自己那个字段", async () => {
   const root = await mount();
+  expand(root, "终端配色");
+  expand(root, "界面配色");
   const [termList, uiList] = [...root.querySelectorAll(".theme-list")];
   const other = (list: any) =>
     [...list.querySelectorAll(".theme-opt")].find((o: any) => !o.className.includes("on"));
@@ -175,6 +262,7 @@ test("换语言把顶栏一起重建", async () => {
   const before = document.querySelector(".settings-title")?.textContent;
   expect(before).toBe("设置");
 
+  expand(root, "语言");
   const en = [...root.querySelectorAll(".agent-chip")].find((c) => c.textContent === "English");
   click(en);
   await new Promise((r) => setTimeout(r, 60));
@@ -206,14 +294,14 @@ test("认不出来路就回默认页", async () => {
 test("声明了配置的插件各画一节", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
-  const heads = [...root.querySelectorAll(".settings-head")].map((h) => h.textContent);
   // 内核四节（语言、终端配色、界面配色、虚拟按键），加上声明了 settings 的那个插件
-  expect(heads.length).toBe(5);
+  expect(headNames(root)).toEqual(["语言", "终端配色", "界面配色", "虚拟按键", "工单"]);
 });
 
 test("密钥画成 password，且输入框是空的", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
+  expand(root, "工单");
   const secrets = [...root.querySelectorAll('input[type="password"]')] as unknown as HTMLInputElement[];
   expect(secrets.length).toBe(2);
   // 值绝不回填：回填一串掩码迟早会被当成真值存回去。
@@ -226,6 +314,7 @@ test("密钥画成 password，且输入框是空的", async () => {
 test("非密钥字段回填当前值", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
+  expand(root, "工单");
   const urlInput = root.querySelector('input[type="url"]') as unknown as HTMLInputElement;
   expect(urlInput.value).toBe("https://example.atlassian.net");
 });
@@ -233,6 +322,7 @@ test("非密钥字段回填当前值", async () => {
 test("保存把整份表单 PUT 上去", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
+  expand(root, "工单");
   click([...root.querySelectorAll(".settings-actions .btn")][0]);
   await new Promise((r) => setTimeout(r, 60));
 
@@ -249,6 +339,7 @@ test("保存把整份表单 PUT 上去", async () => {
 test("保存后给一句回执", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
+  expand(root, "工单");
   click([...root.querySelectorAll(".settings-actions .btn")][0]);
   await new Promise((r) => setTimeout(r, 60));
   const note = root.querySelector(".settings-result") as unknown as HTMLElement;

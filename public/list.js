@@ -3,6 +3,7 @@ import { initLang, tr } from "./i18n-apply.js";
 import { renderHeader } from "./nav.js";
 import { openPicker } from "./pick-sheet.js";
 import { icon } from "./icons.js";
+import { readIds, toggleId } from "./collapse-store.js";
 // 反过来看那一半：这条会话挂在哪张单下，那张单此刻怎么样。只读的一眼，改绑定
 // 仍然是旁边那个「挂到单下」。
 import { openItemPanel } from "./item-panel.js";
@@ -490,24 +491,7 @@ function orderKey(session) {
  */
 const COLLAPSE_KEY = "tmux-next.collapsed";
 
-function collapsedSet() {
-  try {
-    const raw = localStorage.getItem(COLLAPSE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(parsed) ? parsed : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function storeCollapsed(set) {
-  try {
-    localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set]));
-  } catch {
-    // A browser refusing storage still gets working collapse, just not
-    // remembered — the state lives in the DOM until the next render.
-  }
-}
+const collapsedSet = () => readIds(COLLAPSE_KEY);
 
 /**
  * A group heading, with the directory's name as the label.
@@ -540,10 +524,7 @@ function groupHeader(label, path, key, count, collapsed) {
   if (collapsed) head.append(el("span", "group-count", String(count)));
 
   const toggle = () => {
-    const set = collapsedSet();
-    if (set.has(key)) set.delete(key);
-    else set.add(key);
-    storeCollapsed(set);
+    toggleId(COLLAPSE_KEY, key);
     render();
   };
   head.addEventListener("click", toggle);

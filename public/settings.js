@@ -14,7 +14,9 @@ import { THEMES, THEME_GROUPS, ANSI_NAMES, uiVars } from "./themes.js";
 import { setTheme, cachedTheme, initTheme } from "./theme-apply.js";
 import { LANGS, LANG_LABELS } from "./i18n.js";
 import { initLang, setLang, lang as currentLang, tr } from "./i18n-apply.js";
-import { clearLayout } from "./key-layout.js";
+import { clearLayout, readLayout, defaultLayout } from "./key-layout.js";
+import { readIds, toggleId } from "./collapse-store.js";
+import { icon } from "./icons.js";
 import { openKeyEditor } from "./key-editor.js";
 import { url } from "./root.js";
 import { backTarget } from "./back-target.js";
@@ -63,15 +65,67 @@ function preview(theme) {
 }
 
 /**
- * 一节：一个标题加内容，节与节之间靠这个统一间距，不靠各自的 margin。
+ * 哪几节是**展开的**，按设备存。
  *
- * 收的是**已经翻好的**标题，不是 i18n 键：死键扫描只认字面量 `tr("…")`，把键名当
- * 参数传进来它就看不见了，两条键会被判成没人用。调用点写全是这个仓库既有的办法。
+ * 存展开的而不是折起的，因为默认是全折：于是"没存过 / 存的是坏 JSON / 隐私窗口
+ * 读不了"三种情况自然都等于默认态，不必各写一条分支。会话列表页存的是相反的
+ * 那一半，因为它默认全展开——两边都存"偏离默认的那些"，同一条规则的两个方向。
  */
-function section(title, ...body) {
+const OPEN_KEY = "tmux-next.settings.open";
+
+/**
+ * 一节：一个可折叠的标题加内容，节与节之间靠这个统一间距，不靠各自的 margin。
+ *
+ * 收的是**已经翻好的**标题和摘要，不是 i18n 键：死键扫描只认字面量 `tr("…")`，
+ * 把键名当参数传进来它就看不见了，那几条键会被判成没人用。调用点写全是这个仓库
+ * 既有的办法。
+ *
+ * 内容收的是个**函数**而不是画好的节点：全折是默认，一个从没被打开过的节不该
+ * 先把七款配色连预览一起画出来。展开时才调它，收起时把 body 清空。
+ *
+ * `id` 是稳定标识，不是标题——换语言会把整页重建，拿翻译后的标题当键的话，你
+ * 收开的状态每换一次语言就全丢了。
+ *
+ * 用真的 `<button>`：这一行里什么都不嵌，于是键盘支持是白拿的。会话列表页那个
+ * 组标题是 `div[role=button]` 加手写 Enter/Space，因为它标题里嵌了图标和带
+ * title 的路径——那边的理由在这边不成立，不必跟着抄一遍键盘处理。
+ *
+ * @param {string} id
+ * @param {string} title 已经翻好的节标题
+ * @param {() => string} summary 已经翻好的"当前值"，折起时显示；没有就返回空串。
+ *   收函数而不是字符串：配色可以在展开着的时候被换掉，收起来那一行必须说新值。
+ * @param {() => Node[]} build 展开时才调，返回这一节的内容
+ */
+function section(id, title, summary, build) {
   const box = el("section", "settings-section");
-  box.append(el("h2", "settings-head", title));
-  for (const node of body) box.append(node);
+  const head = el("button", "settings-head");
+  head.type = "button";
+  const chevron = el("span", "settings-chevron");
+  const name = el("span", "settings-head-name", title);
+  // 摘要是全折默认能成立的前提：不然"这台机器现在是什么配置"就成了要逐节点开
+  // 才看得到的东西，而那正是全折想省下的动作。
+  const note = el("span", "settings-summary");
+  head.append(chevron, name, note);
+
+  const body = el("div", "settings-body");
+  box.append(head, body);
+
+  // 只画一次，之后收起来只是把节点摘下去、再展开又挂回来。重画的话，输了一半
+  // 还没保存的表单会在收一下再打开之后变回空的，配色那一节勾着的也会退回渲染
+  // 那一刻的值——两者都是"看不见的丢失"，而缓存节点连带把它们一起免掉了。
+  let nodes = null;
+  const paint = (open) => {
+    head.setAttribute("aria-expanded", String(open));
+    chevron.innerHTML = icon(open ? "chevronDown" : "chevronRight", 14);
+    // 展开时摘要收起来：那一行的内容就在下面摊着，再说一遍只是噪音。
+    note.hidden = open;
+    if (!open) note.textContent = summary();
+    if (open) body.replaceChildren(...(nodes ??= build()));
+    else body.replaceChildren();
+  };
+
+  paint(readIds(OPEN_KEY).has(id));
+  head.addEventListener("click", () => paint(toggleId(OPEN_KEY, id).has(id)));
   return box;
 }
 
@@ -81,19 +135,22 @@ function section(title, ...body) {
  * 改完整页重建，而不是逐个节点去补——这一页每一句都是用旧语言渲染的。
  */
 function languageSection(rerender) {
-  const row = el("div", "agent-row");
-  for (const code of LANGS) {
-    const btn = el("button", "agent-chip", LANG_LABELS[code]);
-    btn.type = "button";
-    if (code === currentLang()) btn.classList.add("on");
-    btn.addEventListener("click", async () => {
-      if (code === currentLang()) return;
-      await setLang(code);
-      rerender();
-    });
-    row.append(btn);
-  }
-  return section(tr("settings.language"), row, el("p", "settings-note", tr("settings.note")));
+  const build = () => {
+    const row = el("div", "agent-row");
+    for (const code of LANGS) {
+      const btn = el("button", "agent-chip", LANG_LABELS[code]);
+      btn.type = "button";
+      if (code === currentLang()) btn.classList.add("on");
+      btn.addEventListener("click", async () => {
+        if (code === currentLang()) return;
+        await setLang(code);
+        rerender();
+      });
+      row.append(btn);
+    }
+    return [row, el("p", "settings-note", tr("settings.note"))];
+  };
+  return section("language", tr("settings.language"), () => LANG_LABELS[currentLang()], build);
 }
 
 /**
@@ -145,9 +202,13 @@ function chromePreview(name) {
  * @param {string} chosen 当前选中的主题名
  */
 function themeSection(field, title, noteText, chosen) {
+  // current 在 build 之外：它是这一节的状态，而 build 只跑一次（section 会把画好
+  // 的节点缓存起来），摘要那个函数则每次收起时都要读到最新的它。
+  let current = chosen;
+
+  const build = () => {
   const list = el("div", "theme-list");
   const note = el("p", "settings-note", noteText);
-  let current = chosen;
 
   for (const group of THEME_GROUPS) {
     list.append(el("h3", "theme-group", tr(group.labelKey)));
@@ -190,7 +251,10 @@ function themeSection(field, title, noteText, chosen) {
       list.append(row);
     }
   }
-  return section(title, list, note);
+    return [list, note];
+  };
+
+  return section(`theme-${field}`, title, () => THEMES[current]?.label ?? "", build);
 }
 
 /**
@@ -219,6 +283,7 @@ function themeSections() {
 
 /** 虚拟按键：哪些键排在哪一行。按设备存，跟字号同类。 */
 function keysSection() {
+  const build = () => {
   const row = el("div", "agent-row");
   const edit = el("button", "btn", tr("settings.keysEdit"));
   const reset = el("button", "btn", tr("settings.keysReset"));
@@ -233,7 +298,15 @@ function keysSection() {
     }, 1500);
   });
   row.append(edit, reset);
-  return section(tr("settings.keys"), row, el("p", "settings-note", tr("settings.keysNote")));
+    return [row, el("p", "settings-note", tr("settings.keysNote"))];
+  };
+
+  // 摘要每次收起时重算：在这一节里按"恢复默认"之后，标题行上那句话必须跟着变。
+  const summary = () =>
+    JSON.stringify(readLayout()) === JSON.stringify(defaultLayout())
+      ? tr("settings.keysDefault")
+      : tr("settings.keysCustom");
+  return section("keys", tr("settings.keys"), summary, build);
 }
 
 /** 返回来路那一页，认不出来路就回单列表——跟终端页的返回箭头同一套。 */
@@ -259,6 +332,7 @@ function backLink() {
  * @param {Record<string, unknown>} values 服务端读回来的当前值
  */
 function pluginSection(plugin, values) {
+  const build = () => {
   const form = el("div", "settings-form");
   /** @type {Record<string, () => string | boolean>} */
   const readers = {};
@@ -332,7 +406,13 @@ function pluginSection(plugin, values) {
 
   const actions = el("div", "settings-actions");
   actions.append(save);
-  return section(tr(plugin.titleKey), form, actions, note);
+    return [form, actions, note];
+  };
+
+  // 插件那一节没有"当前值"可言：一个数据源的配置是好几个字段，摘成一句话要么
+  // 说不全，要么就得内核去猜哪个字段最重要——而这一页的原则是它不知道任何一个
+  // 字段是什么意思。所以留空。
+  return section(plugin.id, tr(plugin.titleKey), () => "", build);
 }
 
 /**

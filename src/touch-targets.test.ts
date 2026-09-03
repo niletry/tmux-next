@@ -58,7 +58,10 @@ const DENSE = [
 // 把 .btn 补进来是这次移动的另一半：只把那两个选择器删掉的话，覆盖会悄悄少一
 // 块——删断言换绿灯，正是这张清单存在要防的事。.btn 是弹层和表单里所有主按钮
 // 的基类（结束会话的确认、新建、保存、发送），一条就把它们全盖住了。
-const STANDALONE = [".sheet-close", ".sheet-create", ".field-remove", ".pick-row", ".btn"];
+const STANDALONE = [".sheet-close", ".sheet-create", ".field-remove", ".pick-row", ".btn",
+  // 配置页的节标题从一行字变成了折叠开关。整行都是点击区（拇指用），所以它归
+  // 独立控件这一档——一个点不中的折叠开关，等于那一节的配置都够不着。
+  ".settings-head"];
 
 /** 工具条：一页只有一行，代价只付一次。 */
 // 工具条那几个控件收敛成了一个共享类。以前这里按名字列举，而列举挡不住"新加
