@@ -185,7 +185,7 @@ The **Sync** button on the work-item list asks every enabled plugin that's backe
 
 ### Session templates
 
-Starting a session from a work item's card can offer a template picker: pick one, and it fills in the session name and the first line of input before you even reach the new-session page, using placeholders like `{item.title}`, `{item.ref}`, or a plugin's own fields (`{jira.summary}`, `{jira.description}`). A line whose only placeholders all came back empty is dropped rather than left half-written; a line with no placeholders is always kept. Templates are created and edited from Settings, where the available placeholders are listed for you to tap in — there are none until you add one, and with none defined the picker doesn't appear at all.
+Starting a session from a work item's card takes you to the new-session page, which can offer a template picker there: pick one, and it fills in the session name and the first line of input — both still editable — using placeholders like `{item.title}`, `{item.ref}`, or a plugin's own fields (`{jira.summary}`, `{jira.description}`). A line whose only placeholders all came back empty is dropped rather than left half-written; a line with no placeholders is always kept. Templates are created and edited from Settings, where the available placeholders are listed for you to tap in — there are none until you add one, and with none defined the picker doesn't appear at all.
 
 ### Grouping and filtering the work-item list
 
