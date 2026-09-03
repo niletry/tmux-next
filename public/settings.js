@@ -375,9 +375,18 @@ function templatesSection(templates, fieldKeys) {
     const del = el("button", "btn template-del", tr("settings.templateDelete"));
     del.type = "button";
     del.addEventListener("click", () => {
+      // 删的那一行如果正握着"点 chip 插到哪"的焦点，得把它放掉——不然 chip 的
+      // 处理器会在一个已经脱离文档树的输入框上悄悄写 .value，界面上什么反应
+      // 都看不到，跟真没插进去一样。
+      if (row.contains(lastFocused)) lastFocused = null;
       row.remove();
       const at = readers.indexOf(read);
       if (at >= 0) readers.splice(at, 1);
+      // 删光之后要把"还没有模板"那句放回来，否则这一节就剩一个空标题，
+      // 看不出是"没有"还是"没画出来"。
+      if (!readers.length && !list.querySelector(".settings-note")) {
+        list.append(el("p", "settings-note", tr("settings.templateEmpty")));
+      }
     });
     row.append(del);
 
@@ -386,8 +395,20 @@ function templatesSection(templates, fieldKeys) {
     list.append(row);
   }
 
-  for (const t of templates) addRow(t);
-  if (!templates.length) list.append(el("p", "settings-note", tr("settings.templateEmpty")));
+  /**
+   * 拿一份模板数组重画整个列表——保存成功之后用这个，而不是继续显示保存前
+   * 那份。服务端 PUT 会把净化后的那一份吐回来（比如 label 是空的条目会被整条
+   * 丢掉），继续显示旧的会让界面说"已保存"而磁盘上其实没有这一行，用户要等
+   * 下次进设置页才发现东西凭空消失。重画让屏幕上的东西始终等于刚存下去的。
+   */
+  function fill(items) {
+    list.replaceChildren();
+    readers.length = 0;
+    for (const t of items) addRow(t);
+    if (!items.length) list.append(el("p", "settings-note", tr("settings.templateEmpty")));
+  }
+
+  fill(templates);
 
   // 可用字段：点一下插到刚才那个框的光标处。
   const keys = el("div", "template-keys");
@@ -430,6 +451,9 @@ function templatesSection(templates, fieldKeys) {
         body: JSON.stringify({ templates: readers.map((r) => r()) }),
       });
       ok = res.ok;
+      // 用服务端净化后吐回来的那一份重画，别接着显示保存前那份——两者可能不同
+      // （比如没填模板名的那一行，服务端直接不存）。
+      if (ok) fill((await res.json()).templates || []);
     } catch {
       ok = false;
     }
