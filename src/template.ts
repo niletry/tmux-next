@@ -1,4 +1,5 @@
 import { WEB_SESSION_PREFIX } from "./tmux/session-manager";
+import { MAX_TEXT } from "./tmux/send-text";
 
 /**
  * 模板渲染。纯函数，不碰磁盘、不认识任何一个具体字段。
@@ -7,13 +8,24 @@ import { WEB_SESSION_PREFIX } from "./tmux/session-manager";
  * 了它们冒充 `item.*`）。这里不区分谁产的——跟 Facet.dim 同源的设计。
  */
 
-/** 渲染结果的上限，跟 send-text.ts 的 MAX_TEXT 对齐。 */
-export const MAX_RENDERED = 2000;
+/**
+ * 渲染结果的上限，从 src/tmux/send-text.ts 的 MAX_TEXT 推导而不是各写各的字面量：
+ * §3 的"所见即所发"要求创建页里那份预览就是最终敲进 pane 的那份，两个常量分开写
+ * 迟早会飘，而 `sendText` 才是真正决定"能敲多少"的那一边，所以它是源头。
+ */
+export const MAX_RENDERED = MAX_TEXT;
 
 /** 会话名的上限。tmux 本身不限，但更长的名字在手机上一行放不下。 */
 const MAX_NAME_LEN = 64;
 
-const PLACEHOLDER = /\{([A-Za-z0-9._-]+)\}/g;
+/**
+ * 占位符语法认得的键名字符集，plugins/handlers.ts 的 FIELD_KEY 引用这份而不是
+ * 自己重写一条一样的正则——两处必须相等，`collectFields` 才不会悄悄丢掉一个
+ * 语法上合法、却被自己那份正则拒收的插件字段。
+ */
+export const FIELD_KEY_CHARS = "A-Za-z0-9._-";
+
+const PLACEHOLDER = new RegExp(`\\{([${FIELD_KEY_CHARS}]+)\\}`, "g");
 
 /**
  * 一行里的占位符**全部**渲染成空时，整行删掉；没有占位符的行永远保留。

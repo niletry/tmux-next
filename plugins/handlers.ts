@@ -1,5 +1,6 @@
 import { PLUGINS } from "./registry.js";
 import type { Facet, FacetDetail, ItemRef, Plugin, PluginEnricher, PluginFieldSource, PluginHandler, SettingValue } from "./types";
+import { FIELD_KEY_CHARS } from "../src/template";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
 import {
@@ -284,8 +285,12 @@ export const MAX_FIELD_LEN = 4000;
 /** 合并**所有**插件之后，一张单最多留几个字段。不是每个插件的配额。 */
 export const MAX_FIELDS_PER_ITEM = 12;
 
-/** 占位符语法认得的键名形状，跟 src/template.ts 的 PLACEHOLDER 一致。 */
-const FIELD_KEY = /^[A-Za-z0-9._-]+$/;
+/**
+ * 占位符语法认得的键名形状，字符集从 src/template.ts 的 FIELD_KEY_CHARS 导入而不是
+ * 自己重写一条正则——两处必须相等：PLACEHOLDER 放宽了却没跟着改这里，会让语法上合法
+ * 的插件字段被这里悄悄丢掉，哪里都不报错。
+ */
+const FIELD_KEY = new RegExp(`^[${FIELD_KEY_CHARS}]+$`);
 
 /**
  * 向每个声明了字段能力的插件要一次字段，合并成一张平表。
