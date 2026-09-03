@@ -22,6 +22,17 @@ export default {
   // 跟着数据一起来。src/i18n.test.ts 单独认这个数组字面量，只把这几个键当成
   // 有真实使用点（跟 titleKey 一样，它也不长成 t()/tr()/data-i18n 的样子）。
   facetDims: ["jira.type", "jira.status", "jira.epic", "jira.prs", "jira.checks", "jira.assignee"],
+  // 模板可以引用的字段。设置页照着这个列"可用字段"给模板作者点选。
+  // 跟 facetDims 不同：**这些不是 i18n 键**，原样显示、不翻译——模板作者要打的就是这串字。
+  // src/i18n.test.ts 只扫 titleKey: 和 facetDims: 两个字面量，不会把这里的值当成待翻译的键。
+  fieldKeys: [
+    "jira.summary",
+    "jira.status",
+    "jira.type",
+    "jira.epic",
+    "jira.assignee",
+    "jira.description",
+  ],
   // 设置页照着这个画表单。内核不知道这些字段是什么意思，也不该知道——它只认
   // type（怎么画、密钥要不要藏）和 labelKey（叫什么）。值的存取归 server.ts。
   //

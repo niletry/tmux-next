@@ -336,6 +336,122 @@ function pluginSection(plugin, values) {
 }
 
 /**
+ * 会话模板的增删改。
+ *
+ * 可用字段分两半：内核那几个由服务端跟模板一起下发（GET /api/templates 的 fieldKeys），
+ * 插件那几个从同构的 registry.js 里读它们自己声明的 fieldKeys。**这一页里没有任何一个
+ * 插件名**——跟顶栏用 titleKey 画标签、卡片用 dim 画 chip 是同一步棋。
+ *
+ * 键名原样显示、不翻译：模板作者要打的就是这串字。
+ */
+function templatesSection(templates, fieldKeys) {
+  const list = el("div", "template-list");
+  /** @type {Array<() => any>} */
+  const readers = [];
+  /** @type {HTMLTextAreaElement | HTMLInputElement | null} */
+  let lastFocused = null;
+
+  function addRow(t) {
+    const row = el("div", "template-item");
+    // labelText 收的是**已经翻好的**文案，不是 i18n 键：死键扫描只认字面量
+    // `tr("…")`，键名要是从这个小工具函数的形参里转一手它就看不见了——跟
+    // section() 顶上那条注释同一个理由。
+    const mk = (labelText, value, multi) => {
+      const wrap = el("label", "settings-field");
+      wrap.append(el("span", "settings-label", labelText));
+      const input = document.createElement(multi ? "textarea" : "input");
+      input.className = "settings-input";
+      input.value = value || "";
+      if (multi) input.rows = 4;
+      input.addEventListener("focus", () => { lastFocused = input; });
+      wrap.append(input);
+      row.append(wrap);
+      return input;
+    };
+    const label = mk(tr("settings.templateLabel"), t.label, false);
+    const name = mk(tr("settings.templateName"), t.name, false);
+    const input = mk(tr("settings.templateInput"), t.input, true);
+
+    const del = el("button", "btn template-del", tr("settings.templateDelete"));
+    del.type = "button";
+    del.addEventListener("click", () => {
+      row.remove();
+      const at = readers.indexOf(read);
+      if (at >= 0) readers.splice(at, 1);
+    });
+    row.append(del);
+
+    const read = () => ({ id: t.id, label: label.value, name: name.value, input: input.value });
+    readers.push(read);
+    list.append(row);
+  }
+
+  for (const t of templates) addRow(t);
+  if (!templates.length) list.append(el("p", "settings-note", tr("settings.templateEmpty")));
+
+  // 可用字段：点一下插到刚才那个框的光标处。
+  const keys = el("div", "template-keys");
+  keys.append(el("span", "settings-label", tr("settings.templateKeys")));
+  const pluginKeys = PLUGINS.flatMap((p) => p.fieldKeys || []);
+  for (const key of [...fieldKeys, ...pluginKeys]) {
+    const chip = el("button", "template-key", `{${key}}`);
+    chip.type = "button";
+    chip.addEventListener("click", () => {
+      if (!lastFocused) return;
+      const at = lastFocused.selectionStart ?? lastFocused.value.length;
+      lastFocused.value =
+        lastFocused.value.slice(0, at) + `{${key}}` + lastFocused.value.slice(at);
+      lastFocused.focus();
+    });
+    keys.append(chip);
+  }
+
+  const add = el("button", "btn template-new", tr("settings.templateNew"));
+  add.type = "button";
+  add.addEventListener("click", () => {
+    const note = list.querySelector(".settings-note");
+    if (note) note.remove();
+    addRow({ id: "", label: "", name: "", input: "" });
+  });
+
+  const note = el("p", "settings-result", "");
+  note.hidden = true;
+  const save = el("button", "btn primary", tr("settings.save"));
+  save.type = "button";
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    save.textContent = tr("settings.saving");
+    note.hidden = true;
+    let ok = false;
+    try {
+      const res = await fetch(url("api/templates"), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ templates: readers.map((r) => r()) }),
+      });
+      ok = res.ok;
+    } catch {
+      ok = false;
+    }
+    note.textContent = ok ? tr("settings.saved") : tr("settings.cfgSaveFailed");
+    note.hidden = false;
+    save.disabled = false;
+    save.textContent = tr("settings.save");
+  });
+
+  const actions = el("div", "settings-actions");
+  actions.append(add, save);
+  return section(
+    tr("settings.templates"),
+    el("p", "settings-note", tr("settings.templatesNote")),
+    list,
+    keys,
+    actions,
+    note,
+  );
+}
+
+/**
  * 声明了配置的插件，各画一节。
  *
  * 值要问服务端（清单是同构的，凭据绝不在里面）。问不到就跳过这一节——那意味着这个
@@ -367,6 +483,16 @@ export function renderSettings(root) {
     // 插件那几节要问服务端，晚一步到：内核自己的三节先画出来，不为一次网络往返
     // 把整页压住。
     for (const node of await pluginSections()) root.append(node);
+    // 模板那一节也要问服务端，跟插件几节一起晚一步到。
+    try {
+      const res = await fetch(url("api/templates"));
+      if (res.ok) {
+        const body = await res.json();
+        root.append(templatesSection(body.templates || [], body.fieldKeys || []));
+      }
+    } catch {
+      // 这一节这次画不出来，别的照常。
+    }
   };
   void draw();
 }

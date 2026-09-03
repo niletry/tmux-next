@@ -77,6 +77,12 @@ async function mount(search = "", opts: { settingsStatus?: number } = {}) {
         return new Response(JSON.stringify({ name: "nord", ui: "catppuccin-latte" }));
       }
       if (href.includes("api/key-usage")) return new Response(JSON.stringify({}));
+      if (href.includes("api/templates")) {
+        return new Response(JSON.stringify({
+          templates: [{ id: "t1", label: "修 bug", name: "fix-{item.title}", input: "看看 {jira.summary}" }],
+          fieldKeys: ["item.title", "item.id", "item.source", "item.agent", "item.sessions", "item.tag"],
+        }));
+      }
       return new Response("{}");
     }) as typeof fetch,
   };
@@ -207,8 +213,9 @@ test("声明了配置的插件各画一节", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
   const heads = [...root.querySelectorAll(".settings-head")].map((h) => h.textContent);
-  // 内核四节（语言、终端配色、界面配色、虚拟按键），加上声明了 settings 的那个插件
-  expect(heads.length).toBe(5);
+  // 内核四节（语言、终端配色、界面配色、虚拟按键），加上声明了 settings 的那个插件，
+  // 再加上模板一节（它也要问服务端，跟插件几节一起晚一步到）。
+  expect(heads.length).toBe(6);
 });
 
 test("密钥画成 password，且输入框是空的", async () => {
@@ -261,6 +268,44 @@ test("保存后给一句回执", async () => {
 test("读不到配置就不画那一节", async () => {
   const root = await mount("", { settingsStatus: 404 });
   await new Promise((r) => setTimeout(r, 80));
-  expect(root.querySelectorAll(".settings-head").length).toBe(4);
+  // 内核四节 + 模板一节（它跟 jira 设置是两条独立的请求，jira 答不上来不连累它）。
+  expect(root.querySelectorAll(".settings-head").length).toBe(5);
   expect(root.querySelector(".settings-form")).toBeNull();
+});
+
+/**
+ * 会话模板一节。
+ *
+ * 可用字段分两半：内核那几个由服务端跟模板一起下发（fetch 垫片里的 fieldKeys），
+ * 插件那几个从 jira 清单自己声明的 fieldKeys 里来——这里没有断言任何一个插件名，
+ * 断言的只是"两半都出现了"。
+ */
+
+test("模板一节列出已有模板", async () => {
+  const doc = await mount();
+  const labels = [...doc.querySelectorAll(".template-item input.settings-input")].map(
+    (n) => (n as unknown as HTMLInputElement).value,
+  );
+  expect(labels).toContain("修 bug");
+});
+
+test("可用字段既有内核的也有插件的", async () => {
+  const doc = await mount();
+  const keys = [...doc.querySelectorAll(".template-key")].map((n) => n.textContent);
+  expect(keys).toContain("{item.title}");   // 服务端下发的
+  expect(keys).toContain("{jira.summary}"); // 插件清单里声明的
+});
+
+test("新建按钮多加一条", async () => {
+  const doc = await mount();
+  const before = doc.querySelectorAll(".template-item").length;
+  (doc.querySelector(".template-new") as unknown as HTMLElement).click();
+  expect(doc.querySelectorAll(".template-item").length).toBe(before + 1);
+});
+
+test("删除按钮少一条", async () => {
+  const doc = await mount();
+  const before = doc.querySelectorAll(".template-item").length;
+  (doc.querySelector(".template-item .template-del") as unknown as HTMLElement).click();
+  expect(doc.querySelectorAll(".template-item").length).toBe(before - 1);
 });
