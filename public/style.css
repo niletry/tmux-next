@@ -1105,6 +1105,10 @@ body.sheet-open {
 .btn {
   flex: 1;
   min-height: 54px;
+  /* 有 min-height 就必须有 box-sizing：默认的 content-box 下这颗按钮的真实高度
+     是 54 + 28 的内边距 = 82px，"达标"达的是一个不是你以为的数字，而下次有人把
+     内边距调小时高度会跟着掉、断言却仍然是绿的。 */
+  box-sizing: border-box;
   padding: 14px 16px;
   border: 0;
   border-radius: 10px;

@@ -47,13 +47,18 @@ const DENSE = [
   ".filter-chip",
   "a.item-source.is-link",
   ".item-new",
-  ".item-link",
   ".item-refresh",
-  ".item-archive",
 ];
 
 /** 独立控件：没有密度包袱，按 44px。 */
-const STANDALONE = [".sheet-close", ".sheet-create", ".field-remove", ".pick-row"];
+// .item-link 和 .item-archive 曾经在这张密集清单里，因为它们当时是卡片行上的
+// 小 pill。现在这两个动作挪进了动作弹层，跟「取消」并排戴 .btn——在弹层里它们
+// 是独立控件，不再有密度包袱，所以归属换了一档而不是放宽了要求。
+//
+// 把 .btn 补进来是这次移动的另一半：只把那两个选择器删掉的话，覆盖会悄悄少一
+// 块——删断言换绿灯，正是这张清单存在要防的事。.btn 是弹层和表单里所有主按钮
+// 的基类（结束会话的确认、新建、保存、发送），一条就把它们全盖住了。
+const STANDALONE = [".sheet-close", ".sheet-create", ".field-remove", ".pick-row", ".btn"];
 
 /** 工具条：一页只有一行，代价只付一次。 */
 // 工具条那几个控件收敛成了一个共享类。以前这里按名字列举，而列举挡不住"新加
