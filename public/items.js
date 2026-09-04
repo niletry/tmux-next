@@ -6,7 +6,7 @@ import { dimensionsOf, valuesOf, groupItems, filterItems, pruneSelection } from 
 import { openPicker } from "./pick-sheet.js";
 import { icon } from "./icons.js";
 // 卡片的画法从这里来，浮层用的也是同一份——见 public/item-card.js 顶上的注释。
-// 表格视图（itemTable）画的也是这几件，只是换个排法摆进格子里。
+// 列表视图（itemList）画的也是这几件，只是换个排法摆进一行里。
 import {
   ITEM_DIM_LABEL,
   AGENT_VALUE,
@@ -373,13 +373,16 @@ function loadGroupBy(dims) {
 }
 
 /**
- * 卡片还是表格。
+ * 卡片还是列表。
  *
  * 默认卡片，认不出来的值也当卡片：存的东西可能来自旧版本、也可能被人手改过，而
- * 卡片是任何宽度上都成立的那一种。表格的切换器在 900px 以下不画（样式里那一条），
- * 所以手机上永远存不进 `table`；桌面把窗口拖窄时存着的 table 仍会画，那时靠
- * `.table-wrap` 的横滚兜住——不读 matchMedia，那要自己管窗口变化和重画时机，
- * 而这个判断背后没有任何状态（同 CLAUDE.md 里卡片动作行那条）。
+ * 卡片是任何宽度上都成立的那一种。列表的切换器在 900px 以下不画（样式里那一条），
+ * 所以手机上永远存不进 `table`；桌面把窗口拖窄时存着的 table 仍会画，那时靠状态
+ * 一侧自己换行兜住，不会撑出横向滚动——不读 matchMedia，那要自己管窗口变化和
+ * 重画时机，而这个判断背后没有任何状态（同 CLAUDE.md 里卡片动作行那条）。
+ *
+ * 内部值仍然叫 "table"（VIEW_VALUES / localStorage）——它只是一个不给人看的
+ * 存储标识，改名字要的是迁移旧值，不改也不影响这份列表现在长什么样、叫什么。
  */
 const VIEW_VALUES = ["cards", "table"];
 
@@ -811,7 +814,8 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   actions.append(groupWrap);
 
   // 视图切换跟「分组」并排：两个都是"这份列表怎么排给我看"，不跟同步那种动作混。
-  // 900px 以下整个控件不画（.view-mode-wrap），手机上表格没有意义。
+  // 900px 以下整个控件不画（.view-mode-wrap）——这是坐在电脑前扫一屏用的排法，
+  // 手机上意义不大。
   const viewWrap = el("label", "toolbar-control is-field view-mode-wrap");
   viewWrap.append(el("span", "toolbar-label", tr("items.view")));
   const viewSelect = document.createElement("select");
@@ -916,100 +920,78 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
 }
 
 /**
- * 表格视图：同一份数据的第二种排法。
+ * 列表视图：同一份数据的第二种排法。
  *
  * 卡片是给手机的，一张单一块、纵向读；坐在电脑前扫二十张单时要的是另一件事——
- * 同一个字段在所有单上对齐成一列，一眼看出哪几张卡在同一个状态上。所以这里跟卡片
- * 共用全部构件（item-card.js 的 itemHead / facetChip / sessionRow，加上这里的
- * newSessionLink / refreshButton / itemMore），
- * 换的只是排法：两边各画一套的话，"这颗 chip 什么时候带明细"这类判断迟早在一边被
- * 改、另一边没跟上，而那是安静的——两种视图看着都对，只是说法不一样了。
+ * 一行一张单，状态一眼扫过去，操作不用去卡片的四角找。所以这里跟卡片共用全部
+ * 构件（item-card.js 的 itemHead / facetChip / sessionRow，加上这里的
+ * newSessionLink / refreshButton / itemMore），换的只是排法：两边各画一套的话，
+ * "这颗 chip 什么时候带明细"这类判断迟早在一边被改、另一边没跟上，而那是安静
+ * 的——两种视图看着都对，只是说法不一样了。
  *
- * 分组是一行贯通全表的标题行，不是每组另起一张表：另起一张表的话每组都带一次表头，
- * 列就不再在整页上对齐，而对齐正是选表格的理由。
+ * 这曾经是一张真正的 <table>：字段对齐成列，窗口拖窄就靠 .table-wrap 横滚。
+ * 横滚本身就是问题——不管是手机上还是桌面上把窗口拖窄，横向滚动一整页都是最糟
+ * 的那种交互，用户往往根本注意不到自己得往右拉。现在换成"状态在左、操作在右"
+ * 的一行式布局：状态那一侧（标题、chip、会话）没有固定宽度，挤不下就自己换行，
+ * 而不是把整行撑宽、逼着页面滚。
+ *
+ * 分组是一块贯通整份列表的标题（跟卡片分组视图同一个 <section>/.group-name），
+ * 不是每组另起一段：这样组名跟卡片视图长得一样，只是下面挂的是列表行而不是卡片。
  *
  * @param {Array<{value: string | null, items: any[]}>} groups value 为 null 表示不分组
  * @param {string} groupBy
- * @param {string[]} cols facet 列的维度
+ * @param {string[]} cols facet 列的维度（沿用"筛选区已经加过的字段"这条判断，见 item-table.js）
  */
-function itemTable(groups, groupBy, cols, mine, facets, claimed, onChange, link) {
-  // 横滚在包一层上，不在 <table> 上：桌面把窗口拖窄到 900px 以下时（那时切换器
-  // 已经不画了，但存着的选择还在生效）表格靠它退化成横滚，而不是撑破整页布局。
-  const wrap = el("div", "table-wrap");
-  const table = el("table", "item-table");
-  const span = 4 + cols.length;
-
-  const thead = el("thead");
-  const hr = el("tr");
-  hr.append(el("th", "col-item", tr("items.colItem")));
-  // 这两列的表头就是维度自己的名字——固定列和 facet 列在表头上没有两套说法。
-  hr.append(el("th", "col-agent", tr("item.agent")));
-  hr.append(el("th", "col-sessions", tr("item.sessions")));
-  for (const dim of cols) hr.append(el("th", "col-facet", dimLabel(dim)));
-  hr.append(el("th", "col-actions", tr("items.colActions")));
-  thead.append(hr);
-  table.append(thead);
-
+function itemList(groups, groupBy, cols, mine, facets, claimed, onChange, link) {
+  const wrap = el("div", "item-list");
   for (const group of groups) {
-    const body = el("tbody");
+    let parent = wrap;
     if (group.value !== null) {
-      const row = el("tr", "group-row");
-      const cell = el("th", "group-name", groupLabel(groupBy, group.value));
-      cell.colSpan = span;
-      row.append(cell);
-      body.append(row);
+      const section = el("section");
+      section.append(el("h2", "group-name", groupLabel(groupBy, group.value)));
+      wrap.append(section);
+      parent = section;
     }
     for (const item of group.items) {
-      body.append(itemRow(item, mine.get(item.id) ?? [], facets[item.id], cols, claimed, onChange, link));
+      parent.append(itemListRow(item, mine.get(item.id) ?? [], facets[item.id], cols, claimed, onChange, link));
     }
-    table.append(body);
   }
-
-  wrap.append(table);
   return wrap;
 }
 
-/** 表格里的一张单。构件全部来自卡片那一套，见 itemTable 顶上的注释。 */
-function itemRow(item, sessions, facets, cols, claimed, onChange, link) {
-  const row = el("tr", "item-row");
+/** 列表里的一张单。构件全部来自卡片那一套，见 itemList 顶上的注释。 */
+function itemListRow(item, sessions, facets, cols, claimed, onChange, link) {
+  const row = el("div", "item-list-row");
 
-  // 标题格就是卡片的头部，只是会话数传 0——那件事在这里有自己的一列，画两遍
-  // 就是同一句话说两次。徽标（来源+类型）跟着一起来，跟卡片上是同一枚。
-  const first = el("td", "col-item");
-  first.append(itemHead(item, facets, 0));
-  row.append(first);
+  // 状态一侧：标题+徽标、agent/facet chip、会话，全部没有固定宽度，挤不下就换行。
+  const status = el("div", "row-status");
+  status.append(itemHead(item, facets, 0));
 
-  // agent 和会话数这两个维度不再画进 facet 列（tableColumns 已经把它们挡掉了），
-  // 它们在这里各有自己的固定列。agent 走 facetChip 而不是自己拼一个词：tone 是
-  // 它带的，颜色跟卡片上那颗必须是同一颗。
-  const agent = el("td", "col-agent");
-  for (const f of facetsIn(facets, "item.agent")) agent.append(facetChip(f));
-  row.append(agent);
-
-  // 会话格里是链接本身，不是一个数字：数字回答"有几个"，而在这份列表里下一步动作
-  // 永远是"点进去看某一个"。
-  // onChange 传下去，所以行里那个解绑 × 跟卡片上是同一颗，不是只读的复制品。
-  const cell = el("td", "col-sessions");
-  for (const session of sessions) cell.append(sessionRow(session, onChange));
-  row.append(cell);
-
+  // agent 走跟卡片一样的默认画法——它的取值（等你/在跑）本来就是词，不需要
+  // 名字兜底。已加的筛选字段（cols）强制带上维度名：表格视图曾经靠列头说明
+  // "这一列是状态、这一列是负责人"，列表没有列头了，"To Do"、"Sam"这种值离了
+  // 名字就读不出是什么，所以这里传 showLabel。
+  const chips = el("div", "facets");
+  for (const f of facetsIn(facets, "item.agent")) chips.append(facetChip(f));
   for (const dim of cols) {
-    const td = el("td", "facet-cell");
-    // 一个维度可以有多个取值（标签就是），全画——只画第一个等于在表格里悄悄丢数据。
-    for (const f of facetsIn(facets, dim)) td.append(facetChip(f));
-    row.append(td);
+    for (const f of facetsIn(facets, dim)) chips.append(facetChip(f, { showLabel: true }));
   }
+  if (chips.children.length) status.append(chips);
 
-  // 动作跟卡片一样分两档：常用的两个摊在行里，关联/归档收在 ⋯ 后面。表格里
-  // ⋯ 也进这一格——卡片上它绝对定位在右上角，那是卡片的角，表格没有那个角。
-  const actions = el("td", "col-actions");
-  const wrap = el("div", "item-actions");
-  wrap.append(newSessionLink(item, sessions.length));
+  // 会话仍然是链接本身，不是一个数字：下一步动作永远是"点进去看某一个"。
+  // onChange 传下去，所以这里的解绑 × 跟卡片上是同一颗，不是只读的复制品。
+  for (const session of sessions) status.append(sessionRow(session, onChange));
+
+  row.append(status);
+
+  // 操作一侧：跟卡片一样分两档，常用的两个摊开，关联/归档收进 ⋯。⋯ 在卡片上
+  // 绝对定位在右上角，那是卡片的角；这里没有角，跟另外两个按钮一起排进这一侧。
+  const actions = el("div", "item-actions");
+  actions.append(newSessionLink(item, sessions.length));
   if (item.source && claimed.has(item.source.provider)) {
-    wrap.append(refreshButton(item, onChange));
+    actions.append(refreshButton(item, onChange));
   }
-  wrap.append(itemMore(item, onChange, link));
-  actions.append(wrap);
+  actions.append(itemMore(item, onChange, link));
   row.append(actions);
   return row;
 }
@@ -1181,12 +1163,12 @@ async function render(fromSync = false) {
       }
       root.append(empty);
     } else if (loadView() === "table") {
-      // 分组在表格下照旧生效，只是画成跨列的标题行；不分组时就是一组、没有标题行。
+      // 分组在列表下照旧生效，只是画成整块标题；不分组时就是一组、没有标题。
       const groups = groupBy
         ? groupItems(filtered, visibleFacets, groupBy)
         : [{ value: null, items: filtered }];
       root.append(
-        itemTable(
+        itemList(
           groups,
           groupBy,
           tableColumns(dims, loadFields()),

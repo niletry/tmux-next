@@ -250,8 +250,15 @@ export function openDetailSheet(title, rows) {
  * `item.agent` 的取值也走字典（waiting/working/none 是内部词，不该给人看）；
  * 别的维度的取值是数据（工单状态、史诗名），原样显示。
  */
-/** @param {Facet} facet */
-export function facetChip(facet) {
+/**
+ * @param {Facet} facet
+ * @param {{showLabel?: boolean}} [opts] showLabel: 强制带上维度名，不管是不是
+ *   光秃秃的数字。列表视图用——那边没有表格曾经给的列头，"To Do"、"Sam"这种
+ *   值离了列头就读不出是状态还是负责人，必须靠 chip 自己带名字说清楚。卡片上
+ *   不传，保持"默认只画值"那条判断（见下面的长注释）。
+ */
+export function facetChip(facet, opts) {
+  const showLabel = opts?.showLabel ?? false;
   // tr() 本身查不到键就退回键名，插件维度（开放集合）和真正没配置的 dim 都
   // 落到这条路；内核的五个维度走上面的字面量表，只是为了不被死键扫描误判。
   const label = dimLabelOf(facet.dim);
@@ -281,9 +288,13 @@ export function facetChip(facet) {
   // 默认只画值，维度名进 title。一行 chip 里"Status / Epic / Assignee"这些词每张
   // 卡片都一样，重复七遍换不来任何信息，却把史诗名和状态挤到了第三行去。
   //
-  // 唯一留下名字的情况：值自己说不出话。"1"、"0/9" 这种光秃秃的数字脱离维度名就
-  // 什么都不是——除非插件给了图标，那时图标已经说明了它是什么，字就多余了。
-  if (!facet.icon && BARE_NUMBER.test(value)) chip.append(el("span", "f-dim", label));
+  // 留名字的两种情况：调用方要求（showLabel），或者值自己说不出话——"1"、"0/9"
+  // 这种光秃秃的数字脱离维度名就什么都不是，除非插件给了图标，那时图标已经说明
+  // 了它是什么，字就多余了（showLabel 时这条"图标说明一切"的让步不生效——列表
+  // 里就是缺了列头才要名字，图标不能替调用方作这个判断）。
+  if (showLabel || (!facet.icon && BARE_NUMBER.test(value))) {
+    chip.append(el("span", "f-dim", label));
+  }
   chip.append(el("span", "f-value", value));
   chip.title = `${label}: ${value}`;
   return chip;
