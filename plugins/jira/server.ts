@@ -325,6 +325,9 @@ export function facetsFor(
             value: c.state,
             tone: checkFacetTone(c.state),
             group: prGroupLabel(pr),
+            // 组标题旁边那个链接图标指回这个 PR 本身——不是某一次检查的地址，
+            // 是"这一组说的是哪个 PR"，所以每一行都贴同一个 pr.url。
+            groupUrl: pr.url,
           })),
         ),
       });

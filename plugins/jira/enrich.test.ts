@@ -140,12 +140,14 @@ test("检查明细按 PR 分组，group 是「仓库 #编号 · 源分支 → �
     hidden: 0,
     prs: [
       {
-        id: "1", title: "a", url: "u", branch: "fix/login", destinationBranch: "main",
+        id: "1", title: "a", url: "https://bitbucket.org/ws/web-app/pull-requests/1",
+        branch: "fix/login", destinationBranch: "main",
         repo: "web-app", updated: 0, status: "OPEN", checksKnown: true,
         checks: [{ name: "ci/circleci: test", state: "SUCCESSFUL", url: "u" }],
       },
       {
-        id: "2", title: "b", url: "u", branch: "fix/api", destinationBranch: "develop",
+        id: "2", title: "b", url: "https://bitbucket.org/ws/backend/pull-requests/2",
+        branch: "fix/api", destinationBranch: "develop",
         repo: "backend", updated: 0, status: "MERGED", checksKnown: true,
         checks: [
           { name: "ci/circleci: build", state: "FAILED", url: "u" },
@@ -166,6 +168,12 @@ test("检查明细按 PR 分组，group 是「仓库 #编号 · 源分支 → �
     "ci/circleci: test",
     "ci/circleci: build",
     "ci/circleci: test",
+  ]);
+  // groupUrl 指回这个 PR 本身,不是某一次检查的地址——一组里每一行都贴同一个。
+  expect(rows.map((r) => r.groupUrl)).toEqual([
+    "https://bitbucket.org/ws/web-app/pull-requests/1",
+    "https://bitbucket.org/ws/backend/pull-requests/2",
+    "https://bitbucket.org/ws/backend/pull-requests/2",
   ]);
 });
 

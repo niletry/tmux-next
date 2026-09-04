@@ -146,6 +146,13 @@ export type FacetDetail = {
    * 长出嵌套结构。
    */
   group?: string;
+  /**
+   * 组标题旁边那个"打开原始链接"的入口指向哪。跟 `url` 一样只认 http/https，
+   * 同一道白名单挡（safeHttpUrl）。分开一个字段而不是复用 `url`——`url` 是
+   * "点这一行本身去哪"，一行检查没有自己的地址；`groupUrl` 是"点组标题里那个
+   * 链接图标去哪"，两者可能同时存在，也可能只有其中一个。
+   */
+  groupUrl?: string;
 };
 
 export type Facet = {

@@ -130,7 +130,7 @@ test("连续同 group 的行只画一条组标题，不重复", async () => {
     { label: "ci/build", value: "FAILED", tone: "warn", group: "backend · fix/api → develop · MERGED" },
     { label: "ci/lint", value: "SUCCESSFUL", tone: "ok", group: "backend · fix/api → develop · MERGED" },
   ]);
-  const titles = [...document.querySelectorAll(".detail-group-title")].map((n) => n.textContent);
+  const titles = [...document.querySelectorAll(".detail-group-toggle")].map((n) => n.textContent);
   expect(titles).toEqual(["web-app · fix/login → main · OPEN", "backend · fix/api → develop · MERGED"]);
   expect(document.querySelectorAll(".detail-row").length).toBe(3);
 });
@@ -138,7 +138,7 @@ test("连续同 group 的行只画一条组标题，不重复", async () => {
 test("没有 group 的行不画组标题", async () => {
   const { openDetailSheet } = await load();
   openDetailSheet("PR", [{ label: "修登录页", value: "OPEN" }]);
-  expect(document.querySelector(".detail-group-title")).toBeNull();
+  expect(document.querySelector(".detail-group-toggle")).toBeNull();
   expect(document.querySelectorAll(".detail-row").length).toBe(1);
 });
 
@@ -147,7 +147,7 @@ test("组默认展开，点标题折叠，再点一下展开回来", async () =>
   openDetailSheet("检查: 1/1", [
     { label: "ci/test", value: "SUCCESSFUL", tone: "ok", group: "web-app #371 · fix/login → main · OPEN" },
   ]);
-  const head = document.querySelector(".detail-group-title") as HTMLButtonElement;
+  const head = document.querySelector(".detail-group-toggle") as HTMLButtonElement;
   const rows = document.querySelector(".detail-group-rows") as HTMLElement;
 
   expect(head.getAttribute("aria-expanded")).toBe("true");
@@ -168,8 +168,34 @@ test("折叠一个组不影响另一个组", async () => {
     { label: "ci/test", value: "SUCCESSFUL", tone: "ok", group: "web-app #1 · a → main · OPEN" },
     { label: "ci/build", value: "SUCCESSFUL", tone: "ok", group: "backend #2 · b → main · OPEN" },
   ]);
-  const [first, second] = [...document.querySelectorAll(".detail-group-title")] as HTMLButtonElement[];
+  const [first, second] = [...document.querySelectorAll(".detail-group-toggle")] as HTMLButtonElement[];
   first!.click();
   expect(first!.getAttribute("aria-expanded")).toBe("false");
   expect(second!.getAttribute("aria-expanded")).toBe("true");
+});
+
+test("组带 groupUrl 时旁边有个链到原始地址的入口，跟折叠按钮并排不嵌套", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [
+    {
+      label: "ci/test", value: "SUCCESSFUL", tone: "ok",
+      group: "web-app #371 · fix/login → main · OPEN",
+      groupUrl: "https://example.com/pr/371",
+    },
+  ]);
+  const head = document.querySelector(".detail-group-head")!;
+  const link = head.querySelector("a.detail-group-link") as HTMLAnchorElement;
+  expect(link.href).toBe("https://example.com/pr/371");
+  expect(link.target).toBe("_blank");
+  expect(link.rel).toBe("noopener noreferrer");
+  // 并排，不是嵌套：<a> 不能出现在 <button> 里面。
+  expect(head.querySelector(".detail-group-toggle a")).toBeNull();
+});
+
+test("没有 groupUrl 就不画那个链接入口", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "SUCCESSFUL", tone: "ok", group: "web-app #371 · fix/login → main · OPEN" },
+  ]);
+  expect(document.querySelector(".detail-group-link")).toBeNull();
 });

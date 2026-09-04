@@ -235,12 +235,14 @@ export async function collectFacets(
                   r?.tone === "ok" || r?.tone === "warn" || r?.tone === "dim" ? r.tone : undefined;
                 const rowUrl = safeHttpUrl(r?.url);
                 const rowGroup = trim(r?.group, MAX_TEXT);
+                const rowGroupUrl = safeHttpUrl(r?.groupUrl);
                 detail.push({
                   label,
                   value: rowValue,
                   ...(rowTone ? { tone: rowTone } : {}),
                   ...(rowUrl ? { url: rowUrl } : {}),
                   ...(rowGroup ? { group: rowGroup } : {}),
+                  ...(rowGroupUrl ? { groupUrl: rowGroupUrl } : {}),
                 });
               }
             }

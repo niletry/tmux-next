@@ -1941,14 +1941,22 @@ header .htitle { font-size: 17px; font-weight: 600; }
   margin-top: 0;
 }
 
-/* 整行都是点击区，不是右边一个小箭头——跟设置页的 settings-head 同一个决定，
-   这是用拇指点的。 */
-.detail-group-title {
+/* 折叠按钮跟"打开原始链接"并排，不是一个套一个——<a> 不能嵌在 <button> 里。 */
+.detail-group-head {
   display: flex;
   align-items: center;
+  gap: 4px;
+}
+
+/* 折叠按钮占满剩下的宽度，是点击区的大头——跟设置页的 settings-head 同一个
+   决定，这是用拇指点的。 */
+.detail-group-toggle {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 6px;
   box-sizing: border-box;
-  width: 100%;
   min-height: 32px;
   margin: 0;
   padding: 4px 0;
@@ -1965,6 +1973,22 @@ header .htitle { font-size: 17px; font-weight: 600; }
   display: flex;
   flex: 0 0 auto;
   color: var(--text-3);
+}
+
+/* 独立的小方块点击区，跟折叠按钮分开：32px 见方够到手指，不用整行都塞给它。 */
+.detail-group-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-3);
+}
+.detail-group-link:hover {
+  background: var(--surface-4);
+  color: var(--accent-text);
 }
 
 .detail-group-rows {

@@ -341,3 +341,21 @@ test("明细行的 group 原样带过去，跟 label/value 一样限长", async 
   expect(rows[1]!.group?.length).toBe(120);
   expect(rows[2]!.group).toBeUndefined();
 });
+
+// groupUrl 跟 url 走同一道白名单：只放行 http/https，理由跟 url 完全相同——
+// javascript: 是真的注入路径。
+test("groupUrl 只放行 http/https，别的协议原样丢掉那个字段", async () => {
+  const got = await collectFacets([{ id: "a", source: null }], {
+    p: async () => ({
+      a: [{ dim: "x", value: "1", detail: [
+        { label: "ci/test", value: "OK", groupUrl: "https://example.com/pr/1" },
+        { label: "ci/build", value: "OK", groupUrl: "javascript:alert(1)" },
+        { label: "无链接", value: "OK" },
+      ] }],
+    }),
+  });
+  const rows = got.a![0]!.detail!;
+  expect(rows[0]!.groupUrl).toBe("https://example.com/pr/1");
+  expect(rows[1]!.groupUrl).toBeUndefined();
+  expect(rows[2]!.groupUrl).toBeUndefined();
+});

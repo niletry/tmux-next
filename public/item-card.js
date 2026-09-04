@@ -30,6 +30,8 @@ import { PLUGINS } from "../plugins/registry.js";
  * @property {string} [url]
  * @property {string} [group] 不透明的分组标题——含义完全由给出它的插件决定,内核
  *   只认"连续几行 group 相同就画在同一组标题下面"这一件事,不解释文本本身。
+ * @property {string} [groupUrl] 组标题旁边那个链接图标指去哪——跟 url 一样只认
+ *   内核已经放行过的 http/https 绝对地址。
  */
 /**
  * @typedef {object} Facet
@@ -151,15 +153,34 @@ function detailRowLine(row) {
  * section() 同一个理由）。默认展开——折叠是"我看完这个 PR 了、收起来腾地方"
  * 的手动动作，不该默认就把刚打开的浮层收成一排标题。
  *
+ * 折叠按钮和"打开原始链接"是两个并排的控件，不是一个套一个——`<a>` 不能嵌在
+ * `<button>` 里，跟会话卡片上单号链接不能套按钮是同一条 HTML 规则（见
+ * items.js 的「查看这张单」为什么是并排动作而不是嵌进去）。
+ *
  * @param {string} title
  * @param {DetailRow[]} rows
+ * @param {string} [groupUrl]
  */
-function detailGroup(title, rows) {
+function detailGroup(title, rows, groupUrl) {
   const box = el("div", "detail-group");
-  const head = el("button", "detail-group-title");
-  head.type = "button";
+  const head = el("div", "detail-group-head");
+
+  const toggle = el("button", "detail-group-toggle");
+  toggle.type = "button";
   const chevron = el("span", "detail-group-chevron");
-  head.append(chevron, el("span", undefined, title));
+  toggle.append(chevron, el("span", undefined, title));
+  head.append(toggle);
+
+  if (groupUrl) {
+    const link = document.createElement("a");
+    link.className = "detail-group-link";
+    link.href = groupUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.setAttribute("aria-label", tr("items.openOriginal"));
+    link.innerHTML = icon("link", 14);
+    head.append(link);
+  }
 
   const body = el("div", "detail-group-rows");
   for (const row of rows) body.append(detailRowLine(row));
@@ -167,12 +188,12 @@ function detailGroup(title, rows) {
 
   /** @param {boolean} open */
   const paint = (open) => {
-    head.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-expanded", String(open));
     chevron.innerHTML = icon(open ? "chevronDown" : "chevronRight", 14);
     body.hidden = !open;
   };
   paint(true);
-  head.addEventListener("click", () => paint(head.getAttribute("aria-expanded") !== "true"));
+  toggle.addEventListener("click", () => paint(toggle.getAttribute("aria-expanded") !== "true"));
   return box;
 }
 
@@ -197,7 +218,7 @@ export function openDetailSheet(title, rows) {
     if (row.group) {
       const group = [];
       while (i < rows.length && rows[i].group === row.group) group.push(rows[i++]);
-      list.append(detailGroup(row.group, group));
+      list.append(detailGroup(row.group, group, row.groupUrl));
     } else {
       list.append(detailRowLine(row));
       i++;
