@@ -87,12 +87,72 @@ test("两跳都通时，PR 带着它的检查回来", async () => {
   expect(pr.status).toBe("MERGED");
   expect(pr.branch).toBe("EXAMPLE-1-fix");
   expect(pr.destinationBranch).toBe("main");
-  expect(pr.repo).toBe("repo-uuid"); // 从 PR 地址解出来，不是另一次请求换来的
+  // STATUS_BODY 没有 name 字段，仓库名那一跳查不到人读名字，退回 PR 地址里的 UUID。
+  expect(pr.repo).toBe("repo-uuid");
   expect(pr.checksKnown).toBe(true);
   expect(pr.checks.map((c) => [c.name, c.state])).toEqual([
     ["ci/circleci: build", "SUCCESSFUL"],
     ["ci/circleci: test", "FAILED"],
   ]);
+});
+
+/** 按路径分派，能区分「查 PR 的检查」和「查仓库本身」这两个都打到 api.bitbucket.org 的请求。 */
+function routedByPath(handlers: Record<string, unknown>) {
+  return (async (input: RequestInfo | URL) => {
+    const href = String(input);
+    if (href.includes("api.bitbucket.org")) {
+      const path = new URL(href).pathname;
+      if (path.endsWith("/statuses")) return Response.json(handlers.status ?? { values: [] });
+      return Response.json(handlers.repo ?? {});
+    }
+    return Response.json(handlers.dev);
+  }) as unknown as typeof fetch;
+}
+
+test("仓库真名字查到了就用它，不是 PR 地址里的 UUID", async () => {
+  const res = await fetchDev(
+    CONFIG,
+    "10001",
+    "EXAMPLE-1",
+    routedByPath({ dev: DEV_BODY, status: STATUS_BODY, repo: { name: "web-app" } }),
+  );
+  expect(res.ok).toBe(true);
+  if (!res.ok) return;
+  expect(res.prs[0]!.repo).toBe("web-app");
+});
+
+test("仓库名字跨调用复用同一个缓存，只查一次", async () => {
+  let repoCalls = 0;
+  const fetcher = (async (input: RequestInfo | URL) => {
+    const href = String(input);
+    if (href.includes("api.bitbucket.org")) {
+      const path = new URL(href).pathname;
+      if (path.endsWith("/statuses")) return Response.json(STATUS_BODY);
+      repoCalls++;
+      return Response.json({ name: "web-app" });
+    }
+    return Response.json(DEV_BODY);
+  }) as unknown as typeof fetch;
+
+  const cache = new Map<string, string>();
+  await fetchDev(CONFIG, "10001", "EXAMPLE-1", fetcher, cache);
+  await fetchDev(CONFIG, "10002", "EXAMPLE-2", fetcher, cache);
+  expect(repoCalls).toBe(1);
+});
+
+test("没配 Bitbucket 时不问仓库名，直接退回 UUID", async () => {
+  const noBitbucket = { ...CONFIG, bitbucket: undefined };
+  let calledRepo = false;
+  const fetcher = (async (input: RequestInfo | URL) => {
+    const href = String(input);
+    if (href.includes("api.bitbucket.org")) calledRepo = true;
+    return Response.json(DEV_BODY);
+  }) as unknown as typeof fetch;
+
+  const res = await fetchDev(noBitbucket, "10001", "EXAMPLE-1", fetcher);
+  expect(calledRepo).toBe(false);
+  expect(res.ok).toBe(true);
+  if (res.ok) expect(res.prs[0]!.repo).toBe("repo-uuid");
 });
 
 test("dev-status 按 issue id 查，不是按 key", async () => {

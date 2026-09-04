@@ -46,6 +46,13 @@ const DEV_CACHE_MS = 5 * 60_000;
 
 const devCache = new Map<string, { at: number; result: DevResult }>();
 
+/**
+ * 仓库的人读名字，跨 issue 长期缓存——不像 devCache 那样五分钟过期，因为名字
+ * 本身几乎不会变。这个进程活多久就缓多久，issue 之间共享同一份，是 fetchDev
+ * 特意留出的那个可注入参数存在的理由：dev.ts 自己不持有这份状态。
+ */
+const repoNameCache = new Map<string, string>();
+
 /** 同时在跑的 dev-status 请求数。批量刷新时不至于一次打出去五十个连接。 */
 const DEV_CONCURRENCY = 4;
 
@@ -56,7 +63,7 @@ async function dev(issueId: string, issueKey: string, refresh: boolean): Promise
   const config = await readJiraConfig();
   if (!config) return { ok: false, reason: "auth" };
 
-  const result = await fetchDev(config, issueId, issueKey);
+  const result = await fetchDev(config, issueId, issueKey, fetch, repoNameCache);
   // 只缓存成功。一次抖动不该让这个单的 PR 消失五分钟。
   if (result.ok) devCache.set(issueId, { at: Date.now(), result });
   return result;

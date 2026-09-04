@@ -152,6 +152,37 @@ async function checksFor(
     .filter((c: Check) => c.name);
 }
 
+/**
+ * 一个仓库的人读名字。Bitbucket 没配、或者这一跳失败，都返回 null——调用方退回 UUID。
+ *
+ * `cache` 是调用方传进来的，`dev.ts` 自己不持有任何模块级状态——这个文件本来是
+ * 纯的（每次都真的发请求），要缓存的话缓存该是调用方（`server.ts`）的事：PR 地址
+ * 里的 workspace/repo 段是 UUID，名字本身不会变，值得跨 issue 长期缓存，但把缓存
+ * 缝进模块里会让这个文件的测试互相污染——一个测试喂了真名字，缓存会把它泄漏给
+ * 后面断言"没查到就退回 UUID"的测试，谁先跑决定谁通过。
+ */
+async function repoDisplayName(
+  config: JiraConfig,
+  workspace: string,
+  repo: string,
+  fetcher: typeof fetch,
+  cache: Map<string, string>,
+): Promise<string | null> {
+  const bb = config.bitbucket;
+  if (!bb) return null;
+  const key = `${workspace}/${repo}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const api = `https://api.bitbucket.org/2.0/repositories/%7B${workspace}%7D/%7B${repo}%7D`;
+  const got = await json(fetcher, api, basic(bb.email, bb.appPassword));
+  if (!got.ok) return null;
+  const name = typeof got.data?.name === "string" ? got.data.name : "";
+  if (!name) return null;
+  cache.set(key, name);
+  return name;
+}
+
 /** 有并发上限的 map：一个单挂十几个 PR 时不把连接一次全开出去。 */
 async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -180,6 +211,10 @@ export async function fetchDev(
   issueId: string,
   issueKey: string,
   fetcher: typeof fetch = fetch,
+  // 调用方（server.ts 的 dev()）传一个活得比一次调用久的 Map 进来，好让同一个
+  // 仓库的名字跨 issue 复用；这里默认给一个一次性的——单次调用内多个 PR 挂同一
+  // 仓库时至少不用问两遍，但不会跨调用留存，那不是这个纯函数该管的事。
+  repoNames: Map<string, string> = new Map(),
 ): Promise<DevResult> {
   const url =
     `${config.url}/rest/dev-status/latest/issue/detail` +
@@ -198,6 +233,12 @@ export async function fetchDev(
     if (!id || !prUrl) return null;
 
     const checks = await checksFor(config, prUrl, fetcher);
+    const parts = parsePrUrl(prUrl);
+    // 拿不到人读名字（没配 Bitbucket、这一跳失败）就退回 UUID——跟 CI 检查同一种
+    // 降级姿态：少一点信息，不是没有信息。
+    const repo = parts
+      ? ((await repoDisplayName(config, parts.workspace, parts.repo, fetcher, repoNames)) ?? parts.repo)
+      : "";
     return {
       id,
       title: typeof pr?.name === "string" ? pr.name : "",
@@ -205,7 +246,7 @@ export async function fetchDev(
       url: prUrl,
       branch: typeof pr?.source?.branch === "string" ? pr.source.branch : "",
       destinationBranch: typeof pr?.destination?.branch === "string" ? pr.destination.branch : "",
-      repo: parsePrUrl(prUrl)?.repo ?? "",
+      repo,
       updated: Date.parse(typeof pr?.lastUpdate === "string" ? pr.lastUpdate : "") || 0,
       checks: checks ?? [],
       checksKnown: checks !== null,
