@@ -1,5 +1,5 @@
-<title>What's new in tmux-next 0.12</title>
-<meta name="description" content="tmux-next 0.12: dictate to your agent from a phone — and the measurements behind it, including one conclusion I got wrong and had to take back.">
+<title>What's new in tmux-next 2.2</title>
+<meta name="description" content="tmux-next 2.2: from a viewer for one tmux session to a tracker for the Jira ticket it's for — plugins, work items, a lifecycle that writes back, and a list view rebuilt around it.">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 
@@ -146,11 +146,188 @@
     <span><a href="/whats-new" style="color:var(--ink);font-weight:600">EN</a> · <a href="/whats-new-zh">中文</a> · <a href="/manual">Manual</a></span>
   </div>
 
-  <h1>What's new in 0.12</h1>
+  <h1>What's new in 2.2</h1>
 
   <p class="lede">
-    You can talk to your agent now. Below is how it works, the measurement that decided its
-    architecture, and one conclusion I reached, shipped, and then had to take back.
+    The last several releases changed what this thing is <em>for</em>, not just what it can
+    do. It started as a way to see one tmux session from a phone. It now also tracks the
+    Jira ticket that session is for, through to its PRs and their checks, and moves that
+    ticket's status forward on its own. Here's that whole arc, plus today's rework of the
+    list that shows it.
+  </p>
+
+  <h2>A tmux session doesn't know what it's for</h2>
+
+  <p>
+    Before any of this, the only place to connect "work happening in a tmux session" to
+    "work tracked in Jira" was the session's own name — sessions got named
+    <code>DL-ENG-45138</code>, after the ticket. That's not a style complaint; it's a real
+    cost. tmux session names have to be unique, so a ticket could have exactly one session,
+    ever — no separate session for running the tests and one for editing code, and no
+    readable name, because the ticket key ate the whole thing.
+  </p>
+
+  <h2>Plugins, as a seam rather than a Jira-shaped hole</h2>
+
+  <p>
+    Before Jira existed as a feature, two other page-level features — the artifacts gallery,
+    the notification history — were wired straight into the kernel: one storage path, three
+    route blocks, a page, a hardcoded nav entry, each. Removing either meant subtracting
+    across five files, and it never came out clean. So the fix wasn't "add Jira", it was a
+    seam: one page-level feature is one directory, with a manifest the kernel reads
+    generically, its own server handlers, and its own stylesheet.
+  </p>
+
+  <p>
+    Two things were rejected on the way there. Scanning <code>~/.tmux-next/plugins/</code> at
+    runtime, because that's running arbitrary code inside a service with no login of its
+    own — a different threat model entirely, not a convenience worth the risk. And a
+    middleware chain of <code>fetch(req)</code> handlers, because a readable
+    <code>if</code>-chain of routes beats not knowing which plugin intercepted a request
+    until it runs. One split enforces the boundary from the browser's side too: the manifest
+    is isomorphic and loaded by the browser directly, so a test asserts its import graph
+    contains zero <code>.ts</code> files — the moment it imports a server handler, server
+    code rides along into the browser bundle.
+  </p>
+
+  <h2>One ticket, several sessions</h2>
+
+  <p>
+    Jira became the first plugin, and its founding decision was that a ticket can have more
+    than one session open against it. So the binding between a session and a ticket is keyed
+    by <strong>session name</strong>, storing both the name and tmux's own
+    <code>#{session_id}</code>: the id survives a rename, the name survives a server restart,
+    so resolving a binding tries the id first and falls back to the name, and nothing needs a
+    "session was renamed" event to stay correct.
+  </p>
+
+  <p>
+    Two things were deliberately left out at this stage. Writing anything back to Jira at
+    all — "the write would come from a service with no login of its own" was reason enough
+    to defer that to its own design later. And a database — the state here tops out at
+    however many tmux sessions exist, which stays in the dozens, so plaintext JSON was
+    already enough.
+  </p>
+
+  <h2>Work items become the kernel's own idea</h2>
+
+  <p>
+    A ticket needed to outlive whichever session happened to be open for it, so "work items"
+    were promoted out of Jira's own page into a concept the kernel itself understands: a
+    durable, intent-shaped thing, where a session is just one disposable means toward it. A
+    work item's source provider is a plain string the kernel never validates against an
+    installed plugin — a ticket from a since-disabled plugin is still a ticket, it just stops
+    being enriched.
+  </p>
+
+  <div class="box">
+    <p class="c" style="margin-top:0"><b>Nothing about a ticket's status is ever stored</b></p>
+    <p class="c" style="margin-bottom:0">
+      Status, epic, PR count, whether checks are green — all of it is recomputed on every
+      request, never cached to disk. "The kernel stores the item, the external system's
+      opinion sits on top of it" only holds if that layer stays purely additive, and a stale
+      status is worse than no status at all, because it looks true. The one rule broken on
+      purpose, later: the lifecycle stage itself (below) does get persisted, once there was a
+      real reason to.
+    </p>
+  </div>
+
+  <h2>What checks can tell you, and the one thing they can't</h2>
+
+  <p>
+    Jira's own <code>dev-status</code> endpoint answers "which PRs is this ticket attached
+    to" using a token that was already configured for the ticket data itself — no new
+    credential needed. It can't say whether those PRs pass CI, though: CircleCI never reports
+    back into Jira, so the build count sitting inside Jira's own data is permanently zero. So
+    the second hop asks Bitbucket instead of CircleCI directly — chosen because it's per-PR
+    and CI-agnostic, the same response carries CircleCI and Codacy results alike, and it
+    keeps working even when a PR lives in a different repository, which a CircleCI project
+    slug can't do.
+  </p>
+
+  <div class="box warn">
+    <p class="c" style="margin-top:0"><b>Merge-conflict status: investigated, and declined</b></p>
+    <p class="c">
+      Whether a PR would actually merge cleanly looks like the obvious next thing to surface,
+      so it got checked properly rather than assumed away. Bitbucket Cloud's public API,
+      asked for every field it has, returns thirty of them — the only two anywhere near
+      "would this merge" are <code>merge_commit</code> and <code>merge_in_progress</code>,
+      both null on every open PR tested.
+    </p>
+    <p class="c">
+      The diff endpoint can't stand in either: it's a three-dot diff, so it returns a normal
+      200 whether or not the branches would actually merge — confirmed against nineteen real
+      open PRs, not assumed. The web UI does know, through a private endpoint that a properly
+      scoped app password gets a flat 403 from.
+    </p>
+    <p class="c" style="margin-bottom:0">
+      Reaching it would mean storing a full logged-in Bitbucket browser session inside a
+      service that has no login of its own — a categorically bigger credential than anything
+      else this needs, for one field. So: not offered. If a rough signal is ever wanted,
+      "behind the target branch by N commits" is computable from data already being fetched,
+      and it would be honest about being a proxy rather than a real answer.
+    </p>
+  </div>
+
+  <h2>A lifecycle that only moves forward</h2>
+
+  <p>
+    The newest piece: every item now carries a five-stage lifecycle —
+    <em>unclaimed → in progress → in review → in merge → done</em> — derived from signals
+    already on hand (a live bound session, a non-empty PR list, every check green, a PR
+    showing merged), never accepted as input from outside. It only ever advances: a PR that
+    closes without merging leaves the item parked at "in review" rather than sliding it
+    back, because "this once had a PR out" is a fact worth keeping, not erasing.
+  </p>
+
+  <p class="s">
+    One approximation is inherited directly from the section above:
+    <em>in review → in merge</em> means "still open, and every check is green" — not
+    "provably mergeable", because provably mergeable isn't available (see the Bitbucket dead
+    end). When checks couldn't even be asked about, that transition is withheld rather than
+    showing a status that might be false.
+  </p>
+
+  <h2>Writing back, sideways</h2>
+
+  <p>
+    Once a transition fires, it goes out through the same seam already used for syncing and
+    refreshing — the kernel looks up which enabled plugin claims the item's source, it never
+    hardcodes "Jira". Jira's side does exactly two things: moves the ticket through its real
+    transitions API, with a per-stage mapping that can be left blank for a workflow that
+    doesn't have five matching states; and posts one PR comment, only on the move into
+    review, because that's the one moment a person actually needs pulling in — the rest is
+    internal bookkeeping. Both steps can fail on their own, silently, logged but never
+    thrown: a write-back failure never unwinds the state change that already happened
+    locally.
+  </p>
+
+  <p>
+    One small trailing detail from the last few days: the check list inside an item's detail
+    view now groups by PR instead of listing every check flat, each group's project name
+    read from the repository itself rather than the UUID buried in the PR's own URL, with a
+    link back to the original PR on the group's heading.
+  </p>
+
+  <h2>The same object, a new coat of paint</h2>
+
+  <p>
+    Today's list-view rework isn't a new feature in this arc — it's what "items became the
+    thing you scan across many rows, each carrying a lifecycle and a stack of facets" (the
+    two sections above) eventually asks of the screen that shows them. The view used to be a
+    real <code>&lt;table&gt;</code>: one column per field, and a horizontal scrollbar the
+    moment the window got narrow — on a phone or a half-width desktop window alike, easy to
+    not even notice you need to pull. Status now lives on the left and wraps instead of
+    scrolling; actions sit pinned on the right; and a field you've chosen to see gets its
+    name spelled out on the chip itself, because there's no column header left to say it for
+    you.
+  </p>
+
+  <h2>Earlier, in 0.9 to 0.12</h2>
+
+  <p class="lede">
+    0.12 added talking to your agent by voice. 0.9 to 0.11, before that, changed the shape of
+    the thing itself: it stopped being a Claude&nbsp;Code viewer that happens to run tmux.
   </p>
 
   <h2>Dictation, without the keyboard's dictation key</h2>
@@ -253,13 +430,6 @@
     That shape only — never the message text. Diagnosing an event name is not worth writing what you
     and the agent said to each other onto disk by default. <code>TMUX_NEXT_HOOK_LOG=off</code>
     records nothing.
-  </p>
-
-  <h2>Earlier, in 0.9 to 0.11</h2>
-
-  <p class="lede">
-    Four releases in which the shape of the thing changed: it stopped being a Claude&nbsp;Code
-    viewer that happens to run tmux.
   </p>
 
   <h2>It runs three agents now</h2>
