@@ -15,6 +15,7 @@ const CONFIG: JiraConfig = {
   token: "secret-token",
   jql: "assignee = currentUser()",
   onlyKeyedPrs: true,
+  transitions: { inProgress: "", inReview: "", inMerge: "", done: "" },
 };
 
 function fakeFetch(status: number, body: unknown, capture?: (req: Request) => void) {

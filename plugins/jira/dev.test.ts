@@ -16,6 +16,7 @@ const CONFIG: JiraConfig = {
   jql: "assignee = currentUser()",
   onlyKeyedPrs: false,
   bitbucket: { email: "dev@example.com", appPassword: "app-password" },
+  transitions: { inProgress: "", inReview: "", inMerge: "", done: "" },
 };
 
 const PR_URL = "https://bitbucket.org/{ws-uuid}/{repo-uuid}/pull-requests/371";

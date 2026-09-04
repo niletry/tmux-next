@@ -30,6 +30,14 @@ export type JiraConfig = {
    * 骗人，而被过滤掉的那些有计数摆在界面上，看得见也能一键关掉。
    */
   onlyKeyedPrs: boolean;
+  /**
+   * ItemLifecycle 的状态 → 这个 Jira 实例 workflow 里对应的状态名。
+   *
+   * 每一项都可留空，留空表示"这一步不写回"——不是每个 workflow 都刚好有四个
+   * 对应的状态，这份自由必须给使用者，内核/插件都不该替它猜一个大概对的名字。
+   * "unclaimed" 没有对应项：那是初始状态，不是一次迁移。
+   */
+  transitions: { inProgress: string; inReview: string; inMerge: string; done: string };
 };
 
 /** 分给我的、还没做完的，最近更新的在前。 */
@@ -61,6 +69,8 @@ export async function readJiraConfig(): Promise<JiraConfig | null> {
     const bbPass = str(bb.appPassword);
     const bitbucket = bbEmail && bbPass ? { email: bbEmail, appPassword: bbPass } : undefined;
 
+    const tr = (data?.transitions ?? {}) as Record<string, unknown>;
+
     return {
       url,
       email,
@@ -68,6 +78,12 @@ export async function readJiraConfig(): Promise<JiraConfig | null> {
       jql: str(data?.jql) || DEFAULT_JQL,
       // 缺省即开：显式写 false 才关掉。
       onlyKeyedPrs: data?.onlyKeyedPrs !== false,
+      transitions: {
+        inProgress: str(tr.inProgress),
+        inReview: str(tr.inReview),
+        inMerge: str(tr.inMerge),
+        done: str(tr.done),
+      },
       ...(bitbucket ? { bitbucket } : {}),
     };
   } catch {

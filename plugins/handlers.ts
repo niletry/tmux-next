@@ -1,6 +1,7 @@
 import { PLUGINS } from "./registry.js";
 import type { Facet, FacetDetail, ItemRef, Plugin, PluginEnricher, PluginFieldSource, PluginHandler, SettingValue } from "./types";
 import { FIELD_KEY_CHARS } from "../src/template";
+import type { ItemStatus } from "../src/item-lifecycle";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
 import {
@@ -10,6 +11,7 @@ import {
   start as jiraStart,
   sync as jiraSync,
   refreshItem as jiraRefreshItem,
+  onLifecycleChange as jiraOnLifecycleChange,
   readSettings as jiraReadSettings,
   writeSettings as jiraWriteSettings,
 } from "./jira/server";
@@ -39,6 +41,13 @@ export type PluginServer = {
   /** 只刷新一个单，`ref` 是 `source.ref`（比如 Jira 的 issue key）。 */
   refreshItem?: (ref: string) => Promise<void>;
   /**
+   * ItemLifecycle 状态机迁移之后的一次尽力而为通知，`ref` 同上。要不要写回
+   * 这个来源（转 Jira 状态、评论 PR……）完全是插件自己的判断——内核只知道
+   * "迁移发生了"，不知道、也不该知道写回具体做了什么。抛出即失败，调用方
+   * 只会记日志，绝不因为这里失败而撤销已经落盘的状态。
+   */
+  onLifecycleChange?: (ref: string, from: ItemStatus, to: ItemStatus) => Promise<void>;
+  /**
    * 进程启动时给这个插件一次机会。同步、不返回值——内核不等它。想做异步的事
    * （比如开机同步一次来源），插件自己在里面 fire-and-forget，不能指望内核帮它 await。
    */
@@ -65,6 +74,7 @@ export const SERVERS: Record<string, PluginServer> = {
     start: jiraStart,
     sync: jiraSync,
     refreshItem: jiraRefreshItem,
+    onLifecycleChange: jiraOnLifecycleChange,
     readSettings: jiraReadSettings,
     writeSettings: jiraWriteSettings,
   },
@@ -463,6 +473,35 @@ export async function refreshFromSource(
     );
   } catch {
     return false;
+  }
+}
+
+/**
+ * 状态机迁移之后，通知认领这个 provider 的插件一声——跟 `refreshFromSource`
+ * 同一种分派：内核只知道 provider 字符串，从不知道插件 id。没人认领、认领了
+ * 但没实现 `onLifecycleChange`、调用抛了、或者超时，全部静默吞掉——写回是
+ * 旁路，状态机本身已经落盘的迁移不因为这里失败而有任何变化，调用方也不需要
+ * 知道失败与否。
+ */
+export async function notifyLifecycleChange(
+  provider: string,
+  ref: string,
+  from: ItemStatus,
+  to: ItemStatus,
+  servers: Record<string, PluginServer> = SERVERS,
+  plugins: Plugin[] = PLUGINS,
+  timeoutMs: number = SOURCE_TIMEOUT_MS,
+): Promise<void> {
+  const enabled = new Set(enabledPlugins().map((p) => p.id));
+  const owner = plugins.find(
+    (p) => p.provides?.includes(provider) && isConsidered(p.id, enabled),
+  );
+  const onLifecycleChange = owner ? servers[owner.id]?.onLifecycleChange : undefined;
+  if (!onLifecycleChange) return;
+  try {
+    await withTimeout(onLifecycleChange(ref, from, to), undefined, timeoutMs);
+  } catch {
+    // 尽力而为：内核不关心写回成不成功。
   }
 }
 

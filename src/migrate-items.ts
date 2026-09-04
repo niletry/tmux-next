@@ -71,6 +71,7 @@ export async function migrateJiraBindings(): Promise<{ migrated: number }> {
         tags: [],
         createdAt: Math.floor(Date.now() / 1000),
         closedAt: null,
+        status: "unclaimed",
       };
       itemByRef.set(binding.key, item);
       newItems.push(item);

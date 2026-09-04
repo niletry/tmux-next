@@ -17,6 +17,7 @@ function item(over: Partial<WorkItem> = {}): WorkItem {
     tags: [],
     createdAt: 0,
     closedAt: null,
+    status: "unclaimed",
     ...over,
   };
 }

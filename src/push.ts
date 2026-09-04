@@ -11,6 +11,7 @@ import {
 import { recordNotification } from "./notifications";
 import { t } from "../public/i18n.js";
 import { readLanguage, DEFAULT_LANG } from "./language";
+import type { ItemStatus } from "./item-lifecycle";
 
 /**
  * Push notifications for Claude events: stores the VAPID identity and the
@@ -175,6 +176,89 @@ export async function notify(
 
   const keys = await getVapid();
   const payload = { title, body, session, event };
+
+  let sent = 0;
+  for (const { sub, file } of subs) {
+    try {
+      const res = await sendPush(sub, keys, payload, VAPID_SUBJECT, nowMs, opts.send);
+      if (res.status === 404 || res.status === 410) {
+        await unlink(file).catch(() => {});
+      } else {
+        sent++;
+      }
+    } catch {
+      // A single failed endpoint should not stop the others.
+    }
+  }
+  return { skipped: false, sent };
+}
+
+// --- item lifecycle notifications -------------------------------------------
+
+/** Four transitions worth telling someone about; "unclaimed" is the start, not a transition. */
+export type LifecycleNotifyStatus = Exclude<ItemStatus, "unclaimed">;
+
+/**
+ * A transition happens at most once per (item, target status) — the state
+ * machine only moves forward, so there is no "keeps re-firing" case to rate
+ * limit against, unlike `allowNotify`'s per-session window. A plain seen-set
+ * is therefore enough; no timestamps to expire.
+ */
+const seenLifecycleTransitions = new Set<string>();
+
+/**
+ * Four literal `t()` calls, not a templated key — `item-lifecycle.ts`'s status
+ * enum is a closed set the kernel already owns, so this follows the same
+ * longhand pattern `public/list.js:52` uses for kernel dimensions: the i18n
+ * dead-key scanner only recognizes string literals, and `t(\`push.item.${to}\`)`
+ * would be invisible to it.
+ */
+function lifecycleEventText(
+  itemTitle: string,
+  to: LifecycleNotifyStatus,
+  lang: string,
+): { title: string; body: string } {
+  const body =
+    to === "in_progress"
+      ? t("push.item.in_progress", lang)
+      : to === "in_review"
+        ? t("push.item.in_review", lang)
+        : to === "in_merge"
+          ? t("push.item.in_merge", lang)
+          : t("push.item.done", lang);
+  return { title: itemTitle, body };
+}
+
+/**
+ * Notifies once that an item moved to `to`. Deliberately not `notify()` with
+ * a fifth `PushEvent`: that signature is shaped around a *session* (title is
+ * the session name, `eventText` keys off three session events) — a lifecycle
+ * transition's title is the item's, not any session's, and forcing it through
+ * the same parameter would make "what does `session` hold here" a
+ * call-site-dependent question. Everything else is shared on purpose:
+ * same subscriptions, same VAPID identity, same drop-on-410 cleanup.
+ */
+export async function notifyLifecycle(
+  itemId: string,
+  itemTitle: string,
+  to: LifecycleNotifyStatus,
+  opts: { nowMs?: number; send?: Fetch } = {},
+): Promise<NotifyResult> {
+  const nowMs = opts.nowMs ?? Date.now();
+  const key = `${itemId}:${to}`;
+  if (seenLifecycleTransitions.has(key)) return { skipped: true, sent: 0 };
+  seenLifecycleTransitions.add(key);
+
+  const { title, body } = lifecycleEventText(itemTitle, to, await notifyLang());
+  // `session` is a generic string field on NotificationRecord; here it carries
+  // the item id, the closest thing this event has to an identity to filter by.
+  await recordNotification({ ts: Math.floor(nowMs / 1000), event: `item.${to}`, session: itemId, title, body });
+
+  const subs = await readSubscriptions();
+  if (!subs.length) return { skipped: false, sent: 0 };
+
+  const keys = await getVapid();
+  const payload = { title, body, itemId, event: `item.${to}` };
 
   let sent = 0;
   for (const { sub, file } of subs) {

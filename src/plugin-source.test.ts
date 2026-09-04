@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { runSync, refreshFromSource, startPlugins, SOURCE_TIMEOUT_MS } from "../plugins/handlers";
+import { runSync, refreshFromSource, notifyLifecycleChange, startPlugins, SOURCE_TIMEOUT_MS } from "../plugins/handlers";
 import type { Plugin } from "../plugins/types";
 import type { PluginServer, SyncResult } from "../plugins/handlers";
 
@@ -168,4 +168,53 @@ test("start 抛了不外泄，别的插件照常调到", async () => {
 
 test("没有插件声明 start 时什么都不做", () => {
   expect(() => startPlugins({}, [])).not.toThrow();
+});
+
+// --- notifyLifecycleChange，同一种 provides 分派 ---------------------------
+
+test("notifyLifecycleChange 按 provides 找到认领这个来源的插件", async () => {
+  const saw: string[] = [];
+  const servers: Record<string, PluginServer> = {
+    a: { onLifecycleChange: async (ref, from, to) => { saw.push(ref, from, to); } },
+  };
+  await notifyLifecycleChange("jira", "EXAMPLE-1", "in_progress", "in_review", servers, fakePlugins({ a: ["jira"] }));
+  expect(saw).toEqual(["EXAMPLE-1", "in_progress", "in_review"]);
+});
+
+test("notifyLifecycleChange 没人认领这个来源就什么也不做，不抛", async () => {
+  await expect(
+    notifyLifecycleChange("jira", "X-1", "unclaimed", "in_progress", {}, fakePlugins({})),
+  ).resolves.toBeUndefined();
+});
+
+test("notifyLifecycleChange 认领了但没实现 onLifecycleChange，什么也不做", async () => {
+  const servers: Record<string, PluginServer> = { a: {} };
+  await expect(
+    notifyLifecycleChange("jira", "X-1", "unclaimed", "in_progress", servers, fakePlugins({ a: ["jira"] })),
+  ).resolves.toBeUndefined();
+});
+
+// 写回是旁路：一个插件的 onLifecycleChange 抛了不该冒泡给调用方。
+test("notifyLifecycleChange 插件抛了不外泄", async () => {
+  const servers: Record<string, PluginServer> = {
+    a: { onLifecycleChange: async () => { throw new Error("boom"); } },
+  };
+  await expect(
+    notifyLifecycleChange("jira", "X-1", "unclaimed", "in_progress", servers, fakePlugins({ a: ["jira"] })),
+  ).resolves.toBeUndefined();
+});
+
+test("notifyLifecycleChange 插件卡住时超时返回，不吊死", async () => {
+  const servers: Record<string, PluginServer> = { a: { onLifecycleChange: () => new Promise(() => {}) } };
+  const started = Date.now();
+  await notifyLifecycleChange(
+    "jira",
+    "X-1",
+    "unclaimed",
+    "in_progress",
+    servers,
+    fakePlugins({ a: ["jira"] }),
+    TEST_TIMEOUT_MS,
+  );
+  expect(Date.now() - started).toBeLessThan(TEST_TIMEOUT_MS * 10);
 });

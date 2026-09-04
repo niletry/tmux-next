@@ -1,8 +1,10 @@
 import { readJiraConfig, writeJiraConfig, DEFAULT_JQL, type JiraConfig } from "./config";
 import { fetchIssue, fetchIssues, fetchIssueDescription, type Issue, type IssuesResult } from "./client";
 import { fetchDev, type DevResult } from "./dev";
+import { transitionIssue, commentOnPr } from "./writeback";
 import { syncIssues } from "./sync";
 import { readItems, ensureItemForSource } from "../../src/items";
+import type { ItemStatus } from "../../src/item-lifecycle";
 import { bindSession, unbindSession, resolveBindings, type ResolvedBinding } from "../../src/session-binding";
 import { sessionIdentities } from "../../src/tmux/session-list";
 import type { Facet, ItemRef } from "../types";
@@ -493,6 +495,48 @@ export async function refreshItem(ref: string): Promise<void> {
   await ensureItemForSource("jira", ref, issue.summary, { refreshTitle: true, ...browse(ref) });
 }
 
+/** `ItemStatus` → 这个实例配的 Jira 状态名。`unclaimed` 不是一次迁移，没有对应项。 */
+function jiraStatusFor(config: JiraConfig, to: ItemStatus): string {
+  switch (to) {
+    case "in_progress":
+      return config.transitions.inProgress;
+    case "in_review":
+      return config.transitions.inReview;
+    case "in_merge":
+      return config.transitions.inMerge;
+    case "done":
+      return config.transitions.done;
+    case "unclaimed":
+      return "";
+  }
+}
+
+/**
+ * ItemLifecycle 迁移之后的写回：转 Jira 状态,进入 in_review 时额外评论一句。
+ *
+ * 只在这一步评论——"从没人看到有 PR 可以看"是唯一一个需要把人叫过来的时刻,
+ * `in_merge`/`done` 这类内部记账式的迁移不该打扰 PR 评论区(见 spec)。
+ *
+ * 不吞异常：调用方（`plugins/handlers.ts` 的 `notifyLifecycleChange`）已经在
+ * 外层 try/catch+超时，这里如实抛出，两步各自失败不影响另一步。
+ */
+export async function onLifecycleChange(ref: string, from: ItemStatus, to: ItemStatus): Promise<void> {
+  const config = await readJiraConfig();
+  if (!config) return;
+
+  const targetStatus = jiraStatusFor(config, to);
+  await transitionIssue(config, ref, targetStatus).catch(() => {});
+
+  if (to !== "in_review") return;
+  const issue = await refreshIssue(ref);
+  if (!issue) return;
+  const got = await dev(issue.id, issue.key, false);
+  if (!got.ok) return;
+  const open = got.prs.find((pr) => pr.status === "OPEN");
+  if (!open) return;
+  await commentOnPr(config, open.url, "tmux-next：这张单已经在这个 PR 上开工了。").catch(() => {});
+}
+
 /**
  * 拼工单页地址的函数，配置读一次。
  *
@@ -631,6 +675,10 @@ export async function readSettings(): Promise<Record<string, string | boolean>> 
     onlyKeyedPrs: config?.onlyKeyedPrs ?? true,
     "bitbucket.email": config?.bitbucket?.email ?? "",
     "bitbucket.appPassword": Boolean(config?.bitbucket?.appPassword),
+    "transition.inProgress": config?.transitions?.inProgress ?? "",
+    "transition.inReview": config?.transitions?.inReview ?? "",
+    "transition.inMerge": config?.transitions?.inMerge ?? "",
+    "transition.done": config?.transitions?.done ?? "",
   };
 }
 
@@ -671,6 +719,14 @@ export async function writeSettings(values: Record<string, string | boolean>): P
     jql: str("jql", old?.jql ?? DEFAULT_JQL) || DEFAULT_JQL,
     onlyKeyedPrs:
       typeof values.onlyKeyedPrs === "boolean" ? values.onlyKeyedPrs : (old?.onlyKeyedPrs ?? true),
+    // 不是密钥，空值就是空值——不套 secret()那套"留空表示不改"的规则,清空一个
+    // 映射项就该真的清空。
+    transitions: {
+      inProgress: str("transition.inProgress", old?.transitions?.inProgress ?? ""),
+      inReview: str("transition.inReview", old?.transitions?.inReview ?? ""),
+      inMerge: str("transition.inMerge", old?.transitions?.inMerge ?? ""),
+      done: str("transition.done", old?.transitions?.done ?? ""),
+    },
     // Bitbucket 半份等于没有——只有邮箱没有密码，拿去打的每个请求都必然 401，
     // 而界面会把那说成"检查没问到"，比诚实地说"没配"更糟。
     ...(bbEmail && bbPass ? { bitbucket: { email: bbEmail, appPassword: bbPass } } : {}),

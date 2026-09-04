@@ -53,6 +53,7 @@ test("写进去读得回来，JQL 缺省时补默认值", async () => {
     token: "secret-token",
     jql: "",
     onlyKeyedPrs: true,
+    transitions: { inProgress: "", inReview: "", inMerge: "", done: "" },
   });
   const cfg = await readJiraConfig();
   expect(cfg?.url).toBe("https://example.atlassian.net");
@@ -67,6 +68,7 @@ test("配置文件只有属主可读写", async () => {
     token: "secret-token",
     jql: "",
     onlyKeyedPrs: true,
+    transitions: { inProgress: "", inReview: "", inMerge: "", done: "" },
   });
   const s = await stat(join(root, "config.json"));
   // 0600。同机器上的别的用户不该能读到这个 token。

@@ -9,6 +9,7 @@ const item = (extra: Partial<WorkItem> = {}): WorkItem => ({
   tags: ["前端", "紧急"],
   createdAt: 0,
   closedAt: null,
+  status: "unclaimed",
   ...extra,
 });
 

@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, serialized } from "./json-store";
+import { DEFAULT_ITEM_STATUS, sanitiseStatus, type ItemStatus } from "./item-lifecycle";
 
 /**
  * 一张单：工作的单位。会话是它底下的手段。
@@ -11,9 +12,10 @@ import { readJson, writeJsonAtomic, serialized } from "./json-store";
  * id 由内核生成、永不变。不复用单号：单号可以改、可以在认领之后才补上，而 URL
  * 与绑定必须指得住。
  *
- * 状态、Epic 这些**一个都不存**——它们是每次现算的 facet。存下来就要同步，而
- * "内核存自己的单 + 外部引用"这个模型之所以成立，正是因为远端那部分是叠上去的。
- * 只有本地的 tags 是存的。
+ * Epic、指派人这些依然**一个都不存**——它们是每次现算的 facet。`status` 是这条
+ * 规则唯一的例外：它不是从远端镜像来的展示值，是 tmux-next 自己的进度判断（见
+ * `item-lifecycle.ts`），本来就该在这台机器上持久，而不是每次现算——现算的东西
+ * 只能表达"此刻是什么样"，状态机要表达的是"曾经到过哪一步"，两者不是一回事。
  */
 
 export type ItemSource = { provider: string; ref: string; url?: string };
@@ -26,6 +28,8 @@ export type WorkItem = {
   createdAt: number;
   /** 归档，不是删除：单从默认视图消失，它的会话与绑定记录都还在。 */
   closedAt: number | null;
+  /** 进度状态机,见 item-lifecycle.ts。跟 closedAt 是两根独立的轴。 */
+  status: ItemStatus;
 };
 
 /** 路径在函数里现读，不在模块加载时捕获——测试要能先设 env 再调用。 */
@@ -60,6 +64,7 @@ export async function readItems(): Promise<WorkItem[]> {
         tags: Array.isArray(v.tags) ? v.tags.filter((t): t is string => typeof t === "string") : [],
         createdAt: typeof v.createdAt === "number" ? v.createdAt : 0,
         closedAt: typeof v.closedAt === "number" ? v.closedAt : null,
+        status: sanitiseStatus(v.status),
       });
     }
     return out;
@@ -83,6 +88,7 @@ export async function createItem(input: {
     tags: input.tags ?? [],
     createdAt: Math.floor(Date.now() / 1000),
     closedAt: null,
+    status: DEFAULT_ITEM_STATUS,
   };
   // 整段读-改-写都在队列里，不只是写：在队列外面读、进队列写，中间那道缝跟没
   // 排队一样。
@@ -96,7 +102,7 @@ export async function createItem(input: {
 
 export async function updateItem(
   id: string,
-  patch: Partial<Pick<WorkItem, "title" | "tags" | "closedAt" | "source">>,
+  patch: Partial<Pick<WorkItem, "title" | "tags" | "closedAt" | "source" | "status">>,
 ): Promise<WorkItem | null> {
   return serialized(async () => {
     const all = await readItems();
@@ -154,6 +160,7 @@ export async function ensureItemForSource(
       tags: [],
       createdAt: Math.floor(Date.now() / 1000),
       closedAt: null,
+      status: DEFAULT_ITEM_STATUS,
     };
     all.push(item);
     await writeJsonAtomic(itemsPath(), all);

@@ -23,6 +23,7 @@ const full = {
   token: "tok-1",
   jql: "assignee = currentUser()",
   onlyKeyedPrs: true,
+  transitions: { inProgress: "", inReview: "", inMerge: "", done: "" },
 };
 
 beforeEach(async () => {

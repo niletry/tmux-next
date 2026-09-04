@@ -7,6 +7,7 @@ import {
   eventText,
   saveSubscription,
   notify,
+  notifyLifecycle,
   validSubscription,
   RATE_LIMIT_MS,
   type PushEvent,
@@ -64,13 +65,16 @@ const saved: Record<string, string | undefined> = {};
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "push-"));
-  for (const k of ["TMUX_NEXT_PUSH_DIR", "TMUX_NEXT_VAPID_PATH"]) saved[k] = process.env[k];
+  for (const k of ["TMUX_NEXT_PUSH_DIR", "TMUX_NEXT_VAPID_PATH", "TMUX_NEXT_NOTIFICATIONS_PATH"]) {
+    saved[k] = process.env[k];
+  }
   process.env.TMUX_NEXT_PUSH_DIR = join(root, "subs");
   process.env.TMUX_NEXT_VAPID_PATH = join(root, "vapid.json");
+  process.env.TMUX_NEXT_NOTIFICATIONS_PATH = join(root, "notifications.jsonl");
 });
 
 afterEach(async () => {
-  for (const k of ["TMUX_NEXT_PUSH_DIR", "TMUX_NEXT_VAPID_PATH"]) {
+  for (const k of ["TMUX_NEXT_PUSH_DIR", "TMUX_NEXT_VAPID_PATH", "TMUX_NEXT_NOTIFICATIONS_PATH"]) {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
   }
@@ -122,4 +126,43 @@ test("notify reports skipped when rate-limited", async () => {
   const second = await notify("waiting", "sess-C", { nowMs: 5001, send });
   expect(first.sent).toBe(1);
   expect(second).toEqual({ skipped: true, sent: 0 });
+});
+
+// --- notifyLifecycle ---------------------------------------------------------
+
+test("notifyLifecycle titles the item, not any session", async () => {
+  await saveSubscription(await realSubscription("https://push.example.com/item"));
+  const send = async () => new Response(null, { status: 201 });
+
+  const res = await notifyLifecycle("it-1", "修登录页", "in_review", { nowMs: 9000, send });
+  expect(res).toEqual({ skipped: false, sent: 1 });
+});
+
+test("notifyLifecycle fires once per (item, target status) — no time window, just a seen-set", async () => {
+  await saveSubscription(await realSubscription("https://push.example.com/item2"));
+  const send = async () => new Response(null, { status: 201 });
+
+  const first = await notifyLifecycle("it-2", "修登录页", "in_review", { nowMs: 1000, send });
+  // A much later timestamp does not resurrect it — unlike allowNotify's window,
+  // this dedup has no expiry: the state machine cannot re-enter the same
+  // transition, so there is nothing to re-arm.
+  const second = await notifyLifecycle("it-2", "修登录页", "in_review", { nowMs: 999_999, send });
+  expect(first.sent).toBe(1);
+  expect(second).toEqual({ skipped: true, sent: 0 });
+});
+
+test("notifyLifecycle treats each target status as its own event, and each item independently", async () => {
+  await saveSubscription(await realSubscription("https://push.example.com/item3"));
+  const send = async () => new Response(null, { status: 201 });
+
+  const sameItemNextStatus = await notifyLifecycle("it-3", "修登录页", "in_merge", {
+    nowMs: 1000,
+    send,
+  });
+  const otherItemSameStatus = await notifyLifecycle("it-4", "别的单", "in_merge", {
+    nowMs: 1000,
+    send,
+  });
+  expect(sameItemNextStatus.sent).toBe(1);
+  expect(otherItemSameStatus.sent).toBe(1);
 });

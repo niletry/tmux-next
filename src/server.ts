@@ -12,6 +12,7 @@ import {
   collectFields,
   runSync,
   refreshFromSource,
+  notifyLifecycleChange,
   pluginSettings,
   savePluginSettings,
 } from "../plugins/handlers";
@@ -48,6 +49,8 @@ import { reapOrphanWebSessions } from "./tmux/session-manager";
 import { createItem, readItems, updateItem } from "./items";
 import { bindSession, readBindings, resolveBindings, unbindSession } from "./session-binding";
 import { kernelFacets } from "./item-facets";
+import { advanceLifecycle } from "./item-lifecycle";
+import { notifyLifecycle } from "./push";
 
 type WsData = { session: PaneSession | null };
 
@@ -258,6 +261,38 @@ async function itemDetail(id: string): Promise<Response> {
   return Response.json({ item, sessions, facets: [...kernel, ...(theirs[item.id] ?? [])] });
 }
 
+/**
+ * 跑一轮 ItemLifecycle：只在 `runSync`/`refreshFromSource` 跑完之后调用，不新开
+ * 轮询（见 docs/superpowers/specs/2026-09-04-item-lifecycle-writeback-design.md）。
+ *
+ * 只用 `sessionIdentities()` 不用 `listSessions()`：状态机只看"绑定活不活"，用不
+ * 到会话摘要里的状态/最后动作那些字段——跟 `jiraBindingsView`/`itemBind` 已经在
+ * 用的取舍一样，没必要为一对字段多起一次 capture-pane。
+ *
+ * 每条迁移落盘之后，写回和推送各自独立、互不影响：一个失败不该拖累另一个，也不
+ * 该撤销已经落盘的状态——见 spec 的"写回失败不回滚本地状态"。
+ */
+async function advanceAllLifecycles(): Promise<void> {
+  const items = await readItems();
+  const live = await sessionIdentities();
+  const bindings = await resolveBindings(live);
+  const facets = await collectFacets(
+    items.map((i) => ({
+      id: i.id,
+      source: i.source ? { provider: i.source.provider, ref: i.source.ref } : null,
+    })),
+  );
+  const transitions = advanceLifecycle(items, facets, bindings);
+  for (const { item, from, to } of transitions) {
+    await updateItem(item.id, { status: to });
+    if (item.source) {
+      await notifyLifecycleChange(item.source.provider, item.source.ref, from, to);
+    }
+    if (to === "unclaimed") continue; // 回退不是一次"进展"，不推送。
+    await notifyLifecycle(item.id, item.title, to).catch(() => {});
+  }
+}
+
 function pluginShell(id: string, titleKey: string, mainId: string, hasCss: boolean): string {
   return `<!doctype html>
 <html lang="zh">
@@ -444,7 +479,9 @@ export function startServer(
       // 必须排在下面的 ^/api/items/([^/]+)$ 之前，否则 "sync" 会被那条正则
       // 当成一个 item id 吞掉——同一个坑，/api/items/bind 已经踩过一次。
       if (url.pathname === "/api/items/sync" && req.method === "POST") {
-        return Response.json(await runSync());
+        const result = await runSync();
+        await advanceAllLifecycles();
+        return Response.json(result);
       }
 
       // 三种情况都归到同一个 404：单不存在、单没有来源、来源没人认领。页面
@@ -457,6 +494,7 @@ export function startServer(
         if (!found?.source) return new Response("no source", { status: 404 });
         const ok = await refreshFromSource(found.source.provider, found.source.ref);
         if (!ok) return new Response("no source", { status: 404 });
+        await advanceAllLifecycles();
         return Response.json({ ok: true });
       }
 
