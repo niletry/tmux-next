@@ -125,6 +125,57 @@ export const ITEM_DIM_LABEL = {
  * 这些行的含义内核一概不知道：它只把 label / value 按 textContent 放进去，
  * tone 决定颜色。是 CI 检查还是别的，只有给出它的插件知道。
  */
+/** 一行明细：能点的画成链接，不能点的是纯文字，状态色靠 tone。 */
+/** @param {DetailRow} row */
+function detailRowLine(row) {
+  const line = el("div", "detail-row");
+  if (row.url) {
+    // 内核只放行 http/https（plugins/handlers.ts 的 safeHttpUrl），到这里已经是
+    // 绝对地址。noopener 是因为 target=_blank 会把 window.opener 交给对面。
+    const a = document.createElement("a");
+    a.className = "detail-label";
+    a.href = row.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = row.label;
+    line.append(a);
+  } else {
+    line.append(el("span", "detail-label", row.label));
+  }
+  line.append(el("span", row.tone ? `detail-state ${row.tone}` : "detail-state", row.value));
+  return line;
+}
+
+/**
+ * 一组可折叠的明细行：标题是真 `<button>`，键盘支持是白拿的（跟设置页的
+ * section() 同一个理由）。默认展开——折叠是"我看完这个 PR 了、收起来腾地方"
+ * 的手动动作，不该默认就把刚打开的浮层收成一排标题。
+ *
+ * @param {string} title
+ * @param {DetailRow[]} rows
+ */
+function detailGroup(title, rows) {
+  const box = el("div", "detail-group");
+  const head = el("button", "detail-group-title");
+  head.type = "button";
+  const chevron = el("span", "detail-group-chevron");
+  head.append(chevron, el("span", undefined, title));
+
+  const body = el("div", "detail-group-rows");
+  for (const row of rows) body.append(detailRowLine(row));
+  box.append(head, body);
+
+  /** @param {boolean} open */
+  const paint = (open) => {
+    head.setAttribute("aria-expanded", String(open));
+    chevron.innerHTML = icon(open ? "chevronDown" : "chevronRight", 14);
+    body.hidden = !open;
+  };
+  paint(true);
+  head.addEventListener("click", () => paint(head.getAttribute("aria-expanded") !== "true"));
+  return box;
+}
+
 /**
  * @param {string} title
  * @param {DetailRow[]} rows
@@ -137,29 +188,20 @@ export function openDetailSheet(title, rows) {
   sheet.append(el("h2", "sheet-title", title));
   const list = el("div", "detail-list");
   // 连续几行 group 相同才算一组——插件给的行本来就该按组挨着排好，内核不重排、
-  // 不去重，只负责在"这一行的 group 跟上一行不一样"时插一条标题。
-  let lastGroup = "";
-  for (const row of rows) {
-    if (row.group && row.group !== lastGroup) {
-      list.append(el("div", "detail-group-title", row.group));
-      lastGroup = row.group;
-    }
-    const line = el("div", "detail-row");
-    if (row.url) {
-      // 内核只放行 http/https（plugins/handlers.ts 的 safeHttpUrl），到这里已经是
-      // 绝对地址。noopener 是因为 target=_blank 会把 window.opener 交给对面。
-      const a = document.createElement("a");
-      a.className = "detail-label";
-      a.href = row.url;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.textContent = row.label;
-      line.append(a);
+  // 不去重，只负责把"group 连续相同的这几行"包成一个可折叠的组。没有 group 的
+  // 行（比如 PR 列表本身，一行就是一条独立信息）照旧直接画，不折叠——折叠只对
+  // "一组东西"有意义，对一条孤零零的信息只是多一次没用的点击。
+  let i = 0;
+  while (i < rows.length) {
+    const row = rows[i];
+    if (row.group) {
+      const group = [];
+      while (i < rows.length && rows[i].group === row.group) group.push(rows[i++]);
+      list.append(detailGroup(row.group, group));
     } else {
-      line.append(el("span", "detail-label", row.label));
+      list.append(detailRowLine(row));
+      i++;
     }
-    line.append(el("span", row.tone ? `detail-state ${row.tone}` : "detail-state", row.value));
-    list.append(line);
   }
   sheet.append(list);
 

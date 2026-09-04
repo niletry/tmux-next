@@ -141,3 +141,35 @@ test("没有 group 的行不画组标题", async () => {
   expect(document.querySelector(".detail-group-title")).toBeNull();
   expect(document.querySelectorAll(".detail-row").length).toBe(1);
 });
+
+test("组默认展开，点标题折叠，再点一下展开回来", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "SUCCESSFUL", tone: "ok", group: "web-app #371 · fix/login → main · OPEN" },
+  ]);
+  const head = document.querySelector(".detail-group-title") as HTMLButtonElement;
+  const rows = document.querySelector(".detail-group-rows") as HTMLElement;
+
+  expect(head.getAttribute("aria-expanded")).toBe("true");
+  expect(rows.hidden).toBe(false);
+
+  head.click();
+  expect(head.getAttribute("aria-expanded")).toBe("false");
+  expect(rows.hidden).toBe(true);
+
+  head.click();
+  expect(head.getAttribute("aria-expanded")).toBe("true");
+  expect(rows.hidden).toBe(false);
+});
+
+test("折叠一个组不影响另一个组", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 2/2", [
+    { label: "ci/test", value: "SUCCESSFUL", tone: "ok", group: "web-app #1 · a → main · OPEN" },
+    { label: "ci/build", value: "SUCCESSFUL", tone: "ok", group: "backend #2 · b → main · OPEN" },
+  ]);
+  const [first, second] = [...document.querySelectorAll(".detail-group-title")] as HTMLButtonElement[];
+  first!.click();
+  expect(first!.getAttribute("aria-expanded")).toBe("false");
+  expect(second!.getAttribute("aria-expanded")).toBe("true");
+});
