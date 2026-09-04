@@ -169,13 +169,15 @@ function checkFacetTone(state: string): "ok" | "warn" | "dim" {
 }
 
 /**
- * 一个 PR 的分组标题："仓库 · 源分支 → 目标分支 · 状态"。缺的字段就跳过那一段
- * 而不是画一个空括号——`repo`/`destinationBranch` 依赖 dev-status 的字段是否
- * 到位，老版本或字段缺失时留空是诚实的降级，不是错误。
+ * 一个 PR 的分组标题："仓库 #编号 · 源分支 → 目标分支 · 状态"。缺的字段就跳过
+ * 那一段而不是画一个空括号——`repo`/`destinationBranch` 依赖 dev-status 的字段
+ * 是否到位，老版本或字段缺失时留空是诚实的降级，不是错误。`id` 不会缺：
+ * `fetchDev` 已经把没有编号的 PR 过滤掉了（见 dev.ts）。
  */
 function prGroupLabel(pr: PullRequest): string {
+  const repoAndId = pr.repo ? `${pr.repo} #${pr.id}` : `#${pr.id}`;
   const branches = pr.destinationBranch ? `${pr.branch} → ${pr.destinationBranch}` : pr.branch;
-  return [pr.repo, branches, pr.status].filter(Boolean).join(" · ");
+  return [repoAndId, branches, pr.status].filter(Boolean).join(" · ");
 }
 
 /**

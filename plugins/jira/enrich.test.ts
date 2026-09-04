@@ -134,7 +134,7 @@ test("有检查失败给 warn 色", () => {
 
 // 一个单常挂着好几个 PR（多仓库改动、或重开过一次）——拉平成一条检查列表时
 // 不能丢掉"这条检查属于哪个 PR"，明细行因此按 PR 分组。
-test("检查明细按 PR 分组，group 是「仓库 · 源分支 → 目标分支 · 状态」", () => {
+test("检查明细按 PR 分组，group 是「仓库 #编号 · 源分支 → 目标分支 · 状态」", () => {
   const dev: DevResult = {
     ok: true,
     hidden: 0,
@@ -158,9 +158,9 @@ test("检查明细按 PR 分组，group 是「仓库 · 源分支 → 目标分�
   const rows = got.find((f) => f.dim === "jira.checks")!.detail!;
 
   expect(rows.map((r) => r.group)).toEqual([
-    "web-app · fix/login → main · OPEN",
-    "backend · fix/api → develop · MERGED",
-    "backend · fix/api → develop · MERGED",
+    "web-app #1 · fix/login → main · OPEN",
+    "backend #2 · fix/api → develop · MERGED",
+    "backend #2 · fix/api → develop · MERGED",
   ]);
   expect(rows.map((r) => r.label)).toEqual([
     "ci/circleci: test",
@@ -185,7 +185,7 @@ test("缺目标分支或仓库名时，group 只留有的那几段", () => {
   };
   const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
   const rows = got.find((f) => f.dim === "jira.checks")!.detail!;
-  expect(rows[0]!.group).toBe("fix/login · OPEN");
+  expect(rows[0]!.group).toBe("#1 · fix/login · OPEN");
 });
 
 // 「没问到」和「没有检查」是两回事，收成一个会让页面往好看的方向撒谎。
