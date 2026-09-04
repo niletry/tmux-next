@@ -1,5 +1,6 @@
 import { filterEntries, splitPath } from "./dir-filter.js";
 import { initLang, tr } from "./i18n-apply.js";
+import { initTheme } from "./theme-apply.js";
 import { icon } from "./icons.js";
 
 function el(tag, className, text) {
@@ -623,6 +624,7 @@ export function renderNewSession(root) {
 
 // --- page entry --------------------------------------------------------------
 
+initTheme();
 initLang().then(() => {
   renderNewSession(/** @type {HTMLElement} */ (document.getElementById("new")));
 });

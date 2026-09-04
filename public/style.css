@@ -2518,9 +2518,12 @@ a.detail-label:hover {
     max-height: min(80dvh, 640px);
   }
 
-  /* 新建页那类"进去做一件事就走"的页面：窄屏时 520px 的上限已经在生效，
-     宽屏只需要把底部那圈 safe-area 补白去掉。 */
-  .page-body {
+  /* 新建页那类"进去做一件事就走"的页面：`.list-page > main` 那条通用规则
+     specificity 比 `.page-body` 高（多一层元素选择器），宽屏下会赢过它、把
+     520px 的上限顶掉，变成跟卡片网格一样铺满 1200px——这里必须用同样带上
+     `main` 的选择器才能压回去，不能只加 padding-bottom。 */
+  .list-page > main.page-body {
+    max-width: 520px;
     padding-bottom: 20px;
   }
 }
