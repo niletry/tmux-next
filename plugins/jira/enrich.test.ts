@@ -90,8 +90,8 @@ test("PR 数按 dev 缓存给", () => {
     ok: true,
     hidden: 0,
     prs: [
-      { id: "1", title: "a", url: "u", branch: "b", updated: 0, status: "OPEN", checks: [], checksKnown: true },
-      { id: "2", title: "b", url: "u", branch: "b", updated: 0, status: "OPEN", checks: [], checksKnown: true },
+      { id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "OPEN", checks: [], checksKnown: true },
+      { id: "2", title: "b", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "OPEN", checks: [], checksKnown: true },
     ],
   };
   const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
@@ -104,7 +104,7 @@ test("检查全过给 ok 色", () => {
     hidden: 0,
     prs: [
       {
-        id: "1", title: "a", url: "u", branch: "b", updated: 0, status: "OPEN", checksKnown: true,
+        id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "OPEN", checksKnown: true,
         checks: [{ name: "ci", state: "SUCCESSFUL", url: "u" }, { name: "lint", state: "SUCCESSFUL", url: "u" }],
       },
     ],
@@ -121,7 +121,7 @@ test("有检查失败给 warn 色", () => {
     hidden: 0,
     prs: [
       {
-        id: "1", title: "a", url: "u", branch: "b", updated: 0, status: "OPEN", checksKnown: true,
+        id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "OPEN", checksKnown: true,
         checks: [{ name: "ci", state: "FAILED", url: "u" }, { name: "lint", state: "SUCCESSFUL", url: "u" }],
       },
     ],
@@ -132,13 +132,69 @@ test("有检查失败给 warn 色", () => {
   expect(checks.tone).toBe("warn");
 });
 
+// 一个单常挂着好几个 PR（多仓库改动、或重开过一次）——拉平成一条检查列表时
+// 不能丢掉"这条检查属于哪个 PR"，明细行因此按 PR 分组。
+test("检查明细按 PR 分组，group 是「仓库 · 源分支 → 目标分支 · 状态」", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      {
+        id: "1", title: "a", url: "u", branch: "fix/login", destinationBranch: "main",
+        repo: "web-app", updated: 0, status: "OPEN", checksKnown: true,
+        checks: [{ name: "ci/circleci: test", state: "SUCCESSFUL", url: "u" }],
+      },
+      {
+        id: "2", title: "b", url: "u", branch: "fix/api", destinationBranch: "develop",
+        repo: "backend", updated: 0, status: "MERGED", checksKnown: true,
+        checks: [
+          { name: "ci/circleci: build", state: "FAILED", url: "u" },
+          { name: "ci/circleci: test", state: "SUCCESSFUL", url: "u" },
+        ],
+      },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  const rows = got.find((f) => f.dim === "jira.checks")!.detail!;
+
+  expect(rows.map((r) => r.group)).toEqual([
+    "web-app · fix/login → main · OPEN",
+    "backend · fix/api → develop · MERGED",
+    "backend · fix/api → develop · MERGED",
+  ]);
+  expect(rows.map((r) => r.label)).toEqual([
+    "ci/circleci: test",
+    "ci/circleci: build",
+    "ci/circleci: test",
+  ]);
+});
+
+// 老版本 dev-status 或字段缺失时 repo/destinationBranch 是空串——group 诚实地
+// 缺那一段，不画空括号，也不该整条 group 消失（label/status 还在）。
+test("缺目标分支或仓库名时，group 只留有的那几段", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      {
+        id: "1", title: "a", url: "u", branch: "fix/login", destinationBranch: "",
+        repo: "", updated: 0, status: "OPEN", checksKnown: true,
+        checks: [{ name: "ci", state: "SUCCESSFUL", url: "u" }],
+      },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  const rows = got.find((f) => f.dim === "jira.checks")!.detail!;
+  expect(rows[0]!.group).toBe("fix/login · OPEN");
+});
+
 // 「没问到」和「没有检查」是两回事，收成一个会让页面往好看的方向撒谎。
 test("checksKnown 为 false 时不产检查维度", () => {
   const dev: DevResult = {
     ok: true,
     hidden: 0,
     prs: [{
-      id: "1", title: "a", url: "u", branch: "b", updated: 0, status: "OPEN", checksKnown: false,
+      id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "OPEN", checksKnown: false,
       // 非空 checks 是关键：checksKnown:false 配空数组时，「没问到」和
       // 「问到了、答案是零个检查」在计数上分不出来，这条测试就测不出丢过滤
       // 条件的回归。这里给两条真实的 checks，只有真的按 checksKnown 过滤才
@@ -174,11 +230,11 @@ test("PR 维度带出每个 PR 的标题、状态和链接", () => {
     ok: true,
     hidden: 0,
     prs: [
-      { id: "1", title: "修登录页", url: "https://example.com/pr/1", branch: "b1",
+      { id: "1", title: "修登录页", url: "https://example.com/pr/1", branch: "b1", destinationBranch: "", repo: "",
         updated: 0, status: "OPEN", checks: [], checksKnown: true },
-      { id: "2", title: "", url: "https://example.com/pr/2", branch: "feature/EXAMPLE-1",
+      { id: "2", title: "", url: "https://example.com/pr/2", branch: "feature/EXAMPLE-1", destinationBranch: "", repo: "",
         updated: 0, status: "MERGED", checks: [], checksKnown: true },
-      { id: "3", title: "废掉的", url: "https://example.com/pr/3", branch: "b3",
+      { id: "3", title: "废掉的", url: "https://example.com/pr/3", branch: "b3", destinationBranch: "", repo: "",
         updated: 0, status: "DECLINED", checks: [], checksKnown: true },
     ],
   };
@@ -200,7 +256,7 @@ test("问不到检查的 PR 仍然列在 PR 明细里", () => {
     ok: true,
     hidden: 0,
     prs: [
-      { id: "1", title: "问不到", url: "https://example.com/pr/1", branch: "b1",
+      { id: "1", title: "问不到", url: "https://example.com/pr/1", branch: "b1", destinationBranch: "", repo: "",
         updated: 0, status: "OPEN", checks: [], checksKnown: false },
     ],
   };

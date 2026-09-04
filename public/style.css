@@ -1932,6 +1932,18 @@ header .htitle { font-size: 17px; font-weight: 600; }
   gap: 2px;
 }
 
+/* 组标题：第一条前面不额外留白（它紧跟在 sheet-title 后面），后面几条组前面
+   留出跟上一组的间距，读起来才像"另起一组"而不是紧接着的一行。 */
+.detail-group-title {
+  margin: 10px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.detail-group-title:first-child {
+  margin-top: 0;
+}
+
 /* 一行一个检查：名字占满、状态靠右。名字可能很长（ci/circleci: test 这种），
    所以它自己截断，而不是把状态挤出屏幕。 */
 .detail-row {

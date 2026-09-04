@@ -28,6 +28,8 @@ import { PLUGINS } from "../plugins/registry.js";
  * @property {string} value
  * @property {"ok"|"warn"|"dim"} [tone]
  * @property {string} [url]
+ * @property {string} [group] 不透明的分组标题——含义完全由给出它的插件决定,内核
+ *   只认"连续几行 group 相同就画在同一组标题下面"这一件事,不解释文本本身。
  */
 /**
  * @typedef {object} Facet
@@ -134,7 +136,14 @@ export function openDetailSheet(title, rows) {
 
   sheet.append(el("h2", "sheet-title", title));
   const list = el("div", "detail-list");
+  // 连续几行 group 相同才算一组——插件给的行本来就该按组挨着排好，内核不重排、
+  // 不去重，只负责在"这一行的 group 跟上一行不一样"时插一条标题。
+  let lastGroup = "";
   for (const row of rows) {
+    if (row.group && row.group !== lastGroup) {
+      list.append(el("div", "detail-group-title", row.group));
+      lastGroup = row.group;
+    }
     const line = el("div", "detail-row");
     if (row.url) {
       // 内核只放行 http/https（plugins/handlers.ts 的 safeHttpUrl），到这里已经是

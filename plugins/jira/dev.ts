@@ -30,7 +30,15 @@ export type PullRequest = {
   /** OPEN / MERGED / DECLINED，原样来自 Jira。 */
   status: string;
   url: string;
+  /** 源分支，即将合并的那一支。 */
   branch: string;
+  /** 目标分支，没问到（老版本 dev-status、或字段缺失）就是空串。 */
+  destinationBranch: string;
+  /**
+   * 仓库名，从 PR 地址解出来（parsePrUrl 的 repo 段），不是另一次请求换来的——
+   * dev-status 本身不带独立的仓库名字段，但地址里已经有了。
+   */
+  repo: string;
   updated: number;
   checks: Check[];
   /**
@@ -196,6 +204,8 @@ export async function fetchDev(
       status: typeof pr?.status === "string" ? pr.status : "",
       url: prUrl,
       branch: typeof pr?.source?.branch === "string" ? pr.source.branch : "",
+      destinationBranch: typeof pr?.destination?.branch === "string" ? pr.destination.branch : "",
+      repo: parsePrUrl(prUrl)?.repo ?? "",
       updated: Date.parse(typeof pr?.lastUpdate === "string" ? pr.lastUpdate : "") || 0,
       checks: checks ?? [],
       checksKnown: checks !== null,

@@ -324,3 +324,20 @@ test.each([["yes"], [1], [{}], [false]])("badge：%p 当没给", async (bad) => 
   expect(got["it-1"]![0]!.badge).toBeUndefined();
   expect(got["it-1"]![0]!.value).toBe("Epic");
 });
+
+// group 跟 label/value 同一套不信任姿态：截断、缺席时不出现在结果里。
+test("明细行的 group 原样带过去，跟 label/value 一样限长", async () => {
+  const got = await collectFacets([{ id: "a", source: null }], {
+    p: async () => ({
+      a: [{ dim: "x", value: "1", detail: [
+        { label: "ci/test", value: "FAILED", group: "web-app · fix/login → main · OPEN" },
+        { label: "ci/build", value: "SUCCESSFUL", group: "x".repeat(200) },
+        { label: "无组", value: "OK" },
+      ] }],
+    }),
+  });
+  const rows = got.a![0]!.detail!;
+  expect(rows[0]!.group).toBe("web-app · fix/login → main · OPEN");
+  expect(rows[1]!.group?.length).toBe(120);
+  expect(rows[2]!.group).toBeUndefined();
+});

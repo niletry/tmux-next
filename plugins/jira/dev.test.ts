@@ -32,6 +32,7 @@ const DEV_BODY = {
           url: PR_URL,
           lastUpdate: "2026-08-28T01:31:13.834+0000",
           source: { branch: "EXAMPLE-1-fix" },
+          destination: { branch: "main" },
         },
       ],
     },
@@ -85,6 +86,8 @@ test("两跳都通时，PR 带着它的检查回来", async () => {
   expect(pr.id).toBe("371"); // 前面那个 # 被去掉
   expect(pr.status).toBe("MERGED");
   expect(pr.branch).toBe("EXAMPLE-1-fix");
+  expect(pr.destinationBranch).toBe("main");
+  expect(pr.repo).toBe("repo-uuid"); // 从 PR 地址解出来，不是另一次请求换来的
   expect(pr.checksKnown).toBe(true);
   expect(pr.checks.map((c) => [c.name, c.state])).toEqual([
     ["ci/circleci: build", "SUCCESSFUL"],

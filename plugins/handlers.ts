@@ -234,11 +234,13 @@ export async function collectFacets(
                 const rowTone =
                   r?.tone === "ok" || r?.tone === "warn" || r?.tone === "dim" ? r.tone : undefined;
                 const rowUrl = safeHttpUrl(r?.url);
+                const rowGroup = trim(r?.group, MAX_TEXT);
                 detail.push({
                   label,
                   value: rowValue,
                   ...(rowTone ? { tone: rowTone } : {}),
                   ...(rowUrl ? { url: rowUrl } : {}),
+                  ...(rowGroup ? { group: rowGroup } : {}),
                 });
               }
             }

@@ -1,6 +1,6 @@
 import { readJiraConfig, writeJiraConfig, DEFAULT_JQL, type JiraConfig } from "./config";
 import { fetchIssue, fetchIssues, fetchIssueDescription, type Issue, type IssuesResult } from "./client";
-import { fetchDev, type DevResult } from "./dev";
+import { fetchDev, type DevResult, type PullRequest } from "./dev";
 import { transitionIssue, commentOnPr } from "./writeback";
 import { syncIssues } from "./sync";
 import { readItems, ensureItemForSource } from "../../src/items";
@@ -162,6 +162,16 @@ function checkFacetTone(state: string): "ok" | "warn" | "dim" {
 }
 
 /**
+ * 一个 PR 的分组标题："仓库 · 源分支 → 目标分支 · 状态"。缺的字段就跳过那一段
+ * 而不是画一个空括号——`repo`/`destinationBranch` 依赖 dev-status 的字段是否
+ * 到位，老版本或字段缺失时留空是诚实的降级，不是错误。
+ */
+function prGroupLabel(pr: PullRequest): string {
+  const branches = pr.destinationBranch ? `${pr.branch} → ${pr.destinationBranch}` : pr.branch;
+  return [pr.repo, branches, pr.status].filter(Boolean).join(" · ");
+}
+
+/**
  * 工单类型 → 一组 SVG 路径。
  *
  * 内核不认识 epic，也不该认识：类型是 Jira 的概念，而且是开放集合（每个实例都能
@@ -295,11 +305,19 @@ export function facetsFor(
         // 带上去，首页因此不必再跳一趟工单页。
         // 不带 url：内核不渲染插件给的链接（那就得管协议白名单），要点进某次构建
         // 仍然去工单页。
-        detail: all.map((c) => ({
-          label: c.name,
-          value: c.state,
-          tone: checkFacetTone(c.state),
-        })),
+        //
+        // 检查本来按 PR 分开，这里拉平成一条列表时把归属丢了——一个单常常挂着
+        // 好几个 PR（多仓库改动、或者重开过一次），拉平之后分不清哪几条检查
+        // 属于哪个 PR。group 把归属贴回每一行：同一个 PR 的检查连续排、共享同
+        // 一个组标题，内核只管"group 变了就另起一组"，不需要认识 PR 是什么。
+        detail: known.flatMap((pr) =>
+          pr.checks.map((c) => ({
+            label: c.name,
+            value: c.state,
+            tone: checkFacetTone(c.state),
+            group: prGroupLabel(pr),
+          })),
+        ),
       });
     }
   }

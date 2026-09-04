@@ -120,3 +120,24 @@ test("本地单没有来源徽标，也不画会话数", async () => {
   expect(head.querySelector(".item-source")).toBeNull();
   expect(head.querySelector(".item-count")).toBeNull();
 });
+
+// --- openDetailSheet：group 字段按 PR 分组 -----------------------------------
+
+test("连续同 group 的行只画一条组标题，不重复", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/3", [
+    { label: "ci/test", value: "SUCCESSFUL", tone: "ok", group: "web-app · fix/login → main · OPEN" },
+    { label: "ci/build", value: "FAILED", tone: "warn", group: "backend · fix/api → develop · MERGED" },
+    { label: "ci/lint", value: "SUCCESSFUL", tone: "ok", group: "backend · fix/api → develop · MERGED" },
+  ]);
+  const titles = [...document.querySelectorAll(".detail-group-title")].map((n) => n.textContent);
+  expect(titles).toEqual(["web-app · fix/login → main · OPEN", "backend · fix/api → develop · MERGED"]);
+  expect(document.querySelectorAll(".detail-row").length).toBe(3);
+});
+
+test("没有 group 的行不画组标题", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("PR", [{ label: "修登录页", value: "OPEN" }]);
+  expect(document.querySelector(".detail-group-title")).toBeNull();
+  expect(document.querySelectorAll(".detail-row").length).toBe(1);
+});
