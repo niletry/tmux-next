@@ -967,12 +967,14 @@ function itemListRow(item, sessions, facets, cols, claimed, onChange, link) {
   const status = el("div", "row-status");
   status.append(itemHead(item, facets, 0));
 
-  // agent 和已加的筛选字段一起走 chip，跟卡片同一颗——tone、图标、明细都是它
-  // 自带的，这里不重新拼一遍。
-  const chipDims = ["item.agent", ...cols];
+  // agent 走跟卡片一样的默认画法——它的取值（等你/在跑）本来就是词，不需要
+  // 名字兜底。已加的筛选字段（cols）强制带上维度名：表格视图曾经靠列头说明
+  // "这一列是状态、这一列是负责人"，列表没有列头了，"To Do"、"Sam"这种值离了
+  // 名字就读不出是什么，所以这里传 showLabel。
   const chips = el("div", "facets");
-  for (const dim of chipDims) {
-    for (const f of facetsIn(facets, dim)) chips.append(facetChip(f));
+  for (const f of facetsIn(facets, "item.agent")) chips.append(facetChip(f));
+  for (const dim of cols) {
+    for (const f of facetsIn(facets, dim)) chips.append(facetChip(f, { showLabel: true }));
   }
   if (chips.children.length) status.append(chips);
 

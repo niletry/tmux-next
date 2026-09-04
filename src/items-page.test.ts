@@ -1517,6 +1517,19 @@ test("已加的筛选字段在列表里各成一颗 chip", async () => {
   expect(chips.some((t) => t?.includes("In Progress"))).toBe(true);
 });
 
+// 表格视图曾经靠列头说"这一列是状态"；列表没有列头了，"To Do"这种值离了名字
+// 就读不出是什么，所以已加的筛选字段这颗 chip 要自己带上维度名。agent 那颗
+// 不用——它的取值（等你/在跑）本来就是词，不需要名字兜底。
+test("已加的筛选字段 chip 自带维度名，agent 那颗不用", async () => {
+  const store = { ...asTable(), [FIELDS_KEY]: JSON.stringify(["jira.status"]) };
+  const root = await mount(payload({ items: twoItems, facets: twoDims }), store);
+  const chips = [...root.querySelectorAll(".item-list-row .row-status .facet")];
+  const statusChip = chips.find((c) => c.textContent?.includes("In Progress"));
+  expect(statusChip?.querySelector(".f-dim")).not.toBeNull();
+  const agentChip = chips.find((c) => c.textContent?.includes(tr("items.agent.waiting")));
+  expect(agentChip?.querySelector(".f-dim")).toBeNull();
+});
+
 test("一个字段都没加时只有 agent 这一颗 chip", async () => {
   const root = await mount(payload({ items: twoItems, facets: twoDims }), asTable());
   const first = root.querySelector(".item-list-row")!;
