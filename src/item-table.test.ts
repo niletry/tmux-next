@@ -3,26 +3,26 @@ import { tableColumns, facetsIn, FIXED_DIMS } from "../public/item-table.js";
 
 const f = (dim: string, value: string) => ({ dim, value });
 
-test("表格的 facet 列就是已加的筛选字段", () => {
+test("列表里的 facet chip 就是已加的筛选字段", () => {
   expect(tableColumns(["jira.status", "jira.epic"], ["jira.epic", "jira.status"]))
     .toEqual(["jira.epic", "jira.status"]);
 });
 
-// 存下来的字段是原样保留的（一个维度暂时不在这批单里不该被抹掉），所以画列的
-// 那一步必须自己对账——否则会画出一整列永远空着的表头。
-test("数据里已经没有的维度不画成列", () => {
+// 存下来的字段是原样保留的（一个维度暂时不在这批单里不该被抹掉），所以这一步
+// 必须自己对账——否则会画出一颗永远空着的 chip。
+test("数据里已经没有的维度不画成 chip", () => {
   expect(tableColumns(["jira.status"], ["jira.status", "jira.epic"])).toEqual(["jira.status"]);
 });
 
-// item.agent / item.sessions 已经是固定列。它们同时也是可以加进筛选区的维度，
-// 加了就会画出两列一模一样的东西。
-test("跟固定列重复的维度不再单独成列", () => {
+// item.agent / item.sessions 已经各有固定的画法。它们同时也是可以加进筛选区的
+// 维度，加了就会画出两颗一模一样的东西。
+test("跟固定位置重复的维度不再单独成 chip", () => {
   expect(tableColumns(["item.agent", "item.sessions", "jira.status"],
     ["item.agent", "item.sessions", "jira.status"])).toEqual(["jira.status"]);
   expect(FIXED_DIMS).toContain("item.agent");
 });
 
-test("重复的字段只画一列", () => {
+test("重复的字段只画一颗 chip", () => {
   expect(tableColumns(["jira.status"], ["jira.status", "jira.status"])).toEqual(["jira.status"]);
 });
 
