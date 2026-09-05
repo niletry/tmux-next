@@ -79,6 +79,16 @@ test("带明细的维度画成按钮，点开列出每一行", async () => {
   expect(sheet.textContent).toContain("OPEN");
 });
 
+test("facetChip 把 sessionName 一路传给明细里的发送按钮", async () => {
+  const { facetChip } = await load();
+  const chip = facetChip(
+    { dim: "jira.checks", value: "1/1", detail: [{ label: "ci/test", value: "FAILED", tone: "warn", send: "修复它" }] },
+    { sessionName: "web-1-a" },
+  );
+  chip.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  expect(document.querySelector(".detail-send")).not.toBeNull();
+});
+
 test("agent 维度的取值走字典，不把内部词露出来", async () => {
   const { facetChip } = await load();
   const chip = facetChip({ dim: "item.agent", value: "waiting" });
@@ -198,4 +208,69 @@ test("没有 groupUrl 就不画那个链接入口", async () => {
     { label: "ci/test", value: "SUCCESSFUL", tone: "ok", group: "web-app #371 · fix/login → main · OPEN" },
   ]);
   expect(document.querySelector(".detail-group-link")).toBeNull();
+});
+
+// --- 明细行「发给会话」按钮：只在有 send 且恰好一个绑定会话时才出现 --------
+
+test("有 send 且传了 sessionName 才画按钮", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "FAILED", tone: "warn", send: "请修复 ci/test" },
+  ], "web-1-a");
+  const btn = document.querySelector(".detail-send") as HTMLButtonElement;
+  expect(btn).not.toBeNull();
+  expect(btn.textContent).toBe(tr("items.sendToSession"));
+});
+
+test("没有 send 就不画按钮，就算传了 sessionName", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [{ label: "ci/test", value: "SUCCESSFUL", tone: "ok" }], "web-1-a");
+  expect(document.querySelector(".detail-send")).toBeNull();
+});
+
+test("多会话或没有会话时不传 sessionName，按钮不出现", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "FAILED", tone: "warn", send: "请修复 ci/test" },
+  ], null);
+  expect(document.querySelector(".detail-send")).toBeNull();
+});
+
+test("点击按钮把 send 文本发给传入的会话，成功后短暂反馈再恢复", async () => {
+  const { openDetailSheet } = await load();
+  const real = globalThis.fetch;
+  const calls: { url: string; body: unknown }[] = [];
+  (globalThis as any).fetch = async (u: unknown, init?: RequestInit) => {
+    calls.push({ url: String(u), body: init?.body ? JSON.parse(String(init.body)) : null });
+    return new Response(null, { status: 204 });
+  };
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "FAILED", tone: "warn", send: "请修复 ci/test" },
+  ], "web-1-a");
+  const btn = document.querySelector(".detail-send") as HTMLButtonElement;
+  btn.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 10));
+  (globalThis as any).fetch = real;
+
+  expect(calls.length).toBe(1);
+  expect(calls[0]!.url).toContain("api/sessions/web-1-a/keys");
+  expect(calls[0]!.body).toEqual({ text: "请修复 ci/test" });
+  expect(btn.disabled).toBe(true);
+  expect(btn.textContent).toBe(tr("items.sent"));
+});
+
+test("发送失败时提示错误，按钮重新可点", async () => {
+  const { openDetailSheet } = await load();
+  const real = globalThis.fetch;
+  (globalThis as any).fetch = async () => new Response(null, { status: 500 });
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "FAILED", tone: "warn", send: "请修复 ci/test" },
+  ], "web-1-a");
+  const btn = document.querySelector(".detail-send") as HTMLButtonElement;
+  btn.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 10));
+  (globalThis as any).fetch = real;
+
+  expect(btn.disabled).toBe(false);
+  expect(btn.textContent).toBe(tr("items.sendToSession"));
 });

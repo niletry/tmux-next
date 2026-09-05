@@ -132,6 +132,35 @@ test("有检查失败给 warn 色", () => {
   expect(checks.tone).toBe("warn");
 });
 
+// 只有失败/停止的检查才配"发给会话"这句提示——通过和进行中的检查没什么好
+// 让人去修的，不该在明细行上多出一个点了也没用的按钮。
+test("只有失败/停止的检查行带 send，通过和进行中的不带", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      {
+        id: "1", title: "a", url: "https://bitbucket.org/x/y/pull-requests/1", branch: "b",
+        destinationBranch: "", repo: "", updated: 0, status: "OPEN", checksKnown: true,
+        checks: [
+          { name: "ci", state: "FAILED", url: "u" },
+          { name: "deploy", state: "STOPPED", url: "u" },
+          { name: "lint", state: "SUCCESSFUL", url: "u" },
+          { name: "build", state: "INPROGRESS", url: "u" },
+        ],
+      },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  const rows = got.find((f) => f.dim === "jira.checks")!.detail!;
+  const byLabel = Object.fromEntries(rows.map((r) => [r.label, r.send]));
+  expect(byLabel.ci).toContain("https://bitbucket.org/x/y/pull-requests/1");
+  expect(byLabel.ci).toContain("ci");
+  expect(byLabel.deploy).toBeDefined();
+  expect(byLabel.lint).toBeUndefined();
+  expect(byLabel.build).toBeUndefined();
+});
+
 // 一个单常挂着好几个 PR（多仓库改动、或重开过一次）——拉平成一条检查列表时
 // 不能丢掉"这条检查属于哪个 PR"，明细行因此按 PR 分组。
 test("检查明细按 PR 分组，group 是「仓库 #编号 · 源分支 → 目标分支 · 状态」", () => {

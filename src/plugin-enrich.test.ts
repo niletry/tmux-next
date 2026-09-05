@@ -359,3 +359,22 @@ test("groupUrl 只放行 http/https，别的协议原样丢掉那个字段", asy
   expect(rows[1]!.groupUrl).toBeUndefined();
   expect(rows[2]!.groupUrl).toBeUndefined();
 });
+
+// send 是"该往会话里发什么"的原始文本，跟 label/value 一样净化，但截断上限
+// 单独更宽（500，见 handlers.ts 的 MAX_SEND_TEXT）——它要装得下一整句带链接
+// 的提示，不是一格标签。
+test("明细行的 send 原样带过去，截断到 500 字符，没给就不带这个字段", async () => {
+  const got = await collectFacets([{ id: "a", source: null }], {
+    p: async () => ({
+      a: [{ dim: "x", value: "1", detail: [
+        { label: "ci/test", value: "FAILED", send: "PR https://example.com/pr/1 的检查失败，请修复。" },
+        { label: "ci/build", value: "SUCCESSFUL" },
+        { label: "超长", value: "FAILED", send: "x".repeat(600) },
+      ] }],
+    }),
+  });
+  const rows = got.a![0]!.detail!;
+  expect(rows[0]!.send).toBe("PR https://example.com/pr/1 的检查失败，请修复。");
+  expect(rows[1]!.send).toBeUndefined();
+  expect(rows[2]!.send?.length).toBe(500);
+});

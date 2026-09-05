@@ -108,6 +108,14 @@ export const ENRICH_TIMEOUT_MS = 300;
 const MAX_TEXT = 120;
 
 /**
+ * 一行明细"发给会话"的文本上限。这不是给人看的一格标签，是要塞进
+ * `send-keys` 的一整句话（比如带上 PR 地址和检查名），所以给得比 MAX_TEXT 宽——
+ * 但仍然远小于 sendText 自己的 2000 上限（src/tmux/send-text.ts 的 MAX_TEXT），
+ * 留出余量不至于插件这边刚好顶格就被下游再截一次。
+ */
+const MAX_SEND_TEXT = 500;
+
+/**
  * 合并后的**插件** facet，每张单最多留几条——只管这一份，不是一张卡片上全部
  * chips 的上限。内核自己的 facet（src/server.ts 拼进来的 item.* 系列、
  * src/item-facets.ts 按标签数逐条产出的那些）不经过这里，不受这个数封顶：
@@ -236,6 +244,7 @@ export async function collectFacets(
                 const rowUrl = safeHttpUrl(r?.url);
                 const rowGroup = trim(r?.group, MAX_TEXT);
                 const rowGroupUrl = safeHttpUrl(r?.groupUrl);
+                const rowSend = trim(r?.send, MAX_SEND_TEXT);
                 detail.push({
                   label,
                   value: rowValue,
@@ -243,6 +252,7 @@ export async function collectFacets(
                   ...(rowUrl ? { url: rowUrl } : {}),
                   ...(rowGroup ? { group: rowGroup } : {}),
                   ...(rowGroupUrl ? { groupUrl: rowGroupUrl } : {}),
+                  ...(rowSend ? { send: rowSend } : {}),
                 });
               }
             }
