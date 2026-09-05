@@ -7,6 +7,7 @@ import { readIds, toggleId } from "./collapse-store.js";
 // 反过来看那一半：这条会话挂在哪张单下，那张单此刻怎么样。只读的一眼，改绑定
 // 仍然是旁边那个「关联到单」。
 import { openItemPanel } from "./item-panel.js";
+import { isWaiting } from "./session-state.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
@@ -93,7 +94,7 @@ function timeCell(session) {
 
   // 等你回话时这一格是空的：状态图标旁边已经写着等了多久（见 stateCell），
   // 再画一遍"等你 3 分钟"就是同一件事说两遍，而它占的是这一行最右边那块地方。
-  if (session.idle) return "";
+  if (isWaiting(session)) return "";
 
   const phrase = actionPhrase(action);
   return phrase ? `${relativeTime(epoch)} · ${phrase}` : relativeTime(epoch);
@@ -113,7 +114,7 @@ const STATE_ICON = { pending: "pencil", waiting: "hourglass", working: "activity
  * 每张卡片都一样、扫一眼就够的那几个字。
  */
 function stateCell(session) {
-  const kind = session.pendingInput ? "pending" : session.idle ? "waiting" : "working";
+  const kind = session.pendingInput ? "pending" : isWaiting(session) ? "waiting" : "working";
   const words =
     kind === "pending"
       ? tr("list.pendingInput")
@@ -124,7 +125,7 @@ function stateCell(session) {
   const cell = el("span", "state");
   cell.innerHTML = icon(STATE_ICON[kind], 13);
 
-  if (session.idle) {
+  if (isWaiting(session)) {
     const epoch = session.lastAction ? session.lastAction.epoch : session.lastActivityEpoch;
     const span = duration(epoch);
     cell.append(el("span", "state-num", span));
@@ -398,7 +399,7 @@ function card(session, itemsById) {
   // timestamp squeezed it down to an ellipsis on a phone.
   const nameRow = el("div", "row name-row");
   if (session.pinned) nameRow.append(pinBadge());
-  if (session.idle) {
+  if (isWaiting(session)) {
     const dot = el("span", "dot");
     dot.title = tr("list.waitingDot");
     nameRow.append(dot);
@@ -739,7 +740,7 @@ async function render() {
     const { sessions, items } = Array.isArray(body) ? { sessions: body, items: [] } : body;
     const itemsById = new Map((items ?? []).map((item) => [item.id, item]));
     setCount(sessions.length ? tr("list.count", { n: sessions.length }) : "");
-    setTabWaiting(sessions.filter((s) => s.idle).length);
+    setTabWaiting(sessions.filter(isWaiting).length);
 
     // The banner goes last: restorable records are dead sessions from a past
     // boot, and the live ones are what the page is for. Above the list it
