@@ -4,9 +4,8 @@ import { transcriptPath } from "../claude-activity";
 /**
  * 一个会话此刻是在跑，还是在等你。
  *
- * 从 transcript 的结构里读出来，而不是认屏幕。会话列表现在用的是屏幕启发式——认
- * TUI 上的空闲标记——那种判断会随着 agent 改版无声失效，而 `stop_reason` 是记录
- * 格式的一部分：
+ * 从 transcript 的结构里读出来，而不是认屏幕。屏幕启发式——认 TUI 上的空闲
+ * 标记——那种判断会随着 agent 改版无声失效，而 `stop_reason` 是记录格式的一部分：
  *
  *     assistant  stop_reason=end_turn   一轮说完了，球在你这边
  *     assistant  stop_reason=tool_use   还在调工具，球在它那边
@@ -15,11 +14,11 @@ import { transcriptPath } from "../claude-activity";
  *
  * ---
  *
- * **这是过渡状态，不该长期存在。** 目前 `SessionSummary` 上同时有屏幕推出来的
- * `idle` 和这里读出来的 `turn`，两者可能对同一个会话给出不同说法。这么排是为了
- * 让新读法先在工单页上跑一段而不动会话列表。它必须收敛：要么列表页改用 `turn`
- * （那时 `idle` 只作为没有 transcript 时的兜底），要么这个字段连同本文件一起删掉。
- * 两种判断长期并存会变成"同一个会话在两个页面上说法不一致"，那比没有状态更糟。
+ * `SessionSummary` 上同时有屏幕推出来的 `idle` 和这里读出来的 `turn`；工单页
+ * （`item-facets.ts` 的 `stateOf`）和 sessions 列表页（`public/session-state.js`）
+ * 现在都是同一条规则：`turn` 优先，读不出来（没有 transcript，或尾部里一条轮次
+ * 记录都没有）才退回 `idle`。两个字段都留着——`idle` 是没有 transcript 的会话
+ * 唯一的信息源，不是要被替换掉的旧实现。
  */
 
 export type TurnState = "waiting" | "working";
