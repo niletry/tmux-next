@@ -304,8 +304,10 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
   // 不抛。
   const shown = (facets ?? []).filter(chipVisible);
   if (shown.length) {
+    // 恰好一个绑定会话时才把它的名字递下去——多会话内核不替用户猜发给哪个。
+    const sessionName = sessions.length === 1 ? sessions[0].name : null;
     const row = el("div", "facets");
-    for (const facet of shown) row.append(facetChip(facet));
+    for (const facet of shown) row.append(facetChip(facet, { sessionName }));
     card.append(row);
   }
 
@@ -971,10 +973,14 @@ function itemListRow(item, sessions, facets, cols, claimed, onChange, link) {
   // 名字兜底。已加的筛选字段（cols）强制带上维度名：表格视图曾经靠列头说明
   // "这一列是状态、这一列是负责人"，列表没有列头了，"To Do"、"Sam"这种值离了
   // 名字就读不出是什么，所以这里传 showLabel。
+  // 恰好一个绑定会话时才把它的名字递下去——多会话内核不替用户猜发给哪个。
+  const sessionName = sessions.length === 1 ? sessions[0].name : null;
   const chips = el("div", "facets");
-  for (const f of facetsIn(facets, "item.agent")) chips.append(facetChip(f));
+  for (const f of facetsIn(facets, "item.agent")) chips.append(facetChip(f, { sessionName }));
   for (const dim of cols) {
-    for (const f of facetsIn(facets, dim)) chips.append(facetChip(f, { showLabel: true }));
+    for (const f of facetsIn(facets, dim)) {
+      chips.append(facetChip(f, { showLabel: true, sessionName }));
+    }
   }
   if (chips.children.length) status.append(chips);
 

@@ -2043,6 +2043,23 @@ a.detail-label:hover {
 .detail-state.warn { color: var(--danger); }
 .detail-state.dim { color: var(--text-2); }
 
+/* 一行明细上的「发给会话」按钮：跟状态词一样不占宽度，颜色走 accent 而不是
+   跟着这一行的 tone 走——它是一个动作，不是这一行状态的一部分。 */
+.detail-send {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-5);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+.detail-send:disabled {
+  color: var(--text-2);
+  cursor: default;
+}
+
 .sheet-close {
   display: block;
   width: 100%;

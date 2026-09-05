@@ -169,6 +169,15 @@ function checkFacetTone(state: string): "ok" | "warn" | "dim" {
 }
 
 /**
+ * 一条失败检查该往会话里发的话。只给 FAILED/STOPPED（跟 checkFacetTone 判
+ * warn 是同一条件）配这句提示——通过或进行中的检查没什么好让人去修的,不该
+ * 在明细行上多出一个点了也没用的按钮。
+ */
+function checkFixPrompt(pr: PullRequest, c: { name: string; state: string }): string {
+  return `PR ${pr.url} 的检查「${c.name}」失败（状态：${c.state}），请检查并修复。`;
+}
+
+/**
  * 一个 PR 的分组标题："仓库 #编号 · 源分支 → 目标分支 · 状态"。缺的字段就跳过
  * 那一段而不是画一个空括号——`repo`/`destinationBranch` 依赖 dev-status 的字段
  * 是否到位，老版本或字段缺失时留空是诚实的降级，不是错误。`id` 不会缺：
@@ -320,15 +329,21 @@ export function facetsFor(
         // 属于哪个 PR。group 把归属贴回每一行：同一个 PR 的检查连续排、共享同
         // 一个组标题，内核只管"group 变了就另起一组"，不需要认识 PR 是什么。
         detail: known.flatMap((pr) =>
-          pr.checks.map((c) => ({
-            label: c.name,
-            value: c.state,
-            tone: checkFacetTone(c.state),
-            group: prGroupLabel(pr),
-            // 组标题旁边那个链接图标指回这个 PR 本身——不是某一次检查的地址，
-            // 是"这一组说的是哪个 PR"，所以每一行都贴同一个 pr.url。
-            groupUrl: pr.url,
-          })),
+          pr.checks.map((c) => {
+            const tone = checkFacetTone(c.state);
+            return {
+              label: c.name,
+              value: c.state,
+              tone,
+              group: prGroupLabel(pr),
+              // 组标题旁边那个链接图标指回这个 PR 本身——不是某一次检查的地址，
+              // 是"这一组说的是哪个 PR"，所以每一行都贴同一个 pr.url。
+              groupUrl: pr.url,
+              // 只给失败/停止的检查配这句提示——内核只认"有 send 就画按钮"，
+              // 这一步"该不该给这行按钮"的判断留在插件这边。
+              ...(tone === "warn" ? { send: checkFixPrompt(pr, c) } : {}),
+            };
+          }),
         ),
       });
     }

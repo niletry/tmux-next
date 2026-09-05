@@ -122,9 +122,12 @@ export async function openItemPanel(query, opts = {}) {
 
       const shown = facets.filter(chipVisible);
       if (shown.length) {
+        // 恰好一个绑定会话时才把它的名字递下去——多会话场景内核不替用户猜
+        // 该发给哪个（见 items.sendToSession 的按钮）。
+        const sessionName = sessions.length === 1 ? sessions[0].name : null;
         const row = document.createElement("div");
         row.className = "facets";
-        for (const facet of shown) row.append(facetChip(facet));
+        for (const facet of shown) row.append(facetChip(facet, { sessionName }));
         sheet.append(row);
       }
 
