@@ -185,6 +185,71 @@ test("请求里带上 parent 字段，否则父级永远是空的", async () => 
   expect(decodeURIComponent(seen?.url ?? "")).toContain("parent");
 });
 
+// ---- 翻页：单页 maxResults 有限，多于一页时不能只拿第一页 --------------------
+
+/** 一个按顺序回答第 N 次请求的假 fetcher，用来模拟"翻页"这个多次往返的过程。 */
+function pagedFetch(pages: unknown[], capture?: (req: Request, i: number) => void) {
+  let i = 0;
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const req = new Request(input as string, init);
+    capture?.(req, i);
+    const body = pages[Math.min(i, pages.length - 1)];
+    i++;
+    return new Response(JSON.stringify(body), { status: 200 });
+  }) as unknown as typeof fetch;
+}
+
+function issueRow(key: string) {
+  return { id: key, key, fields: { summary: key } };
+}
+
+test("有 nextPageToken 就接着问下一页，两页的结果合并", async () => {
+  const seen: Request[] = [];
+  const res = await fetchIssues(
+    CONFIG,
+    pagedFetch(
+      [
+        { issues: [issueRow("A-1"), issueRow("A-2")], nextPageToken: "page-2" },
+        { issues: [issueRow("A-3")] },
+      ],
+      (r) => seen.push(r),
+    ),
+  );
+  expect(res.ok && res.issues.map((i) => i.key)).toEqual(["A-1", "A-2", "A-3"]);
+  expect(seen.length).toBe(2);
+  expect(decodeURIComponent(seen[1]!.url)).toContain("nextPageToken=page-2");
+});
+
+test("没有 nextPageToken 就是最后一页，只问一次", async () => {
+  const seen: Request[] = [];
+  await fetchIssues(CONFIG, pagedFetch([OK_BODY], (r) => seen.push(r)));
+  expect(seen.length).toBe(1);
+});
+
+test("翻页翻到一半网络断了，整体算失败，不返回半份列表", async () => {
+  let i = 0;
+  const flaky = (async () => {
+    i++;
+    if (i === 1) return new Response(JSON.stringify({ issues: [issueRow("A-1")], nextPageToken: "p2" }), { status: 200 });
+    throw new Error("network down");
+  }) as unknown as typeof fetch;
+  expect(await fetchIssues(CONFIG, flaky)).toEqual({ ok: false, reason: "unreachable" });
+});
+
+test("翻页有安全阀：不会无限翻下去", async () => {
+  // 每页 100 条、永远给下一页 token——如果没有硬上限，这个假 JQL 会让 fetchIssues
+  // 翻到天荒地老。
+  let calls = 0;
+  const endless = (async () => {
+    calls++;
+    const rows = Array.from({ length: 100 }, (_, n) => issueRow(`E-${calls}-${n}`));
+    return new Response(JSON.stringify({ issues: rows, nextPageToken: `p${calls + 1}` }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const res = await fetchIssues(CONFIG, endless);
+  expect(res.ok).toBe(true);
+  expect(calls).toBeLessThan(20); // 远小于"无限"，只要没吊死就行，不锁死具体页数
+});
+
 // ---- 单条工单 ---------------------------------------------------------------
 
 test("单条刷新走 /issue/{key}，不拼 JQL", async () => {
