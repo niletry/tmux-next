@@ -34,8 +34,8 @@ function logRow(entry) {
   const row = el("div", "row");
   row.append(el("span", "time", entry.ts));
   const summary = entry.actions.length
-    ? entry.actions.map((a) => `${a.session}: ${actionLabel(a.type)} — ${a.detail}`).join("；")
-    : entry.checked.map((c) => `${c.session}: ${c.turn ?? "?"}`).join("；");
+    ? entry.actions.map((a) => `${a.session}: ${actionLabel(a.type)} — ${a.detail}`).join(" · ")
+    : entry.checked.map((c) => `${c.session}: ${c.turn ?? "?"}`).join(" · ");
   row.append(el("span", "preview", summary));
   return row;
 }
@@ -50,7 +50,11 @@ async function supervisorCard(sup) {
 
   let entries = [];
   try {
-    ({ entries } = await (await fetch(url(`api/supervisor/log?cwd=${encodeURIComponent(sup.cwd)}`))).json());
+    const body = await (await fetch(url(`api/supervisor/log?cwd=${encodeURIComponent(sup.cwd)}`))).json();
+    // 一次 200 但 body 形状不对（5xx 被包成 JSON、截断的响应、任何不是数组
+    // 的 entries）不能让这张卡的渲染抛出去——那会让 load() 里的
+    // Promise.all 整体 reject，页面就整体空白，而不是这一张卡退化成空状态。
+    entries = Array.isArray(body?.entries) ? body.entries : [];
   } catch {
     entries = [];
   }
@@ -125,7 +129,23 @@ export async function load() {
   if (!supervisors.length) {
     nodes.push(el("p", "empty", tr("supervisor.empty")));
   } else {
-    const cards = await Promise.all(supervisors.map(supervisorCard));
+    // 一张卡的渲染失败不能拖累其余的——supervisorCard 内部已经把 log 抓取的
+    // 失败收进空状态了，这里再兜一层是防线，不是重复：任何未预见到的抛出
+    // 都换成一张最小的、还是带 cwd/会话名的卡，而不是让 Promise.all 整体
+    // reject、listEl.replaceChildren 永远不跑、整页空白。
+    const cards = await Promise.all(
+      supervisors.map((sup) =>
+        supervisorCard(sup).catch(() => {
+          const fallback = el("div", "card");
+          const main = el("div", "card-main");
+          main.append(el("span", "name", sup.cwd));
+          main.append(el("span", "time", sup.session));
+          fallback.append(main);
+          fallback.append(el("p", "empty", tr("supervisor.logEmpty")));
+          return fallback;
+        }),
+      ),
+    );
     nodes.push(...cards);
   }
   listEl.replaceChildren(...nodes);
