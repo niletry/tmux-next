@@ -71,6 +71,9 @@ export default {
       hintKey: "jira.cfg.transitionHint",
     },
   ],
+  // 设置页 Save 旁边的按钮。内核不知道「完整同步」是什么意思——只知道按了要
+  // POST 到 /api/plugins/jira/actions/full-sync，回来一个布尔。
+  actions: [{ key: "full-sync", labelKey: "jira.fullSync", doneKey: "jira.fullSyncDone" }],
   i18n: {
     zh: {
       "jira.title": "工单",
@@ -85,6 +88,8 @@ export default {
       "jira.cfg.tokenHint": "只写不读：留空表示保持不变",
       "jira.cfg.jql": "JQL",
       "jira.cfg.jqlHint": "留空用默认：分给我的、还没做完的",
+      "jira.fullSync": "完整同步",
+      "jira.fullSyncDone": "已完整同步一次",
       "jira.cfg.onlyKeyedPrs": "只保留带本单单号的 PR",
       "jira.cfg.onlyKeyedPrsHint": "Jira 的关联很松，提交信息里提过别的单号就会挂过来",
       "jira.cfg.transitionInProgress": "「进行中」对应的 Jira 状态",
@@ -139,6 +144,8 @@ export default {
       "jira.cfg.tokenHint": "Write-only: leave empty to keep the current one",
       "jira.cfg.jql": "JQL",
       "jira.cfg.jqlHint": "Empty uses the default: assigned to me, not done",
+      "jira.fullSync": "Full sync",
+      "jira.fullSyncDone": "Full sync finished",
       "jira.cfg.onlyKeyedPrs": "Only PRs carrying this issue's key",
       "jira.cfg.onlyKeyedPrsHint": "Jira links loosely — a commit message mentioning another key pulls that PR in",
       "jira.cfg.transitionInProgress": "Jira status for “In progress”",

@@ -595,6 +595,29 @@ export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
 }
 
 /**
+ * 设置页里 JQL 旁边那颗「完整同步」按钮。
+ *
+ * 只认一个 key：`full-sync`，别的一律 false——这不是给内核挡的（runPluginAction
+ * 已经在清单这一层挡过一次），是给这个函数自己留一条"我不认识的键不装懂"的路。
+ *
+ * 成功与否要说的是用户按下这颗按钮时真正关心的事："这次点击有没有真的去问了
+ * Jira"，不是"每一步内部细节都顺利"——那件事 sync() 本身就不区分：它对"还没
+ * 配置"和"配置了但连不上/认证失败"用的是同一个返回值（零结果），原因见 sync()
+ * 顶上的注释——background 的 start() 不该有一条异常路径能把启动流程带崩，那条
+ * 边界现在仍然成立，改 sync() 的返回形状会连累 runSync()/start() 每一个调用方。
+ * 所以这里能诚实回答的只有"配置存不存在"：没配置，这次点击注定什么都问不到，
+ * 答 false；配置存在，就真的发了一轮网络请求，答 true——至于这一轮里某个字段
+ * 认证失败或者连不上，那是 sync() 已经在打的日志，跟"点没点着"是两件事。
+ */
+export async function runAction(key: string): Promise<boolean> {
+  if (key !== "full-sync") return false;
+  const config = await readJiraConfig();
+  if (!config) return false;
+  await sync({ full: true });
+  return true;
+}
+
+/**
  * 只刷新一个单：先重取工单本身，再重取它的 PR/检查，再把标题写回内核。
  *
  * 不经过 devTargets 的"只给有活跃会话的单拉"这条限制——那条限制是为了不在批量

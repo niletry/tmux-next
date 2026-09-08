@@ -406,6 +406,37 @@ function pluginSection(plugin, values) {
 
   const actions = el("div", "settings-actions");
   actions.append(save);
+
+  // 清单里声明的动作按钮（比如 Jira 的「完整同步」），画在 Save 旁边、同一行。
+  // 这一页照样不知道按下去做了什么——只认 key（传给哪个端点）、labelKey（叫
+  // 什么）、doneKey（成了说哪句话）。失败复用 Save 已经在用的那句通用失败文案：
+  // 内核不该替每一种"没做成"各造一句新话，页面拿到的失败语义本来就只有一种。
+  for (const action of plugin.actions ?? []) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    // 不是 primary：Save 才是这一节唯一的主动作，其余都是次要的。
+    btn.className = "btn";
+    btn.textContent = tr(action.labelKey);
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      note.hidden = true;
+      let ok = false;
+      try {
+        const res = await fetch(
+          url(`api/plugins/${encodeURIComponent(plugin.id)}/actions/${encodeURIComponent(action.key)}`),
+          { method: "POST" },
+        );
+        ok = res.ok && (await res.json()).ok === true;
+      } catch {
+        ok = false;
+      }
+      note.textContent = ok ? tr(action.doneKey) : tr("settings.cfgSaveFailed");
+      note.hidden = false;
+      btn.disabled = false;
+    });
+    actions.append(btn);
+  }
+
     return [form, actions, note];
   };
 
