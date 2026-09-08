@@ -559,14 +559,24 @@ function incrementalWindowMinutes(lastSyncAt: number): number {
  * 知道"问不到、以及为什么"的地方，把 log 塞进 start() 的 catch 只是一段看着
  * 像在处理这件事、实际永远不会跑的死代码。
  *
- * `opts.full` 之外，还有三种情况必须退回全量，而不是这个调用方自己选：从没
+ * `opts.full` 之外，还有四种情况必须退回全量，而不是这个调用方自己选：从没
  * 同步成功过（没有游标可用）、游标记的 JQL 跟现在的 config.jql 不一样（用户
  * 改过查询——旧游标描述的是另一条查询，拿它当"这之后有什么变了"没有意义，见
- * sync-state.ts），以及系统时钟往回跳导致 `lastSyncAt` 比现在还晚。最后一条
- * 不是 `incrementalWindowMinutes` 自己去钳：钳出来的窗口是"至少 1 分钟"，
- * 而时钟不可信的时候"至少 1 分钟"恰恰是最危险的答案——它看起来像一次正常的
- * 增量、实际上把过去这一整段时间的改动全部漏掉了。时钟不可信就该整段不信，
- * 退回全量，而不是拿一个算出来的负数窗口硬凑一个正数。
+ * sync-state.ts）、系统时钟往回跳导致 `lastSyncAt` 比现在还晚，以及进程内的
+ * `cache` 还是冷的。时钟那条不是 `incrementalWindowMinutes` 自己去钳：钳出来
+ * 的窗口是"至少 1 分钟"，而时钟不可信的时候"至少 1 分钟"恰恰是最危险的答
+ * 案——它看起来像一次正常的增量、实际上把过去这一整段时间的改动全部漏掉了。
+ * 时钟不可信就该整段不信，退回全量，而不是拿一个算出来的负数窗口硬凑一个正数。
+ *
+ * `cache` 冷这一条是增量同步自己造出来的缺口：下面能看到,增量分支故意绕开
+ * `issues()`、直接调 `fetchIssues`,理由是增量结果只有"这次变了的几条",写进
+ * `cache` 会把工单页的"全部列表"污染成"最近改过的几条"。但游标是存盘的,能
+ * 活过一次进程重启;`cache` 不能——重启后哪怕磁盘上的游标依然有效,内存里的
+ * `cache` 也是 null。增量分支既然从不写它,就永远轮不到别人把它焐热,于是
+ * `enrich()` 只能从 `issueCache` 的边角料(单独刷新过的那几个 key)里找,首页
+ * 绝大多数单子一个 facet 都拿不到——这正是重启后在生产上实测到的样子:353 个
+ * 单里只有 5 个还挂着 facet。所以 `cache` 是 null 时必须强制走一次全量,不管
+ * 游标看起来多有效:这一次全量,才是唯一会把 `cache` 填上的机会。
  */
 export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
   const config = await readJiraConfig();
@@ -574,7 +584,7 @@ export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
 
   const state = await readSyncState();
   const clockWentBackward = !!state && Date.now() < state.lastSyncAt;
-  const full = !!opts?.full || !state || state.jql !== config.jql || clockWentBackward;
+  const full = !!opts?.full || !state || state.jql !== config.jql || clockWentBackward || !cache;
 
   // 用请求**发起**的时间，不是拿到结果之后的时间——不然请求这段时间里发生的
   // 改动会被下一次的窗口漏掉。

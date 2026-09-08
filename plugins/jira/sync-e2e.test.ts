@@ -188,6 +188,66 @@ test("时钟往回跳（游标记的时间比现在还晚）时退回全量，�
   });
 });
 
+/**
+ * 回归：进程重启后，磁盘上的游标依然有效，但进程内的列表缓存（server.ts 里
+ * 那个模块级 `cache`）是冷的——增量分支故意绕开 `issues()`，从不写这份缓存，
+ * 所以"游标有效就走增量"这条判断单独成立时，冷缓存会被无限期晾在那，
+ * `enrich()` 只能从 `issueCache` 的边角料里找，首页大部分单子一个 facet 都
+ * 拿不到（生产上实测：353 个单只剩 5 个还挂着 facet）。
+ *
+ * 不能靠"这是文件里第一条测试"来制造冷缓存——`sync-e2e.test.ts` 是不是第一个
+ * 被跑到的文件，跟这份模块实例是不是刚创建、`cache` 有没有被别的用例焐热，是
+ * 两件独立的事（同一个 bun 进程里,不同测试文件对同一个源文件仍可能各自拿到
+ * 独立的模块实例，顺序也不由这个文件决定）。带查询串的动态 import 能绕开这层
+ * 不确定性，直接换一份全新的模块实例，`cache`/`issueCache` 保证是刚初始化的
+ * `null`/空 Map——这才是"进程刚启动"的真实写照。
+ */
+let coldModule: Pick<typeof import("./server"), "sync">;
+
+test("准备一份全新的模块实例，模拟进程刚重启——它的 cache 保证是冷的", async () => {
+  // 拼接出来的说明符（而非字符串字面量）是故意的：tsc 对字面量 import() 会
+  // 按路径解析模块声明，"./server?query" 不是一个真实文件，会被当成找不到的
+  // 模块报错；拼接绕开静态解析，让 tsc 把这次 import() 当 `any` 处理，同时
+  // Bun 在运行时仍然把它当一个跟 "./server" 不同的说明符，换来一份全新实例。
+  coldModule = await import("./server" + "?cold-cache-regression-test");
+});
+
+test("冷缓存回归：磁盘游标有效，但进程内 cache 是冷的——sync() 仍必须强制走全量", async () => {
+  await withJiraDir(async (jiraDir) => {
+    writeConfig(jiraDir);
+    writeState(jiraDir, Date.now() - 5 * 60_000, CONFIG_JQL); // 磁盘上的游标本身完全有效
+    const seen: { jql?: string }[] = [];
+    globalThis.fetch = fakeSearch(seen);
+
+    await coldModule.sync();
+
+    // 若这里退回了增量（旧行为），请求会带 `updated >=` 子句而不是裸 jql——
+    // 这条断言在修复前会失败，正是要抓的回归。
+    expect(seen.length).toBe(1);
+    expect(seen[0]!.jql).toBe(CONFIG_JQL);
+    expect(seen[0]!.jql).not.toContain("updated >=");
+  });
+});
+
+test("同一份模块实例：上一条全量把 cache 焐热、游标也已前移之后，下一次 sync() 恢复走增量", async () => {
+  await withJiraDir(async (jiraDir) => {
+    writeConfig(jiraDir);
+    // 同样加 500ms 偏移量避开整分钟边界，理由见上面"游标存在且 jql 匹配"那条
+    // 用例的注释——这里 diff 稳定落在 (300500, 361000) 区间，ceil 恒为 6，
+    // +2 恒为 8。
+    writeState(jiraDir, Date.now() - (5 * 60_000 + 500), CONFIG_JQL); // 又一份独立、同样有效的游标
+    const seen: { jql?: string }[] = [];
+    globalThis.fetch = fakeSearch(seen);
+
+    await coldModule.sync();
+
+    // 证明修复没有把增量整条路都关掉：缓存一旦被上一条测试的全量焐热，
+    // 这个模块实例里后续的 sync() 该走增量还是走增量。
+    expect(seen.length).toBe(1);
+    expect(seen[0]!.jql).toBe(`(${CONFIG_JQL}) AND updated >= "-8m"`);
+  });
+});
+
 test("跑完还原 env、清理临时目录", () => {
   if (prevJiraDir === undefined) delete process.env.TMUX_NEXT_JIRA_DIR;
   else process.env.TMUX_NEXT_JIRA_DIR = prevJiraDir;
