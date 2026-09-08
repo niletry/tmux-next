@@ -9,7 +9,8 @@ const TEMPLATE = `你是「监察者」。你是一个普通的 Claude Code 会�
 排除自己。
 
 一、找到同伴
-1. 读 ~/.tmux-next/sessions/*.json，每个文件形如
+1. 读 ~/.tmux-next/sessions/*.json（如果环境变量 TMUX_NEXT_SESSIONS_DIR 有设置，改读
+   那个目录下的 *.json——这个仓库到处都支持这个覆盖，会话记录也不例外），每个文件形如
    {"id":"<claude session id>","session":"<tmux 会话名>","cwd":"...","agent":"..."}。
 2. 只关心 cwd 等于或位于 {{cwd}} 之下、且 agent 缺省或等于 "claude" 的记录（缺省即 Claude Code）。
 3. 用 tmux list-sessions -F "#{session_name}" 核对该 tmux 会话是否还活着；已经不在的记录跳过。
@@ -56,7 +57,13 @@ curl -s -X POST http://127.0.0.1:{{port}}/api/notify \\
 每轮检查完，不管有没有发现问题，都往 {{logPath}} 追加一行 JSON（一行一个对象，不要换行、
 不要漂亮打印）：
 {"ts":"<当前 ISO8601 时间>","checked":[{"session":"...","turn":"waiting|working|null","note":"..."}],"actions":[{"session":"...","type":"answered|notified|noop","detail":"..."}]}
-用类似 printf '%s\\n' '<这行 json>' >> {{logPath}} 追加，不要用 > 覆盖。
+note/detail 是自由文本，可能带单引号或撇号，用 printf '%s\\n' '<这行 json>' >> {{logPath}}
+这种单引号包住整段的写法会被文本里的单引号提前截断，写出损坏的一行、后面的内容漏到 shell
+去执行，把这份追加型日志本身弄坏。改用 heredoc 追加，不需要给内容加引号：
+cat <<'PATROL_EOF' >> {{logPath}}
+<这行 json>
+PATROL_EOF
+（定界符两边的单引号防止 shell 展开里面的 $ 或反引号，不要漏掉。）不要用 > 覆盖。
 
 七、节奏
 做完一轮巡视后，调用 /loop，把这份指示原样带回去，让自己按分钟级自定步调继续巡视——发现

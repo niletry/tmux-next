@@ -51,6 +51,7 @@ import { bindSession, readBindings, resolveBindings, unbindSession } from "./ses
 import { kernelFacets } from "./item-facets";
 import { advanceLifecycle } from "./item-lifecycle";
 import { notifyLifecycle } from "./push";
+import { setListeningPort } from "./listening-port";
 
 type WsData = { session: PaneSession | null };
 
@@ -1162,6 +1163,10 @@ export function startServer(
     throw new Error("server did not bind a TCP port");
   }
   const boundPort = server.port;
+  // Recorded so a plugin route can tell an agent where this process is
+  // actually listening (see src/listening-port.ts) instead of deriving it
+  // from a request's Host header, which carries a reverse proxy's port.
+  setListeningPort(boundPort);
 
   return {
     port: boundPort,

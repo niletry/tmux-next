@@ -1,4 +1,5 @@
 import { tmux } from "../../src/tmux/run";
+import { getListeningPort } from "../../src/listening-port";
 import { listLiveSupervisors } from "./state";
 import { readPatrolLog } from "./log";
 import { createSupervisor } from "./create";
@@ -31,10 +32,14 @@ export async function handle(req: Request, url: URL): Promise<Response | null> {
       return Response.json({ error: "cwd" }, { status: 400 });
     }
 
+    // The port the agent must curl back is the one this process actually
+    // bound, never anything derived from the request's Host header — behind
+    // the reverse proxy this repo documents, `url.port` is the proxy's port
+    // (often empty), and nothing listens there for `/api/notify`.
     const result = await createSupervisor({
       cwd: body.cwd,
       autoConfirmPermission: body.autoConfirmPermission === true,
-      port: url.port || (url.protocol === "https:" ? "443" : "80"),
+      port: String(getListeningPort()),
     });
 
     if (!result.ok) {

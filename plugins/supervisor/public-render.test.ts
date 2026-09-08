@@ -90,6 +90,25 @@ async function mount(fetchImpl: typeof fetch) {
   return { mod, doc };
 }
 
+// IMPORTANT 4 的回归测试：/api/supervisor 200 但 body 形状不对（没有
+// supervisors，或不是数组）曾经会让 load() 里 supervisors.length 的读取抛出，
+// 使整个 Promise 链 reject、replaceChildren 永远不跑——页面（包括创建表单）
+// 整体空白。现在应该退化成"创建表单 + 空列表"。
+test("supervisors 接口返回形状不对时，页面仍然渲染创建表单和空状态", async () => {
+  const fetchImpl = (async (input: unknown) => {
+    if (String(input).includes("/api/supervisor/log")) {
+      return new Response(JSON.stringify({ entries: [] }));
+    }
+    return new Response(JSON.stringify({})); // 200，但没有 supervisors 字段
+  }) as typeof fetch;
+
+  const { mod, doc } = await mount(fetchImpl);
+  await mod.load();
+
+  expect(doc.querySelector("form.supervisor-create")).not.toBeNull();
+  expect(doc.getElementById("list")!.textContent).toContain("No supervisors yet");
+});
+
 test("空列表时渲染 empty 状态", async () => {
   const fetchImpl = (async (input: unknown) => {
     if (String(input).includes("/api/supervisor/log")) {

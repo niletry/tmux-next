@@ -68,14 +68,16 @@
   这跟 `notifications.jsonl` 由推送管线写、插件只读的关系是同一个模式：数据的作者不是这个插件的
   代码，插件只负责存放路径的约定和渲染。
 - **API**（`plugins/supervisor/server.ts`）：
-  - `GET /api/supervisor/list` — 当前所有登记在案且会话仍存活的监察者（cwd、会话名、
+  - `GET /api/supervisor` — 当前所有登记在案且会话仍存活的监察者（cwd、会话名、
     autoConfirmPermission、起始时间）。用于页面顶部列表，也用于创建流程查重。
   - `GET /api/supervisor/log?cwd=<dir>` — 某个工作区的巡检历史，最新的在前，做一个条数上限（比如
     最近 200 行）避免日志无限增长后一次性读爆内存。
   - `POST /api/supervisor/create` — 查重 → 创建会话（复用现有 `session-create` 流程）→ 用模板渲染
     首条 prompt 并 `sendText` 灌入 → 写 `registry.json`。
 - **页面**（`plugins/supervisor/public/`）：按工作区分组的时间线，一行一次巡检——时间、检查了哪
-  些会话、每个的状态、有没有介入、介入了什么。只读，没有交互式控件。跟其它插件一样自带
+  些会话、每个的状态、有没有介入、介入了什么。巡检记录本身只读，没有针对某一行的交互式控件；页面
+  顶部有一个创建监察者的表单（cwd + autoConfirmPermission 开关），这是「六、创建流程改动点」里
+  已经授权的入口，不是对本节"只读"的违反——只读说的是巡检历史，不是整个页面。跟其它插件一样自带
   `style.css`，颜色只用主题变量。
 
 日志条数超过上限之后怎么处置（滚动删除还是不管）本阶段不做，先把读的一侧限流，写的一侧留到用量
@@ -96,7 +98,8 @@
 排除自己。
 
 一、找到同伴
-1. 读 ~/.tmux-next/sessions/*.json，每个文件形如
+1. 读 ~/.tmux-next/sessions/*.json（如果环境变量 TMUX_NEXT_SESSIONS_DIR 有设置，改读
+   那个目录下的 *.json——这个仓库到处都支持这个覆盖，会话记录也不例外），每个文件形如
    {"id":"<claude session id>","session":"<tmux 会话名>","cwd":"...","agent":"..."}。
 2. 只关心 cwd 等于或位于 {{cwd}} 之下、且 agent 缺省或等于 "claude" 的记录（缺省即 Claude Code）。
 3. 用 tmux list-sessions -F "#{session_name}" 核对该 tmux 会话是否还活着；已经不在的记录跳过。
@@ -143,7 +146,13 @@ curl -s -X POST http://127.0.0.1:{{port}}/api/notify \
 每轮检查完，不管有没有发现问题，都往 {{logPath}} 追加一行 JSON（一行一个对象，不要换行、
 不要漂亮打印）：
 {"ts":"<当前 ISO8601 时间>","checked":[{"session":"...","turn":"waiting|working|null","note":"..."}],"actions":[{"session":"...","type":"answered|notified|noop","detail":"..."}]}
-用类似 printf '%s\n' '<这行 json>' >> {{logPath}} 追加，不要用 > 覆盖。
+note/detail 是自由文本，可能带单引号或撇号，用 printf '%s\n' '<这行 json>' >> {{logPath}}
+这种单引号包住整段的写法会被文本里的单引号提前截断，写出损坏的一行、后面的内容漏到 shell
+去执行，把这份追加型日志本身弄坏。改用 heredoc 追加，不需要给内容加引号：
+cat <<'PATROL_EOF' >> {{logPath}}
+<这行 json>
+PATROL_EOF
+（定界符两边的单引号防止 shell 展开里面的 $ 或反引号，不要漏掉。）不要用 > 覆盖。
 
 七、节奏
 做完一轮巡视后，调用 /loop，把这份指示原样带回去，让自己按分钟级自定步调继续巡视——发现

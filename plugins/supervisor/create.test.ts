@@ -1,6 +1,7 @@
 // plugins/supervisor/create.test.ts
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CreateSupervisorDeps } from "./create";
@@ -121,4 +122,37 @@ test("成功时把渲染好的提示词灌给新会话，并记入登记表", as
   expect(primed!.text).toContain(result.session);
   const registry = await readRegistry();
   expect(registry["/proj"]).toEqual({ session: result.session, startedAt: 999, autoConfirmPermission: false });
+});
+
+// IMPORTANT 3 的回归测试：证明 autoConfirmPermission 真的从建监察者这条路径
+// 一路传到灌给 agent 的那句提示词里，而不是只在 renderSupervisorPrompt 的
+// 单元测试里被证明过。断言用同一句"只有 true 为 true 时才可以代为"，模板
+// 正文别处出现的字面量 "true" 骗不过它。
+test("autoConfirmPermission:true 时，灌给会话的提示词里带着这句话的 true 版本", async () => {
+  const { createSupervisor } = await import("./create");
+  let primedText = "";
+  const deps = fakeDeps({
+    primeSession: async (_session, text) => {
+      primedText = text;
+    },
+  });
+
+  const result = await createSupervisor({ cwd: "/proj", autoConfirmPermission: true, port: "7682" }, deps);
+
+  expect(result.ok).toBe(true);
+  expect(primedText).toContain("只有 true 为 true 时才可以代为");
+  expect(primedText).not.toContain("只有 false 为 true 时才可以代为");
+});
+
+// CRITICAL 1 的回归测试：日志目录曾经完全没人建，监察者的第一次 `>> {{logPath}}`
+// 追加会因 ENOENT 静默失败。日志目录必须在 prime 之前就已存在。
+test("成功创建后，日志的父目录已经存在", async () => {
+  const { createSupervisor } = await import("./create");
+  const { logPathFor } = await import("./log");
+  const deps = fakeDeps();
+
+  const result = await createSupervisor({ cwd: "/proj", autoConfirmPermission: false, port: "7682" }, deps);
+
+  expect(result.ok).toBe(true);
+  expect(existsSync(dirname(logPathFor("/proj")))).toBe(true);
 });

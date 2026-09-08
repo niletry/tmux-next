@@ -119,7 +119,12 @@ function createForm() {
 export async function load() {
   let supervisors;
   try {
-    ({ supervisors } = await (await fetch(url("api/supervisor"))).json());
+    const body = await (await fetch(url("api/supervisor"))).json();
+    // 跟 supervisorCard 里对 log 接口的处理是同一个理由：一次 200 但 body
+    // 形状不对（没有 supervisors，或值不是数组）不能在 try 之外才暴露出来——
+    // 那样 length 读取会抛出、load() 整体 reject、replaceChildren 永远不跑，
+    // 页面（连带创建表单）就整个空白，而不是退化成一个空列表。
+    supervisors = Array.isArray(body?.supervisors) ? body.supervisors : [];
   } catch {
     listEl.replaceChildren(createForm(), el("p", "empty", tr("supervisor.loadFailed")));
     return;

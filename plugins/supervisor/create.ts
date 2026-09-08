@@ -1,4 +1,6 @@
 // plugins/supervisor/create.ts
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { resolveDirectory } from "../../src/paths";
 import { createSession } from "../../src/tmux/session-create";
 import { sessionNames } from "../../src/tmux/session-list";
@@ -64,11 +66,20 @@ export async function createSupervisor(
   // fresh supervisor, and never prime text into a session we didn't just start.
   if (!created.ok || !created.created) return { ok: false, reason: "failed" };
 
+  const logPath = logPathFor(dir.path);
+  // The prompt tells the agent to append with a plain `>>` redirect, which
+  // has no mkdir of its own — on a fresh install `logs/` doesn't exist yet,
+  // so the very first append fails with ENOENT, silently and permanently
+  // (the agent has no reason to notice or retry a shell redirect failing).
+  // Creating it here, before the prime is fired, means the directory always
+  // exists before the agent's first attempt to write to it.
+  await mkdir(dirname(logPath), { recursive: true });
+
   const prompt = renderSupervisorPrompt({
     cwd: dir.path,
     selfSession: created.name,
     autoConfirmPermission: params.autoConfirmPermission,
-    logPath: logPathFor(dir.path),
+    logPath,
     port: params.port,
   });
   // `primeSession` waits up to PRIME_TIMEOUT_MS (20s) for the agent's ready

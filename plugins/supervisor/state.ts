@@ -35,12 +35,6 @@ export async function setSupervisor(cwd: string, record: SupervisorRecord): Prom
   await writeRegistry(registry);
 }
 
-export async function removeSupervisor(cwd: string): Promise<void> {
-  const registry = await readRegistry();
-  delete registry[cwd];
-  await writeRegistry(registry);
-}
-
 /**
  * Live supervisors, and a side effect: any registry entry whose tmux session
  * is gone is dropped, so a dead supervisor never blocks a fresh one for that

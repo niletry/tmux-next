@@ -27,16 +27,6 @@ test("写入后能读回同一条记录", async () => {
   });
 });
 
-test("removeSupervisor 只删指定的 cwd", async () => {
-  const { setSupervisor, removeSupervisor, readRegistry } = await import("./state");
-  await setSupervisor("/tmp/a", { session: "s-a", startedAt: 1, autoConfirmPermission: false });
-  await setSupervisor("/tmp/b", { session: "s-b", startedAt: 2, autoConfirmPermission: true });
-  await removeSupervisor("/tmp/a");
-  expect(await readRegistry()).toEqual({
-    "/tmp/b": { session: "s-b", startedAt: 2, autoConfirmPermission: true },
-  });
-});
-
 test("损坏的登记表文件当成空表，不抛异常", async () => {
   const { readRegistry } = await import("./state");
   const { mkdirSync, writeFileSync } = await import("node:fs");
