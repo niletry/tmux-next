@@ -123,6 +123,12 @@ const MAX_FETCH_ITEMS = 500;
 export async function fetchIssues(
   config: JiraConfig,
   fetcher: typeof fetch = fetch,
+  // 增量同步要问一句"config.jql 加了时间条件"之后的 JQL，而不是原样的
+  // config.jql——这个参数是那唯一的口子。JQL 只来自配置，永不来自请求这条
+  // 边界仍然成立：这里的默认值就是 config.jql 本身，唯一会传别的值进来的
+  // 调用方（server.ts 的 sync()）也是拿 config.jql 现算的（见 jql.ts），
+  // 从没有一条路径把请求体里的字符串接到这个参数上。
+  jql: string = config.jql,
 ): Promise<IssuesResult> {
   const auth = "Basic " + btoa(`${config.email}:${config.token}`);
   const issues: Issue[] = [];
@@ -131,10 +137,9 @@ export async function fetchIssues(
   // 翻页翻到没有下一页，或者已经拿够了让 sync.ts 判得出"超没超"为止——不是翻到
   // 底：一个几千条的 JQL 不该让每次同步都把 Jira 问穿。
   do {
-    // JQL 只来自配置，永不来自请求：否则这个无认证服务就是个任人查询的 Jira 代理。
     // URLSearchParams 把空格编成 "+"（application/x-www-form-urlencoded），但查询串
     // 里更规范的写法是 %20——换成 %20 才能被当普通 URI 编码正确解出空格。
-    const params: Record<string, string> = { jql: config.jql, fields: FIELDS, maxResults: String(PAGE_SIZE) };
+    const params: Record<string, string> = { jql, fields: FIELDS, maxResults: String(PAGE_SIZE) };
     if (pageToken) params.nextPageToken = pageToken;
     const query = new URLSearchParams(params).toString().replace(/\+/g, "%20");
 

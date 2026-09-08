@@ -371,6 +371,37 @@ test("保存后给一句回执", async () => {
   expect(note.textContent).toBe("已保存");
 });
 
+// 清单里 actions: [...] 声明的按钮，画在 Save 旁边——跟 Save 同一个 .settings-actions
+// 行，但不是 primary（Save 才是这一节唯一的主动作）。
+test("清单声明的动作按钮跟 Save 画在一起", async () => {
+  const root = await mount();
+  await new Promise((r) => setTimeout(r, 80));
+  const body = expand(root, "工单");
+  const buttons = [...body.querySelectorAll(".settings-actions .btn")];
+  expect(buttons.length).toBe(2);
+  expect(buttons[0].textContent).toBe("保存");
+  expect(buttons[0].className).toContain("primary");
+  expect(buttons[1].textContent).toBe("完整同步");
+  expect(buttons[1].className).not.toContain("primary");
+});
+
+// 点了之后 POST 到 actions/<key>，成功就显示清单里那句回执——跟 Save 是同一个
+// note 元素，不是另起一个：两颗按钮报的都是"这一节刚才那一下有没有生效"。
+test("点动作按钮 POST 到对应端点，显示清单里那句回执", async () => {
+  const root = await mount();
+  await new Promise((r) => setTimeout(r, 80));
+  const body = expand(root, "工单");
+  const actionBtn = [...body.querySelectorAll(".settings-actions .btn")][1];
+  click(actionBtn);
+  await new Promise((r) => setTimeout(r, 60));
+
+  const req = posted.find((p) => p.url.includes("api/plugins/jira/actions/full-sync"));
+  expect(req).toBeDefined();
+  const note = root.querySelector(".settings-result") as unknown as HTMLElement;
+  expect(note.hidden).toBe(false);
+  expect(note.textContent).toBe("已完整同步一次");
+});
+
 // 读不到就不画这一节：那意味着插件被关掉了或服务端答不上来，画一个存不进去的
 // 表单只是骗人。
 test("读不到配置就不画那一节", async () => {

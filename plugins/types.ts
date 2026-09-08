@@ -69,6 +69,28 @@ export type Plugin = {
    * 插件自己（handlers.ts 的 readSettings / writeSettings）。
    */
   settings?: SettingField[];
+  /**
+   * 设置页那一节里、Save 按钮旁边的按钮。跟 settings 同一步棋：内核照着画按钮，
+   * 但**不认识按下去会发生什么**——它只知道按了会 POST 到
+   * `/api/plugins/<id>/actions/<key>`，回来一个布尔，成不成功由插件说了算。
+   *
+   * 一次「完整同步」跟一个配置字段是同一类东西：一个数据源特有的操作，只有
+   * 那个插件自己知道该做什么。字段声明了值怎么存取，这个声明了动作怎么触发，
+   * 两者都不该让内核多认识一个插件。
+   */
+  actions?: SettingAction[];
+};
+
+/**
+ * 设置页里的一个插件动作按钮。
+ */
+export type SettingAction = {
+  /** 传给插件 runAction 的键。 */
+  key: string;
+  /** 按钮文案的 i18n 键，跟 titleKey 一样并进两份字典。 */
+  labelKey: string;
+  /** 点下去之后那句回执的 i18n 键；插件成功与否只报一个布尔，文案由清单定。 */
+  doneKey: string;
 };
 
 /**

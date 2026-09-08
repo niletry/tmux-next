@@ -15,6 +15,7 @@ import {
   notifyLifecycleChange,
   pluginSettings,
   savePluginSettings,
+  runPluginAction,
 } from "../plugins/handlers";
 import type { Facet } from "../plugins/types";
 import { readTemplates, writeTemplates } from "./templates";
@@ -51,6 +52,7 @@ import { bindSession, readBindings, resolveBindings, unbindSession } from "./ses
 import { kernelFacets } from "./item-facets";
 import { advanceLifecycle } from "./item-lifecycle";
 import { notifyLifecycle } from "./push";
+import { setListeningPort } from "./listening-port";
 
 type WsData = { session: PaneSession | null };
 
@@ -985,6 +987,22 @@ export function startServer(
         return Response.json({ ok: true });
       }
 
+      // 设置页里 Save 旁边那颗动作按钮，比如 Jira 的「完整同步」。同样必须排在
+      // /api/<id>/* 分发之前——跟上面那对 settings 路由是同一个坑。
+      //
+      // 一律 200 { ok: boolean }，从不 404：跟 settings 路由不同的是，这里的
+      // "不行"（没这个插件、动作没声明、插件被关掉、插件抛了）和"插件说没做成"
+      // 是同一件事对调用方的意义——按钮要报的只有"做成没做成"，不是"这个端点
+      // 存不存在"。
+      const pluginAction = url.pathname.match(/^\/api\/plugins\/([^/]+)\/actions\/([^/]+)$/);
+      if (pluginAction && req.method === "POST") {
+        const ok = await runPluginAction(
+          decodeURIComponent(pluginAction[1]!),
+          decodeURIComponent(pluginAction[2]!),
+        );
+        return Response.json({ ok });
+      }
+
       // 插件的 API，各自挂在自己的前缀下。前缀由这里校验，插件只管自己认的
       // 子路径；返回 null 就继续往下走到 404，而不是被它吞掉。
       for (const p of enabledPlugins()) {
@@ -1162,6 +1180,10 @@ export function startServer(
     throw new Error("server did not bind a TCP port");
   }
   const boundPort = server.port;
+  // Recorded so a plugin route can tell an agent where this process is
+  // actually listening (see src/listening-port.ts) instead of deriving it
+  // from a request's Host header, which carries a reverse proxy's port.
+  setListeningPort(boundPort);
 
   return {
     port: boundPort,

@@ -3,6 +3,8 @@ import { fetchIssue, fetchIssues, fetchIssueDescription, type Issue, type Issues
 import { fetchDev, type DevResult, type PullRequest } from "./dev";
 import { transitionIssue, commentOnPr } from "./writeback";
 import { syncIssues } from "./sync";
+import { incrementalJql } from "./jql";
+import { readSyncState, writeSyncState } from "./sync-state";
 import { readItems, ensureItemForSource } from "../../src/items";
 import type { ItemStatus } from "../../src/item-lifecycle";
 import { bindSession, unbindSession, resolveBindings, type ResolvedBinding } from "../../src/session-binding";
@@ -452,6 +454,52 @@ export function devTargets(items: ItemRef[], bindings: ResolvedBinding[]): strin
 }
 
 /**
+ * 给一批单号（key）解析出 dev-status 要用的 id：先查当次拿到的结果，查不到
+ * 再退回上一次缓存的全量列表，两边都没有就跳过。
+ *
+ * 增量同步下"这次的结果"只有变过的那几条——一个活跃绑定的单如果本身没变，就
+ * 不在这次结果里，但它挂的 PR 完全可能刚跑完一次构建，仍然值得重刷一次。只
+ * 看当次结果会让这种单悄悄停止收到 CI 刷新，这跟"只给有活跃会话的单拉"是完全
+ * 不同的两件事：那条限制是故意少问，这里是因为问漏了，不该混在一起。
+ *
+ * 纯函数：两份 issue 列表和目标 key 都是参数，能无头测；真的去打 dev-status
+ * 的那半不需要也不能测，devTargets 已经把"该拉谁"的判断从网络里摘出来过一次，
+ * 这是同一个理由的延伸。
+ */
+export function resolveDevIds(
+  current: Issue[],
+  cached: Issue[],
+  keys: Iterable<string>,
+): Array<{ id: string; key: string }> {
+  const byKey = new Map<string, Issue>();
+  for (const i of cached) byKey.set(i.key, i);
+  // 当次结果后写，同一个 key 两边都有时以当次为准——它更可能是最新的。
+  for (const i of current) byKey.set(i.key, i);
+
+  const out: Array<{ id: string; key: string }> = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const issue = byKey.get(key);
+    if (issue?.id) out.push({ id: issue.id, key: issue.key });
+  }
+  return out;
+}
+
+/**
+ * 增量同步问多久的窗口：从上次成功同步"发起"的那一刻到现在，再加 2 分钟的
+ * 余量。
+ *
+ * +2 分钟是给 Jira 的分钟级时间戳精度和两边的时钟偏差留的安全边际——把边缘
+ * 上一两条已经见过的单再问一遍是无害的（ensureItemForSource 是幂等的，重复
+ * 写一次跟没写没区别），漏掉一条真正变了的单才是问题，所以窗口宁可宽一点。
+ */
+function incrementalWindowMinutes(lastSyncAt: number): number {
+  return Math.ceil((Date.now() - lastSyncAt) / 60_000) + 2;
+}
+
+/**
  * 把 config.json 里的 JQL 结果同步进内核的单列表，再给正开着会话的那些拉一次
  * PR/检查。
  *
@@ -464,10 +512,42 @@ export function devTargets(items: ItemRef[], bindings: ResolvedBinding[]): strin
  * 在旧数据上、什么都不说。日志因此打在这里——`!result.ok` 分支自己才是真正
  * 知道"问不到、以及为什么"的地方，把 log 塞进 start() 的 catch 只是一段看着
  * 像在处理这件事、实际永远不会跑的死代码。
+ *
+ * `opts.full` 之外，还有三种情况必须退回全量，而不是这个调用方自己选：从没
+ * 同步成功过（没有游标可用）、游标记的 JQL 跟现在的 config.jql 不一样（用户
+ * 改过查询——旧游标描述的是另一条查询，拿它当"这之后有什么变了"没有意义，见
+ * sync-state.ts），以及系统时钟往回跳导致 `lastSyncAt` 比现在还晚。最后一条
+ * 不是 `incrementalWindowMinutes` 自己去钳：钳出来的窗口是"至少 1 分钟"，
+ * 而时钟不可信的时候"至少 1 分钟"恰恰是最危险的答案——它看起来像一次正常的
+ * 增量、实际上把过去这一整段时间的改动全部漏掉了。时钟不可信就该整段不信，
+ * 退回全量，而不是拿一个算出来的负数窗口硬凑一个正数。
  */
-export async function sync(): Promise<SyncResult> {
-  // 显式同步动作，绕开 60 秒的页面缓存——用户点了同步，就该真的问一次。
-  const result = await issues(true);
+export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
+  const config = await readJiraConfig();
+  if (!config) return { created: 0, updated: 0, total: 0, truncated: false };
+
+  const state = await readSyncState();
+  const clockWentBackward = !!state && Date.now() < state.lastSyncAt;
+  const full = !!opts?.full || !state || state.jql !== config.jql || clockWentBackward;
+
+  // 用请求**发起**的时间，不是拿到结果之后的时间——不然请求这段时间里发生的
+  // 改动会被下一次的窗口漏掉。
+  const startedAt = Date.now();
+
+  let result: IssuesResult;
+  if (full) {
+    // 显式同步动作，绕开 60 秒的页面缓存——用户点了同步，或者游标不可用，就该
+    // 真的问一次全量。issues() 会把结果写进模块级缓存，工单页的列表跟着更新。
+    result = await issues(true);
+  } else {
+    // 增量必须绕开 issues() 的模块级缓存，不能顺手调用它：那份缓存同时也是
+    // /api/jira 给工单页展示"全部工单列表"用的数据源。增量结果天然只有"这次
+    // 变了的那几条"，如果把它写进那份缓存，页面就会把"最近改过的几条"渲染成
+    // "这就是全部工单"，凭空丢掉一大片没变的单。所以这里直接调 fetchIssues，
+    // 结果只喂给下面的 syncIssues/dev 刷新，从不碰 cache。
+    result = await fetchIssues(config, fetch, incrementalJql(config.jql, incrementalWindowMinutes(state.lastSyncAt)));
+  }
+
   if (!result.ok) {
     // 这里才是真正知道"问不到"这件事的地方——不是 start() 那个永远等不到异常
     // 的 .catch()。unconfigured 不算失败：还没配置的人不该每次启动都吃一行
@@ -475,10 +555,14 @@ export async function sync(): Promise<SyncResult> {
     // 值得写进日志的——只打分类过的原因，不打原始响应体：那里面带账号信息，
     // 跟 /api/jira/config 从不回显 token 是同一条线。
     if (result.reason !== "unconfigured") {
-      console.error(`[jira] 启动同步失败：${result.reason}`);
+      console.error(`[jira] ${full ? "全量" : "增量"}同步失败：${result.reason}`);
     }
     return { created: 0, updated: 0, total: 0, truncated: false };
   }
+
+  // 游标只在拉取成功之后才前移，失败绝不推进——推进了就等于承认"这段时间的
+  // 改动我们已经看过了"，而实际上一条都没看到。
+  await writeSyncState({ lastSyncAt: startedAt, jql: config.jql });
 
   // 同步之前先记下已经存在的 (provider, ref)：ensureItemForSource 返回的是
   // WorkItem 本身，不带"是不是新建的"这个标志——加这个标志要为了这一个调用方
@@ -500,18 +584,42 @@ export async function sync(): Promise<SyncResult> {
   // PR/检查是独立的一步：这一步失败不该把已经写好的工单同步结果变成失败。
   try {
     const [afterItems, bindings] = await Promise.all([readItems(), resolveBindings(await liveFromKernel())]);
-    const targets = new Set(devTargets(afterItems, bindings));
-    if (targets.size) {
-      const keyById = new Map(result.issues.map((i) => [i.key, i.id]));
-      const ids = [...targets].map((key) => keyById.get(key)).filter((id): id is string => !!id);
-      const keyOfId = new Map(result.issues.map((i) => [i.id, i.key]));
-      await mapLimited(ids, DEV_CONCURRENCY, (id) => dev(id, keyOfId.get(id) ?? "", true));
+    const targets = devTargets(afterItems, bindings);
+    if (targets.length) {
+      // 增量结果里查不到的活跃绑定单（本身没变，但仍想刷一次 PR/CI），退回
+      // 上一次缓存的全量列表去找——见 resolveDevIds 的注释。
+      const cachedIssues = cache?.result.ok ? cache.result.issues : [];
+      const resolved = resolveDevIds(result.issues, cachedIssues, targets);
+      await mapLimited(resolved, DEV_CONCURRENCY, ({ id, key }) => dev(id, key, true));
     }
   } catch {
     // 拉 PR/检查失败不影响已经同步好的工单结果。
   }
 
   return syncResult;
+}
+
+/**
+ * 设置页里 JQL 旁边那颗「完整同步」按钮。
+ *
+ * 只认一个 key：`full-sync`，别的一律 false——这不是给内核挡的（runPluginAction
+ * 已经在清单这一层挡过一次），是给这个函数自己留一条"我不认识的键不装懂"的路。
+ *
+ * 成功与否要说的是用户按下这颗按钮时真正关心的事："这次点击有没有真的去问了
+ * Jira"，不是"每一步内部细节都顺利"——那件事 sync() 本身就不区分：它对"还没
+ * 配置"和"配置了但连不上/认证失败"用的是同一个返回值（零结果），原因见 sync()
+ * 顶上的注释——background 的 start() 不该有一条异常路径能把启动流程带崩，那条
+ * 边界现在仍然成立，改 sync() 的返回形状会连累 runSync()/start() 每一个调用方。
+ * 所以这里能诚实回答的只有"配置存不存在"：没配置，这次点击注定什么都问不到，
+ * 答 false；配置存在，就真的发了一轮网络请求，答 true——至于这一轮里某个字段
+ * 认证失败或者连不上，那是 sync() 已经在打的日志，跟"点没点着"是两件事。
+ */
+export async function runAction(key: string): Promise<boolean> {
+  if (key !== "full-sync") return false;
+  const config = await readJiraConfig();
+  if (!config) return false;
+  await sync({ full: true });
+  return true;
 }
 
 /**
