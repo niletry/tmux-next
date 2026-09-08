@@ -65,6 +65,20 @@ test("成功时把响应裁成渲染要用的形状", async () => {
   });
 });
 
+test("传了 jql 覆盖参数时，请求带的是覆盖值，不是 config.jql——增量同步靠这个口子", async () => {
+  let seen: Request | undefined;
+  await fetchIssues(CONFIG, fakeFetch(200, OK_BODY, (r) => (seen = r)), 'updated >= "-5m"');
+  const url = new URL(seen!.url);
+  expect(url.searchParams.get("jql")).toBe('updated >= "-5m"');
+});
+
+test("不传第三个参数时，跟以前一样默认用 config.jql", async () => {
+  let seen: Request | undefined;
+  await fetchIssues(CONFIG, fakeFetch(200, OK_BODY, (r) => (seen = r)));
+  const url = new URL(seen!.url);
+  expect(url.searchParams.get("jql")).toBe(CONFIG.jql);
+});
+
 test("认证走 Basic，JQL 来自配置", async () => {
   let seen: Request | undefined;
   await fetchIssues(CONFIG, fakeFetch(200, OK_BODY, (r) => (seen = r)));
