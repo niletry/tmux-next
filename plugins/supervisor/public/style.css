@@ -1,40 +1,15 @@
 /*
  * 监察者页面自己的样式。跟 jira 插件一样，`.card`/`.card-main`/`.name`/
  * `.time`/`.preview`/`.empty`/`.row`/`.btn` 都复用内核 public/style.css 里
- * 已经有的通用类，这里只补两个内核没有定义、supervisor.js 用到的类：
- * 创建表单，和巡检记录的时间线行容器。
+ * 已经有的通用类，这里只补一个内核没有定义、supervisor.js 用到的类：
+ * 巡检记录的时间线行容器。创建入口已经搬到新建会话页（一种"会话类型"），
+ * 这个页面现在是纯只读的列表 + 时间线，不再需要自己的创建表单样式。
  *
  * 颜色一律取自主题变量，不许出现颜色字面量——src/themes.test.ts 会检查。
  * 不写任何 @media：这个页面没有需要在宽屏/窄屏之间切换布局或交互的地方，
  * 而 src/responsive.test.ts 只认得整个仓库统一的单一断点 900px，多一条
  * 自己的断点或者混合 width/pointer 的查询都会被它挡下来。
  */
-
-.supervisor-create {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  margin: 0 12px 12px;
-  background: var(--surface-3);
-  border-radius: 12px;
-}
-
-.supervisor-create input[type="text"] {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border-2);
-  background: var(--surface-1);
-  color: var(--text-1);
-}
-
-.supervisor-create label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-2);
-  font-size: 13px;
-}
 
 .log {
   display: flex;

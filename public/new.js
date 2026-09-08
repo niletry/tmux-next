@@ -2,6 +2,7 @@ import { filterEntries, splitPath } from "./dir-filter.js";
 import { initLang, tr } from "./i18n-apply.js";
 import { initTheme } from "./theme-apply.js";
 import { icon } from "./icons.js";
+import { PLUGINS } from "../plugins/registry.js";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -184,7 +185,7 @@ export function renderNewSession(root) {
     }
   }
 
-  const skipRow = el("label", "check");
+  const skipRow = el("label", "check skip-row");
   const skipBox = document.createElement("input");
   skipBox.type = "checkbox";
   skipRow.append(skipBox, el("span", null, tr("new.skipPermissions")));
@@ -194,7 +195,80 @@ export function renderNewSession(root) {
   const resumeEntry = el("button", "resume-entry", tr("new.resumeEntry"));
   resumeEntry.style.display = "none";
 
-  step1.append(favourites, crumb, filter, list, nameField, templateRow, initialField, agentRow, skipRow, resumeEntry);
+  // 「会话类型」：内核自带的「普通会话」永远排第一，后面跟着已启用插件在清单里
+  // 声明的 sessionKinds（见 plugins/types.ts）。内核不认识这些类型的意思，只
+  // 认识"选中一种插件类型时，把下面这一整组普通会话专属的控件收起来，换成插件
+  // 自己要的表单"——跟 agentRow 用同一套 chip 交互，只有一种类型可选时（没有
+  // 插件声明过）整组都不画，省得给谁都只能选一种时的假选择。
+  const kindRow = el("div", "kind-row");
+  const kindFieldsRow = el("div", "kind-fields");
+  // 普通会话才有意义的东西全部装进一个包裹里：选中插件类型时整个隐藏，选回
+  // 「普通会话」时整个露出——子元素各自的显隐逻辑（比如 resumeEntry 只在有历史
+  // 时才显示）完全不受影响，包裹只是叠加了一层"这一组现在算不算数"。
+  const normalFields = el("div", "normal-fields");
+  normalFields.append(templateRow, initialField, agentRow, skipRow, resumeEntry);
+
+  /** 内核自己的「普通会话」选项，跟插件声明的类型共用同一套渲染，但没有 pluginId/fields。 */
+  const DEFAULT_KIND = { pluginId: null, key: null, labelKey: "new.kindDefault" };
+  /** @type {Array<{pluginId:string,key:string,labelKey:string,hintKey?:string,fields?:Array<{key:string,type:string,labelKey:string,hintKey?:string}>}>} */
+  let kindOptions = [];
+  let chosenKind = DEFAULT_KIND;
+  /** @type {Array<{key:string, read: () => unknown}>} */
+  let kindFieldReaders = [];
+
+  function drawKindFields(opt) {
+    kindFieldsRow.replaceChildren();
+    kindFieldReaders = [];
+    if (!opt) return;
+    for (const f of opt.fields ?? []) {
+      if (f.type === "boolean") {
+        const row = el("label", "check kind-field");
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        row.append(box, el("span", null, tr(f.labelKey)));
+        if (f.hintKey) row.title = tr(f.hintKey);
+        kindFieldsRow.append(row);
+        kindFieldReaders.push({ key: f.key, read: () => box.checked });
+        continue;
+      }
+      // 剩下的都当文本类输入处理——目前只有 boolean 真的在用，但字段类型是个开放
+      // 集合（跟 SettingField 一样），不认识的类型不该让整页炸掉。
+      const wrap = el("label", "settings-field kind-field");
+      wrap.append(el("span", "settings-label", tr(f.labelKey)));
+      const input = document.createElement("input");
+      input.type = f.type === "url" ? "url" : f.type === "secret" ? "password" : "text";
+      input.className = "settings-input";
+      wrap.append(input);
+      if (f.hintKey) wrap.title = tr(f.hintKey);
+      kindFieldsRow.append(wrap);
+      kindFieldReaders.push({ key: f.key, read: () => input.value });
+    }
+  }
+
+  function drawKinds() {
+    kindRow.replaceChildren();
+    if (!kindOptions.length) return; // 没有插件声明过，谈不上"选一种"
+    const mkChip = (opt) => {
+      const btn = el("button", "kind-chip", tr(opt.labelKey));
+      btn.type = "button";
+      if (opt === chosenKind) btn.classList.add("on");
+      if (opt.hintKey) btn.title = tr(opt.hintKey);
+      btn.addEventListener("click", () => selectKind(opt));
+      return btn;
+    };
+    kindRow.append(mkChip(DEFAULT_KIND));
+    for (const opt of kindOptions) kindRow.append(mkChip(opt));
+  }
+
+  function selectKind(opt) {
+    chosenKind = opt;
+    drawKinds();
+    const isPlugin = opt !== DEFAULT_KIND;
+    normalFields.style.display = isPlugin ? "none" : "";
+    drawKindFields(isPlugin ? opt : null);
+  }
+
+  step1.append(favourites, crumb, filter, list, nameField, kindRow, kindFieldsRow, normalFields);
 
   // --- screen 2: pick a past conversation ------------------------------------
   const step2 = el("div", "sheet-step");
@@ -463,6 +537,41 @@ export function renderNewSession(root) {
     }
   }
 
+  // 建成之后要做的事，普通会话和插件会话类型共用：能绑就绑上这张单，然后导航
+  // 过去。两条创建路径唯一不同的是怎么把会话建出来，建出来之后"落地"的意义
+  // 完全一样——重复这一段迟早会有一条路径漏掉绑定或者导航目标写错。
+  async function afterCreated(name) {
+    // Bind before navigating away, but never let a failed bind strand the
+    // user on this form — the session already exists and is what they
+    // asked for. Uses the name the server actually gave it (it
+    // de-duplicates), not whatever was typed into the name field.
+    if (itemId) {
+      try {
+        const bindRes = await fetch(`api/items/${encodeURIComponent(itemId)}/bind`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ session: name }),
+        });
+        if (!bindRes.ok) {
+          // 单不存在、会话没起来——两种都只是没绑上，会话本身照常可用，
+          // 静默退化成"建了但没归单"，不拦导航。
+        }
+      } catch {
+        // 离线/网络抖动同上：不拦导航。
+      }
+    }
+
+    const back = safeReturn();
+    if (back) {
+      // The caller gets the created name appended to whatever it asked for,
+      // and decides itself where the user ends up.
+      const sep = back.includes("?") ? "&" : "?";
+      location.href = `${back}${sep}created=${encodeURIComponent(name)}`;
+      return;
+    }
+    location.href = `terminal.html?target=${encodeURIComponent(name)}`;
+  }
+
   // The one create path, for both a fresh session and a resumed one. `resume`
   // is a conversation id or null; the directory, name, and skip choice come
   // from screen 1 either way.
@@ -500,36 +609,54 @@ export function renderNewSession(root) {
         return;
       }
       const body = await res.json();
+      await afterCreated(body.name);
+    } catch {
+      error.textContent = tr("new.offline");
+      busy = false;
+      trigger.disabled = false;
+      trigger.textContent = label;
+    }
+  }
 
-      // Bind before navigating away, but never let a failed bind strand the
-      // user on this form — the session already exists and is what they
-      // asked for. Uses the name the server actually gave it (it
-      // de-duplicates), not whatever was typed into the name field.
-      if (itemId) {
-        try {
-          const bindRes = await fetch(`api/items/${encodeURIComponent(itemId)}/bind`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ session: body.name }),
-          });
-          if (!bindRes.ok) {
-            // 单不存在、会话没起来——两种都只是没绑上，会话本身照常可用，
-            // 静默退化成"建了但没归单"，不拦导航。
-          }
-        } catch {
-          // 离线/网络抖动同上：不拦导航。
-        }
-      }
+  // 插件声明的会话类型走的创建路径：目录/会话名照旧从屏幕 1 取，其余(agent、
+  // 跳过权限、恢复历史、模板)对插件类型没有意义所以不带；插件自己要的字段来自
+  // kindFieldReaders。`/api/<id>/*` 已经会把请求分发到那个插件的 handle()，
+  // 不需要内核再开一条路由——这条 fetch 打的地址本身就是"点名"这件事发生的
+  // 唯一一处，且点的是**用户选中的那个插件**，不是内核写死的名字。
+  async function createPluginKind(trigger) {
+    if (!current || busy) return;
+    const opt = chosenKind;
+    busy = true;
+    const label = trigger.textContent;
+    trigger.disabled = true;
+    trigger.textContent = tr("new.creating");
+    error.textContent = "";
 
-      const back = safeReturn();
-      if (back) {
-        // The caller gets the created name appended to whatever it asked for,
-        // and decides itself where the user ends up.
-        const sep = back.includes("?") ? "&" : "?";
-        location.href = `${back}${sep}created=${encodeURIComponent(body.name)}`;
+    const fields = {};
+    for (const r of kindFieldReaders) fields[r.key] = r.read();
+    const name = nameField.value.trim();
+    const payload = { kind: opt.key, dir: current, fields };
+    if (name) payload.name = name;
+
+    try {
+      const res = await fetch(`api/${opt.pluginId}/create-session`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        // 409 是这条路径特有的、值得单独说一句的失败——"这个目录已经有一个了"
+        // 是用户能采取行动的信息（换个目录，或者去找那个已经在跑的）；内核不
+        // 知道、也不该知道插件把这件事叫做什么，所以这句话是内核自己的通用
+        // 文案，不是插件的错误码翻出来的。
+        error.textContent = res.status === 409 ? tr("new.kindExists") : tr("new.createFailed");
+        busy = false;
+        trigger.disabled = false;
+        trigger.textContent = label;
         return;
       }
-      location.href = `terminal.html?target=${encodeURIComponent(body.name)}`;
+      const body = await res.json();
+      await afterCreated(body.session);
     } catch {
       error.textContent = tr("new.offline");
       busy = false;
@@ -539,7 +666,10 @@ export function renderNewSession(root) {
   }
 
   filter.addEventListener("input", drawList);
-  submit.addEventListener("click", () => create(null, submit));
+  submit.addEventListener("click", () => {
+    if (chosenKind !== DEFAULT_KIND) createPluginKind(submit);
+    else create(null, submit);
+  });
   resumeEntry.addEventListener("click", () => {
     renderHistory();
     showStep(2);
@@ -562,6 +692,24 @@ export function renderNewSession(root) {
           }
           drawAgents();
         }
+      })
+      .catch(() => {});
+
+    // 会话类型：哪些插件启用了，只有服务端知道（TMUX_NEXT_DISABLE_PLUGINS），
+    // 而每个插件声明了什么类型只有同构的 registry.js 知道——跟 item-card.js
+    // 的 claimedProviders() 是同一步棋，取两边的交集。问不到就当没人声明过，
+    // 页面照旧只有「普通会话」，不是一个卡住的空转轮。
+    fetch("api/plugins")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((ids) => {
+        if (!Array.isArray(ids)) return;
+        const enabled = new Set(ids);
+        kindOptions = [];
+        for (const p of PLUGINS) {
+          if (!enabled.has(p.id)) continue;
+          for (const k of p.sessionKinds ?? []) kindOptions.push({ pluginId: p.id, ...k });
+        }
+        drawKinds();
       })
       .catch(() => {});
 

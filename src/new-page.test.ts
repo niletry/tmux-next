@@ -47,6 +47,9 @@ function stubFetch(overrides: Record<string, unknown> = {}) {
       });
     if (url.includes("/render"))
       return body("render", { name: "EXAMPLE-1", input: "修 修登录页" });
+    // 会话类型选择器只在有已启用插件声明了 sessionKinds 时才画——见下面
+    // "会话类型" 那组测试，它们各自按需覆盖这一条。
+    if (url.includes("api/plugins")) return body("plugins", []);
     return new Response("{}");
   }) as typeof fetch;
 }
@@ -356,4 +359,132 @@ test("选模板后又选'不用模板'，晚到的模板响应不会把输入框
 
   expect(initialField.value).toBe("");
   expect(initialField.style.display).toBe("none");
+});
+
+// ---- 插件声明的会话类型（"监察者搬到新建会话页"） --------------------------
+//
+// 内核不点名任何插件：这一组测试之所以能看到"监察者"这个选项，是因为
+// plugins/supervisor/plugin.js 真的声明了 sessionKinds，而不是这里造了一份假
+// 清单——跟 src/item-card.test.ts 用真实 registry.js 是同一个理由。
+
+/** 让 stubFetch 的 api/plugins 答复启用了 supervisor 插件。 */
+function withSupervisorEnabled(overrides: Record<string, unknown> = {}) {
+  return stubFetch({ plugins: ["supervisor"], ...overrides });
+}
+
+test("已启用插件声明了会话类型时，画出「普通会话」加这一种类型", async () => {
+  const root = await mount(withSupervisorEnabled());
+  const chips = [...root.querySelectorAll(".kind-chip")].map((n) => n.textContent);
+  expect(chips).toContain("普通会话");
+  expect(chips).toContain("监察者");
+});
+
+test("没有插件声明会话类型时，不画这一组选择器", async () => {
+  const root = await mount(stubFetch({ plugins: [] }));
+  expect(root.querySelector(".kind-chip")).toBeNull();
+});
+
+test("插件被 TMUX_NEXT_DISABLE_PLUGINS 关掉时，它的会话类型也不出现", async () => {
+  // /api/plugins 只答启用的 id；supervisor 不在里面就等于被关掉了。
+  const root = await mount(stubFetch({ plugins: [] }));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(root.querySelector(".kind-chip")).toBeNull();
+});
+
+test("选中一种插件会话类型后，普通会话才有意义的控件被隐藏，插件字段出现", async () => {
+  const root = await mount(withSupervisorEnabled());
+  await new Promise((r) => setTimeout(r, 20));
+
+  const kindChip = [...root.querySelectorAll(".kind-chip")].find(
+    (n) => n.textContent === "监察者",
+  ) as unknown as HTMLElement;
+  kindChip.click();
+
+  // agentRow/skipRow/resumeEntry/templateRow 都嵌在同一个 .normal-fields 包裹
+  // 里，选中一种插件类型时整包收起——单独查每个子元素自己的 style.display 测
+  // 不出父级收起：子元素自己的内联样式没变，是被祖先的 display:none 连带隐藏的。
+  const wrap = root.querySelector(".normal-fields") as unknown as HTMLElement;
+  expect(wrap.style.display).toBe("none");
+  expect(wrap.contains(root.querySelector(".agent-row") as unknown as Node)).toBe(true);
+  expect(wrap.contains(root.querySelector(".skip-row") as unknown as Node)).toBe(true);
+  expect(wrap.contains(root.querySelector(".resume-entry") as unknown as Node)).toBe(true);
+  expect(wrap.contains(root.querySelector(".template-row") as unknown as Node)).toBe(true);
+
+  // 插件字段：唯一一个 boolean 字段渲染成 checkbox。
+  const fieldLabel = root.querySelector(".kind-fields label.check");
+  expect(fieldLabel).not.toBeNull();
+  expect(fieldLabel!.textContent).toContain("允许自动确认权限提示");
+});
+
+test("选回「普通会话」，隐藏掉的控件恢复", async () => {
+  const root = await mount(withSupervisorEnabled());
+  await new Promise((r) => setTimeout(r, 20));
+
+  const chips = () => [...root.querySelectorAll(".kind-chip")];
+  (chips().find((n) => n.textContent === "监察者") as unknown as HTMLElement).click();
+  (chips().find((n) => n.textContent === "普通会话") as unknown as HTMLElement).click();
+
+  expect((root.querySelector(".normal-fields") as unknown as HTMLElement).style.display).not.toBe("none");
+  expect(root.querySelector(".kind-fields")!.childNodes.length).toBe(0);
+});
+
+test("选中插件会话类型后提交，POST 到该插件的 create-session 而不是 api/sessions", async () => {
+  const calls: Array<{ url: string; method?: string; body?: string }> = [];
+  const fetchImpl = (async (u: unknown, init?: RequestInit) => {
+    const url = String(u);
+    calls.push({ url, method: init?.method, body: init?.body as string | undefined });
+    if (url.includes("api/supervisor/create-session")) {
+      return new Response(JSON.stringify({ session: "supervisor-tmp" }), { status: 201 });
+    }
+    return withSupervisorEnabled()(u as string);
+  }) as typeof fetch;
+
+  const root = await mount(fetchImpl);
+  await new Promise((r) => setTimeout(r, 20));
+
+  const kindChip = [...root.querySelectorAll(".kind-chip")].find(
+    (n) => n.textContent === "监察者",
+  ) as unknown as HTMLElement;
+  kindChip.click();
+
+  const checkbox = root.querySelector(".kind-fields input[type=checkbox]") as unknown as HTMLInputElement;
+  checkbox.checked = true;
+
+  (root.querySelector(".btn.primary") as unknown as HTMLElement).click();
+  await new Promise((r) => setTimeout(r, 100));
+
+  const call = calls.find((c) => c.url.includes("create-session"));
+  expect(call).toBeTruthy();
+  expect(call!.method).toBe("POST");
+  const payload = JSON.parse(call!.body ?? "{}");
+  expect(payload).toEqual({
+    kind: "supervisor",
+    dir: "/tmp",
+    fields: { autoConfirmPermission: true },
+  });
+  expect(String((globalThis as { location: Location }).location.href)).toContain(
+    "terminal.html?target=supervisor-tmp",
+  );
+});
+
+test("插件会话类型提交遇到 409，展示「已经有一个了」而不是通用失败文案", async () => {
+  const fetchImpl = (async (u: unknown, init?: RequestInit) => {
+    const url = String(u);
+    if (url.includes("api/supervisor/create-session") && init?.method === "POST") {
+      return new Response(JSON.stringify({ error: "exists" }), { status: 409 });
+    }
+    return withSupervisorEnabled()(u as string);
+  }) as typeof fetch;
+
+  const root = await mount(fetchImpl);
+  await new Promise((r) => setTimeout(r, 20));
+
+  const kindChip = [...root.querySelectorAll(".kind-chip")].find(
+    (n) => n.textContent === "监察者",
+  ) as unknown as HTMLElement;
+  kindChip.click();
+  (root.querySelector(".btn.primary") as unknown as HTMLElement).click();
+  await new Promise((r) => setTimeout(r, 100));
+
+  expect(root.querySelector(".sheet-error")?.textContent).toContain("已经有一个了");
 });

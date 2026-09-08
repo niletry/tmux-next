@@ -1750,6 +1750,25 @@ body.no-select {
 
 .agent-chip.missing { opacity: 0.4; text-decoration: line-through; }
 
+/* Session-kind picker. Hidden entirely when no enabled plugin declares a
+   sessionKinds entry, so a machine with none installed sees exactly the
+   ordinary-session form it always did. */
+.kind-row { display: flex; gap: 6px; margin: 4px 0 2px; flex-wrap: wrap; }
+
+.kind-chip {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 13px/1 -apple-system, system-ui, sans-serif;
+}
+
+.kind-chip.on { border-color: var(--accent-text); background: var(--accent); color: var(--on-accent); }
+
+.kind-fields { display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
+
 /* Template picker. Only drawn when the page was opened from a work item and
    that item has templates, so it costs nothing for anyone who never made one. */
 .template-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

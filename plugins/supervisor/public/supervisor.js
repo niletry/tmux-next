@@ -22,14 +22,6 @@ function actionLabel(type) {
   return tr("supervisor.actionNoop");
 }
 
-// `tr` 只认字符串字面量（src/i18n.test.ts 靠这个扫死键），createFailed_* 这三个键
-// 不能用模板字符串拼出来查，得跟 public/list.js 里维度查找一样写成显式分支。
-function createFailedMessage(reason) {
-  if (reason === "baddir") return tr("supervisor.createFailed_baddir");
-  if (reason === "exists") return tr("supervisor.createFailed_exists");
-  return tr("supervisor.createFailed_failed");
-}
-
 function logRow(entry) {
   const row = el("div", "row");
   row.append(el("span", "time", entry.ts));
@@ -70,52 +62,6 @@ async function supervisorCard(sup) {
   return card;
 }
 
-function createForm() {
-  const form = el("form", "supervisor-create");
-  const input = document.createElement("input");
-  input.type = "text";
-  input.placeholder = tr("supervisor.cwdPlaceholder");
-  input.required = true;
-
-  const label = el("label");
-  const checkbox = document.createElement("input");
-  checkbox.type = "checkbox";
-  label.append(checkbox, document.createTextNode(tr("supervisor.autoConfirmLabel")));
-
-  const submit = el("button", "btn primary", tr("supervisor.createButton"));
-  submit.type = "submit";
-
-  const error = el("p", "empty");
-  error.hidden = true;
-
-  form.append(input, label, submit, error);
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    error.hidden = true;
-    try {
-      const res = await fetch(url("api/supervisor/create"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: input.value, autoConfirmPermission: checkbox.checked }),
-      });
-      if (!res.ok) {
-        const { error: reason } = await res.json();
-        error.textContent = createFailedMessage(reason);
-        error.hidden = false;
-        return;
-      }
-      input.value = "";
-      checkbox.checked = false;
-      await load();
-    } catch {
-      error.textContent = createFailedMessage("failed");
-      error.hidden = false;
-    }
-  });
-
-  return form;
-}
-
 export async function load() {
   let supervisors;
   try {
@@ -123,14 +69,14 @@ export async function load() {
     // 跟 supervisorCard 里对 log 接口的处理是同一个理由：一次 200 但 body
     // 形状不对（没有 supervisors，或值不是数组）不能在 try 之外才暴露出来——
     // 那样 length 读取会抛出、load() 整体 reject、replaceChildren 永远不跑，
-    // 页面（连带创建表单）就整个空白，而不是退化成一个空列表。
+    // 页面就整个空白，而不是退化成一个空列表。
     supervisors = Array.isArray(body?.supervisors) ? body.supervisors : [];
   } catch {
-    listEl.replaceChildren(createForm(), el("p", "empty", tr("supervisor.loadFailed")));
+    listEl.replaceChildren(el("p", "empty", tr("supervisor.loadFailed")));
     return;
   }
 
-  const nodes = [createForm()];
+  const nodes = [];
   if (!supervisors.length) {
     nodes.push(el("p", "empty", tr("supervisor.empty")));
   } else {

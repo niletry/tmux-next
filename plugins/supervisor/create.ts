@@ -14,6 +14,11 @@ export type CreateSupervisorParams = {
   cwd: string;
   autoConfirmPermission: boolean;
   port: string;
+  /**
+   * 新建会话页的会话名输入框——留空时保持原来 `supervisor-<目录名>` 的派生
+   * 命名，填了就照用户打的那个来，跟普通会话的命名规则一致。
+   */
+  name?: string;
 };
 
 export type CreateSupervisorResult =
@@ -58,7 +63,7 @@ export async function createSupervisor(
   }
 
   const names = await deps.sessionNames();
-  const created = await deps.createSession(dir.path, requestedNameFor(dir.path), names);
+  const created = await deps.createSession(dir.path, params.name || requestedNameFor(dir.path), names);
   // `created.created === false` means the requested name collided with an
   // unrelated existing session (the registry check above already ruled out
   // "this cwd already has a live supervisor", so this is the rarer case of a

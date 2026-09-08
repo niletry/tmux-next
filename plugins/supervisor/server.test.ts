@@ -47,43 +47,47 @@ test("GET /api/supervisor/log 带 cwd 时返回该目录的巡检记录（这里
 // 内部更早的检查点就返回了：resolveDirectory 失败（坏目录）或 body 校验失败
 // （缺 cwd），createSession 从未被调用。
 
-test("POST /api/supervisor/create 请求体没有 cwd 时 400", async () => {
+test("POST /api/supervisor/create-session 请求体没有 dir 时 400", async () => {
   const { handle } = await import("./server");
   const res = await handle(
-    new Request("http://x/api/supervisor/create", {
+    new Request("http://x/api/supervisor/create-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     }),
-    new URL("http://x/api/supervisor/create"),
+    new URL("http://x/api/supervisor/create-session"),
   );
   expect(res!.status).toBe(400);
   expect(await res!.json()).toEqual({ error: "cwd" });
 });
 
-test("POST /api/supervisor/create 请求体不是 JSON 时 400", async () => {
+test("POST /api/supervisor/create-session 请求体不是 JSON 时 400", async () => {
   const { handle } = await import("./server");
   const res = await handle(
-    new Request("http://x/api/supervisor/create", {
+    new Request("http://x/api/supervisor/create-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "not json",
     }),
-    new URL("http://x/api/supervisor/create"),
+    new URL("http://x/api/supervisor/create-session"),
   );
   expect(res!.status).toBe(400);
   expect(await res!.json()).toEqual({ error: "cwd" });
 });
 
-test("POST /api/supervisor/create cwd 指向不存在的目录时 422", async () => {
+test("POST /api/supervisor/create-session dir 指向不存在的目录时 422", async () => {
   const { handle } = await import("./server");
   const res = await handle(
-    new Request("http://x/api/supervisor/create", {
+    new Request("http://x/api/supervisor/create-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cwd: "/definitely/does/not/exist/on/this/machine" }),
+      body: JSON.stringify({
+        kind: "supervisor",
+        dir: "/definitely/does/not/exist/on/this/machine",
+        fields: { autoConfirmPermission: false },
+      }),
     }),
-    new URL("http://x/api/supervisor/create"),
+    new URL("http://x/api/supervisor/create-session"),
   );
   expect(res!.status).toBe(422);
   expect(await res!.json()).toEqual({ error: "baddir" });

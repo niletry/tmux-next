@@ -105,7 +105,6 @@ test("supervisors 接口返回形状不对时，页面仍然渲染创建表单�
   const { mod, doc } = await mount(fetchImpl);
   await mod.load();
 
-  expect(doc.querySelector("form.supervisor-create")).not.toBeNull();
   expect(doc.getElementById("list")!.textContent).toContain("No supervisors yet");
 });
 

@@ -79,6 +79,33 @@ export type Plugin = {
    * 两者都不该让内核多认识一个插件。
    */
   actions?: SettingAction[];
+  /**
+   * 这个插件想在新建会话页上多提供的一种会话类型，比如监察者。
+   *
+   * 新建会话页已经有一套目录浏览器（面包屑、收藏、最近使用、建目录），一个插件
+   * 如果也要"建个东西、填个目录"，正确的做法是加一个选项，不是另起一张自己的
+   * 表单页去重新发明目录选择。跟 settings/actions 同一步棋：内核照着画一个单选项
+   * 和它的 fields 表单，但**不认识选中它之后到底会发生什么**——选中时页面只是
+   * 隐藏"普通会话"才有意义的控件（agent 选择、跳过权限、恢复历史、模板选择器），
+   * 提交时把 `{ kind, dir, name, fields }` 原样 POST 给
+   * `/api/<插件 id>/create-session`，这条路由已经在既有的 `/api/<id>/*` 分发
+   * 下，不需要内核再开一条新路由。
+   */
+  sessionKinds?: SessionKind[];
+};
+
+/**
+ * 新建会话页上，一个插件声明的会话类型。
+ */
+export type SessionKind = {
+  /** 提交时带给插件的类型键。 */
+  key: string;
+  /** 选项文案的 i18n 键。 */
+  labelKey: string;
+  /** 可选的一行说明，也是 i18n 键。 */
+  hintKey?: string;
+  /** 选中这一项时额外要填的字段，复用配置项的形状。 */
+  fields?: SettingField[];
 };
 
 /**
