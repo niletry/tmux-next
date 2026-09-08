@@ -71,7 +71,15 @@ export async function createSupervisor(
     logPath: logPathFor(dir.path),
     port: params.port,
   });
-  await deps.primeSession(created.name, prompt);
+  // `primeSession` waits up to PRIME_TIMEOUT_MS (20s) for the agent's ready
+  // marker, and this function is called straight from an HTTP route handler
+  // (POST /api/supervisor/create) — awaiting it would stall the response for
+  // up to twenty seconds on a slow-starting agent. Priming already fails
+  // silently by design (a timeout means "don't send", and the caller has
+  // nothing to do about that outcome anyway), so awaiting buys nothing and
+  // costs the whole timeout budget. Fire-and-forget, matching the kernel's
+  // own create-then-prime path (src/server.ts).
+  void deps.primeSession(created.name, prompt).catch(() => {});
 
   await setSupervisor(dir.path, {
     session: created.name,
