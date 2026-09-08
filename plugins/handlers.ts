@@ -4,6 +4,7 @@ import { FIELD_KEY_CHARS } from "../src/template";
 import type { ItemStatus } from "../src/item-lifecycle";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
+import { handle as supervisor } from "./supervisor/server";
 import {
   handle as jira,
   enrich as jiraEnrich,
@@ -67,6 +68,7 @@ export type PluginServer = {
 export const SERVERS: Record<string, PluginServer> = {
   gallery: { handle: gallery },
   notifications: { handle: notifications },
+  supervisor: { handle: supervisor },
   jira: {
     handle: jira,
     enrich: jiraEnrich,
