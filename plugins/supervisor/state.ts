@@ -45,22 +45,26 @@ export async function removeSupervisor(cwd: string): Promise<void> {
  * Live supervisors, and a side effect: any registry entry whose tmux session
  * is gone is dropped, so a dead supervisor never blocks a fresh one for that
  * cwd. `hasSession` is injected so tests never need a real tmux server.
+ * Deletion only occurs if the session at that cwd is still the same dead one,
+ * because a fresh supervisor may have claimed the cwd between the two reads.
  */
 export async function listLiveSupervisors(
   hasSession: (session: string) => Promise<boolean>,
 ): Promise<Array<{ cwd: string } & SupervisorRecord>> {
   const registry = await readRegistry();
   const live: Array<{ cwd: string } & SupervisorRecord> = [];
-  const dead: string[] = [];
+  const dead: Array<{ cwd: string; session: string }> = [];
 
   for (const [cwd, record] of Object.entries(registry)) {
     if (await hasSession(record.session)) live.push({ cwd, ...record });
-    else dead.push(cwd);
+    else dead.push({ cwd, session: record.session });
   }
 
   if (dead.length) {
     const fresh = await readRegistry();
-    for (const cwd of dead) delete fresh[cwd];
+    for (const { cwd, session } of dead) {
+      if (fresh[cwd]?.session === session) delete fresh[cwd];
+    }
     await writeRegistry(fresh);
   }
 

@@ -58,3 +58,25 @@ test("listLiveSupervisors 只保留存活会话，并清掉登记表里的死记
     "/tmp/alive": { session: "s-alive", startedAt: 1, autoConfirmPermission: false },
   });
 });
+
+test("listLiveSupervisors 的比较删除保留两读之间创建的新记录", async () => {
+  const { setSupervisor, listLiveSupervisors, readRegistry } = await import("./state");
+  await setSupervisor("/tmp/dir", { session: "s-old", startedAt: 1, autoConfirmPermission: false });
+
+  let injected = false;
+  const hasSession = async (session: string) => {
+    if (!injected && session === "s-old") {
+      injected = true;
+      // Between the first read and the second read, inject a new supervisor at the same cwd
+      await setSupervisor("/tmp/dir", { session: "s-new", startedAt: 999, autoConfirmPermission: true });
+    }
+    return session === "s-new";
+  };
+
+  const live = await listLiveSupervisors(hasSession);
+
+  expect(live).toEqual([]);
+  expect(await readRegistry()).toEqual({
+    "/tmp/dir": { session: "s-new", startedAt: 999, autoConfirmPermission: true },
+  });
+});
