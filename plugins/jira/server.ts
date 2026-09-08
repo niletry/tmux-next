@@ -575,7 +575,7 @@ export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
   // 工单页地址。只有产生这个来源的一方知道怎么拼——内核不该替它猜，所以由这里
   // 一并写进 source.url，首页那颗单号徽标据此变成可点的链接。
   const browse = await browseUrl();
-  const syncResult = await syncIssues(result.issues, async (ref, title) => {
+  const syncResult = await syncIssues(result, async (ref, title) => {
     const created = !existingRefs.has(ref);
     await ensureItemForSource("jira", ref, title, { refreshTitle: true, ...browse(ref) });
     return { created };

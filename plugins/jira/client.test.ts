@@ -48,6 +48,7 @@ test("成功时把响应裁成渲染要用的形状", async () => {
   const res = await fetchIssues(CONFIG, fakeFetch(200, OK_BODY));
   expect(res).toEqual({
     ok: true,
+    truncated: false,
     issues: [
       {
         id: "10001",
@@ -262,6 +263,16 @@ test("翻页有安全阀：不会无限翻下去", async () => {
   const res = await fetchIssues(CONFIG, endless);
   expect(res.ok).toBe(true);
   expect(calls).toBeLessThan(20); // 远小于"无限"，只要没吊死就行，不锁死具体页数
+  // 撞到安全阀退出时还有下一页没问——调用方（sync.ts）得知道这不是"翻到底了"。
+  expect(res.ok && res.truncated).toBe(true);
+});
+
+test("正常翻到底（没有更多 nextPageToken）时 truncated 是 false", async () => {
+  const res = await fetchIssues(
+    CONFIG,
+    pagedFetch([{ issues: [issueRow("A-1"), issueRow("A-2")], nextPageToken: "page-2" }, { issues: [issueRow("A-3")] }]),
+  );
+  expect(res.ok && res.truncated).toBe(false);
 });
 
 // ---- 单条工单 ---------------------------------------------------------------

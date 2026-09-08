@@ -41,7 +41,7 @@ export type Issue = {
 };
 
 export type IssuesResult =
-  | { ok: true; issues: Issue[] }
+  | { ok: true; issues: Issue[]; truncated: boolean }
   | { ok: false; reason: "unconfigured" | "auth" | "query" | "unreachable" };
 
 /** Jira 挂了不能把页面吊死。 */
@@ -108,15 +108,17 @@ export function toIssue(row: unknown): Issue | null {
 const PAGE_SIZE = 100;
 
 /**
- * 翻页翻到几条为止就不再问下一页。
+ * 翻页翻到几条为止就不再问下一页——这是唯一的上限，sync.ts 不再单独截一刀。
  *
- * 不是 sync.ts 的 MAX_SYNC_ITEMS（200）本身——那是"一次同步最多落几条"的业务
- * 上限，这里要拿到比它更多一点，好让 sync.ts 那句 `issues.length > MAX_SYNC_ITEMS`
- * 在真的超过时能测出来（拿回来恰好 200 条会被误判成"没超"）。定得比它宽出一大截
- * （而不是 +1），是防一种更常见的情况：这次同步和上次翻页之间，Jira 那边有工单被
- * 关闭又新开、排序略微前后移位——±1 的余量经不起这种抖动，一大截才经得住。两个
- * 常量分属两层：这个是"客户端别把 Jira 问穿"的安全阀，MAX_SYNC_ITEMS 是"这次落
- * 库最多几条"的业务上限，故意不合成一个，防止把两件事焊死成同一个数字。
+ * 曾经有过两层：这里 500，sync.ts 的 MAX_SYNC_ITEMS 另设 200，靠"谁比谁宽"
+ * 来让 sync.ts 判断"超没超"。结果是这个仓库自己的 Jira 实例装到 249 条匹配
+ * 的工单后，每次同步都只落库排在最前的 200 条，其余的永远同步不到，而且没有
+ * 任何提示——因为 200 这道业务上限本身就比这个仓库需要的规模小，两层与其说是
+ * 防线不如说是白丢数据。现在只留一层：这里翻到没有下一页，或者拿够
+ * MAX_FETCH_ITEMS 为止；是否撞到了这道安全阀（Jira 那边其实还有更多）由这个
+ * 函数自己算出来，通过 truncated 字段直接告诉调用方，不再靠两个数字的大小
+ * 关系去猜。500 本身仍然是"客户端别把 Jira 问穿"的安全阀，防的是一条写错的
+ * JQL 匹配上几千条——items.json 是纯文本全量读写，不该被这种查询喂到无限大。
  */
 const MAX_FETCH_ITEMS = 500;
 
@@ -179,7 +181,9 @@ export async function fetchIssues(
     if (!rows.length) break;
   } while (pageToken && issues.length < MAX_FETCH_ITEMS);
 
-  return { ok: true, issues };
+  // 循环退出时 pageToken 还有值，说明不是"翻到底了"，是撞到了 MAX_FETCH_ITEMS
+  // 这道安全阀——Jira 那边还有更多，只是不打算再问下去。
+  return { ok: true, issues, truncated: !!pageToken };
 }
 
 /**

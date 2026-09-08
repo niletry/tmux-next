@@ -238,7 +238,7 @@ test("查询串里的 jql 到不了 Jira——真正发出去的还是配置里�
       `${base()}/api/jira/issues?jql=${encodeURIComponent("project = SECRET-PROXY-ATTEMPT")}&refresh=1`,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, issues: [] });
+    expect(await res.json()).toEqual({ ok: true, issues: [], truncated: false });
   } finally {
     globalThis.fetch = realFetch;
     process.env.TMUX_NEXT_JIRA_DIR = prevDir;
