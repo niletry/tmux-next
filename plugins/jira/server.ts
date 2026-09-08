@@ -513,17 +513,22 @@ function incrementalWindowMinutes(lastSyncAt: number): number {
  * 知道"问不到、以及为什么"的地方，把 log 塞进 start() 的 catch 只是一段看着
  * 像在处理这件事、实际永远不会跑的死代码。
  *
- * `opts.full` 之外，还有两种情况必须退回全量，而不是这个调用方自己选：从没
- * 同步成功过（没有游标可用），或者游标记的 JQL 跟现在的 config.jql 不一样
- * （用户改过查询——旧游标描述的是另一条查询，拿它当"这之后有什么变了"没有
- * 意义，见 sync-state.ts）。
+ * `opts.full` 之外，还有三种情况必须退回全量，而不是这个调用方自己选：从没
+ * 同步成功过（没有游标可用）、游标记的 JQL 跟现在的 config.jql 不一样（用户
+ * 改过查询——旧游标描述的是另一条查询，拿它当"这之后有什么变了"没有意义，见
+ * sync-state.ts），以及系统时钟往回跳导致 `lastSyncAt` 比现在还晚。最后一条
+ * 不是 `incrementalWindowMinutes` 自己去钳：钳出来的窗口是"至少 1 分钟"，
+ * 而时钟不可信的时候"至少 1 分钟"恰恰是最危险的答案——它看起来像一次正常的
+ * 增量、实际上把过去这一整段时间的改动全部漏掉了。时钟不可信就该整段不信，
+ * 退回全量，而不是拿一个算出来的负数窗口硬凑一个正数。
  */
 export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
   const config = await readJiraConfig();
   if (!config) return { created: 0, updated: 0, total: 0, truncated: false };
 
   const state = await readSyncState();
-  const full = !!opts?.full || !state || state.jql !== config.jql;
+  const clockWentBackward = !!state && Date.now() < state.lastSyncAt;
+  const full = !!opts?.full || !state || state.jql !== config.jql || clockWentBackward;
 
   // 用请求**发起**的时间，不是拿到结果之后的时间——不然请求这段时间里发生的
   // 改动会被下一次的窗口漏掉。
