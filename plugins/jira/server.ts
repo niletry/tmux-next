@@ -25,13 +25,35 @@ const CACHE_MS = 60_000;
 
 let cache: { at: number; result: IssuesResult } | null = null;
 
-async function issues(refresh: boolean): Promise<IssuesResult> {
+/**
+ * 单个 issue 的缓存,按 key,跟 JQL 结果缓存分开存。
+ *
+ * JQL 结果缓存装的是"当前这条查询命中了什么",而这条查询通常长着
+ * `status not IN (Done, Closed, Abandoned)` 这样的尾巴——工单一旦转到 Done
+ * 就不再匹配,下一次 `issues()` 的结果里直接没有它了。`enrich()` 曾经只从这份
+ * 缓存里找 issue,于是一个刚做完的单立刻从卡片上掉光所有 facet(状态、PR、
+ * 检查全没了),而点「刷新」也救不回来:`refreshIssue` 单独去问了这一个 key,
+ * 但只在它还在 `cache` 的列表里时才写得进去——不在,查到的结果就被扔掉。
+ *
+ * 单独一份缓存是解法:一次针对某个 key 的 fetch,结果该不该留下来,不该取决于
+ * 这个 key 眼下在不在查询范围里。
+ */
+export const ISSUE_CACHE_MS = 5 * 60_000;
+const issueCache = new Map<string, { at: number; issue: Issue }>();
+
+export async function issues(refresh: boolean): Promise<IssuesResult> {
   if (!refresh && cache && Date.now() - cache.at < CACHE_MS) return cache.result;
   const config = await readJiraConfig();
   if (!config) return { ok: false, reason: "unconfigured" };
   const result = await fetchIssues(config);
   // 只缓存成功：一次网络抖动不该让人盯着错误看满一分钟。
-  if (result.ok) cache = { at: Date.now(), result };
+  if (result.ok) {
+    cache = { at: Date.now(), result };
+    // 顺手预热单号缓存,让它在正常流程(定时/手动全量同步)里就有内容,不是只有
+    // 点过一次单条刷新的单才留得下东西。
+    const at = Date.now();
+    for (const issue of result.issues) issueCache.set(issue.key, { at, issue });
+  }
   return result;
 }
 
@@ -92,16 +114,23 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Prom
  * 写回是要紧的一步：不写回的话，这次拿到的新状态只活在这一个响应里，页面下一次
  * 重画（或者别处触发的一次渲染）就会用回缓存里的旧值，看起来像是刷新没生效。
  */
-async function refreshIssue(key: string): Promise<Issue | null> {
+export async function refreshIssue(key: string): Promise<Issue | null> {
   const config = await readJiraConfig();
   if (!config) return null;
   const got = await fetchIssue(config, key);
   if (!got.ok) return null;
 
+  // 无条件写进单号缓存——这一步不看这个 key 在不在 JQL 结果里,理由见 issueCache
+  // 上面的注释:一次刷新问到的答案,不该因为工单已经不在查询范围里就被扔掉。
+  issueCache.set(key, { at: Date.now(), issue: got.issue });
+
   if (cache?.result.ok) {
     const list = cache.result.issues;
     const at = list.findIndex((i) => i.key === key);
     if (at >= 0) list[at] = got.issue;
+    // 不在列表里的单不追加进去:`cache` 是"这条 JQL 眼下命中了什么"的真相来源,
+    // /api/jira 拿它原样渲染成"当前查询结果"——塞一个查询本该排除的单进去,
+    // 会让工单页显示出一条它自己的查询条件说不该出现的行。
   }
   return got.issue;
 }
@@ -363,6 +392,23 @@ export async function enrich(items: ItemRef[]): Promise<Record<string, Facet[]>>
   const issueMap = new Map<string, Issue>(
     cache?.result.ok ? cache.result.issues.map((i) => [i.key, i]) : [],
   );
+  // 补第二份来源:眼下不在 JQL 结果里的单(比如刚转 Done、掉出了查询条件),
+  // 但被单条刷新过的那些——issueCache 独立于 JQL 结果存在,理由见它的定义处。
+  // 只补 issueMap 里没有的键:JQL 结果仍然是主来源,它命中的单不该被这份
+  // 更久之前的缓存盖过去。
+  //
+  // 不看 ISSUE_CACHE_MS 做新鲜度过滤,故意的:一个几分钟前刷新过的状态,
+  // 也好过完全没有状态——这条路上的单往往正是那些不会再被任何一次 JQL
+  // 结果自动刷新到的单(已经掉出查询范围),过滤掉陈旧条目等于让这个修复
+  // 对它本该修的那种单重新失效。跟 devMap 下面这一行是同一个先例:
+  // devCache 的读取端也从不按 DEV_CACHE_MS 过滤,只在写入端(`dev()`)用它
+  // 判断"要不要重新去问"。
+  for (const item of items) {
+    const key = item.source?.provider === "jira" ? item.source.ref : undefined;
+    if (!key || issueMap.has(key)) continue;
+    const hit = issueCache.get(key);
+    if (hit) issueMap.set(key, hit.issue);
+  }
   const devMap = new Map([...devCache].map(([id, hit]) => [id, hit.result]));
 
   const out: Record<string, Facet[]> = {};
