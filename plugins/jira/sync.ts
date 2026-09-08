@@ -1,8 +1,6 @@
 import type { Issue } from "./client";
 import type { SyncResult } from "../handlers";
 
-export const MAX_SYNC_ITEMS = 200;
-
 /**
  * Jira 工单→ items 映射循环，纯函数无网络无磁盘，测试可无头进行。
  *
@@ -10,22 +8,21 @@ export const MAX_SYNC_ITEMS = 200;
  * 串行处理（for + await），不是 Promise.all——ensureItemForSource 内部按进程内队列
  * 串行化并写同一份 items.json，并发只会排满它；单条失败 try/catch 跳过，不中断后续。
  *
- * 超过 MAX_SYNC_ITEMS 截断且标出 truncated，不是静默吞掉——「我们没问到」和
- * 「没有」是两回事，页面需要知道结果可能不完整。
+ * 不在这里再截一刀：`fetched` 已经带着 fetchIssues 自己判出来的 truncated——
+ * 这个仓库的 Jira 实例装到 249 条匹配的工单之后，这里曾经单独设的 MAX_SYNC_ITEMS
+ * （200）比 fetchIssues 拿回来的还小，导致排在后面的工单每次同步都被截掉、
+ * 且没有任何提示。两层上限互相不知道对方设的是多少，迟早会有一层比实际用量还
+ * 小；只留 fetchIssues 那一层，「我们没问到」这件事就只有一个地方能说。
  */
 export async function syncIssues(
-  issues: Issue[],
+  fetched: { issues: Issue[]; truncated: boolean },
   ensure: (ref: string, title: string) => Promise<{ created: boolean }>,
 ): Promise<SyncResult> {
-  // 按上限截断。
-  const truncated = issues.length > MAX_SYNC_ITEMS;
-  const toSync = issues.slice(0, MAX_SYNC_ITEMS);
-
   let created = 0;
   let updated = 0;
 
   // 串行处理每条工单。
-  for (const issue of toSync) {
+  for (const issue of fetched.issues) {
     try {
       const result = await ensure(issue.key, issue.summary);
       if (result.created) {
@@ -42,6 +39,6 @@ export async function syncIssues(
     created,
     updated,
     total: created + updated,
-    truncated,
+    truncated: fetched.truncated,
   };
 }
