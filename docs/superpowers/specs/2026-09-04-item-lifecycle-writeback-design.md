@@ -123,12 +123,13 @@ export async function notifyLifecycleChange(
 
 ### Jira 插件里的实现
 
-`plugins/jira/server.ts` 新增 `onLifecycleChange`，内部两件事：
+`plugins/jira/server.ts` 新增 `onLifecycleChange`，内部一件事：
 
 1. **状态迁移到 Jira 的 workflow 状态**——查一张"内核状态 → Jira 状态名"的映射表，走 Jira REST 的 `/issue/{key}/transitions` API（不是 Smart Commits：Smart Commits 靠解析提交信息里的魔法字符串,是给人手打命令用的,这里是程序化调用,直接打接口更可靠、不依赖提交信息格式）。映射表进插件的 `settings`,五个内核状态各对应一个可填的 Jira 状态名,留空表示"这一步不写回"——不是每个 Jira workflow 都有五个刚好对应的状态,留空的自由必须给使用者,不能内核帮它猜。
-2. **进入 `in_review` 时评论一句**——只在这一步评论,不是每次迁移都评论：从"没人看"变成"有 PR 可以看"是唯一一个"外部人类需要被叫过来看一眼"的时刻,`in_merge`/`done` 这类内部记账式的迁移没有必要打扰 PR 评论区。评论走 Bitbucket 现有的 `dev.ts` 里已经在用的鉴权（`bitbucket.email`/`bitbucket.appPassword`），加一个 POST 到 PR comments 端点。
 
-失败处理：两步各自 try/catch，一步失败不影响另一步，都失败也不影响状态机本身——`advanceLifecycle` 已经把新状态落了盘,写回层是纯粹的"尽力而为的旁路"。
+> **2026-09-09 撤回**：原设计这里还有第二步——"进入 `in_review` 时往 PR 下面评论一句"，`commentOnPr`（`plugins/jira/writeback.ts`）连同调用点、测试已经删掉。理由：PR 评论区是给人看的地方，工具不该自动往里灌水，尤其不该留下"tmux-next"这类自我署名的痕迹。转 Jira 状态本身不受影响，继续保留。
+
+失败处理：try/catch，失败不影响状态机本身——`advanceLifecycle` 已经把新状态落了盘,写回层是纯粹的"尽力而为的旁路"。
 
 ## 通知总线
 

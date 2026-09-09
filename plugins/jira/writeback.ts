@@ -1,15 +1,16 @@
 import type { JiraConfig } from "./config";
-import { parsePrUrl } from "./dev";
 
 /**
- * ItemLifecycle 写回 Jira/Bitbucket 的两个动作。见
+ * ItemLifecycle 写回 Jira 的动作。见
  * docs/superpowers/specs/2026-09-04-item-lifecycle-writeback-design.md。
  *
- * `fetcher` 是参数而不是直接用全局 fetch，跟 client.ts/dev.ts 同一个理由：这个
- * 仓库的测试跑得很勤，对着别人的 Jira/Bitbucket 打是不可接受的。
+ * 只写 Jira 状态，不写 PR——评论区是给人看的地方，不该由工具自动灌水。
  *
- * 两个函数都不吞异常——调用方（`plugins/jira/server.ts` 的 `onLifecycleChange`，
- * 经 `plugins/handlers.ts` 的 `notifyLifecycleChange`）已经在外层 try/catch，
+ * `fetcher` 是参数而不是直接用全局 fetch，跟 client.ts/dev.ts 同一个理由：这个
+ * 仓库的测试跑得很勤，对着别人的 Jira 打是不可接受的。
+ *
+ * 不吞异常——调用方（`plugins/jira/server.ts` 的 `onLifecycleChange`，经
+ * `plugins/handlers.ts` 的 `notifyLifecycleChange`）已经在外层 try/catch，
  * "失败只是这一步没写成"这条语义在那一层实现一次就够，这里如实抛出。
  */
 
@@ -62,35 +63,4 @@ export async function transitionIssue(
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!doRes.ok) throw new Error(`transitions 执行失败：${doRes.status}`);
-}
-
-/**
- * 往一个 PR 下面加一条评论。只在配置了 Bitbucket 凭据时才可能成功——没配就
- * 直接不做，跟 CI 那一跳缺凭据时的"不问"是同一种"选配"语义。
- */
-export async function commentOnPr(
-  config: JiraConfig,
-  prUrl: string,
-  text: string,
-  fetcher: typeof fetch = fetch,
-): Promise<void> {
-  const bb = config.bitbucket;
-  if (!bb) return;
-  const parts = parsePrUrl(prUrl);
-  if (!parts) return;
-
-  const api =
-    `https://api.bitbucket.org/2.0/repositories/%7B${parts.workspace}%7D/%7B${parts.repo}%7D` +
-    `/pullrequests/${parts.id}/comments`;
-  const res = await fetcher(api, {
-    method: "POST",
-    headers: {
-      authorization: basic(bb.email, bb.appPassword),
-      accept: "application/json",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ content: { raw: text } }),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`PR 评论失败：${res.status}`);
 }
