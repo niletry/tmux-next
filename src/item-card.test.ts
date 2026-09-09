@@ -121,6 +121,80 @@ test("本地单没有来源徽标，也不画会话数", async () => {
   expect(head.querySelector(".item-count")).toBeNull();
 });
 
+// --- statusLightRow：卡片头部的灯带 -------------------------------------------
+
+test("带 stage 的 facet 画成一颗状态灯，颜色和空心/实心跟 stage 走", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.status", value: "Ready for Release", stage: { hue: "ok", filled: false } },
+  ]);
+  const dot = row.querySelector(".status-dot")!;
+  expect(dot.classList.contains("ok")).toBe(true);
+  expect(dot.classList.contains("filled")).toBe(false);
+});
+
+test("标 light 的 facet 也画一颗点，用它自己的 tone 上色", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.checks", value: "1/2", tone: "warn", light: true },
+  ]);
+  const dot = row.querySelector(".status-dot")!;
+  expect(dot.classList.contains("warn")).toBe(true);
+});
+
+test("没有 stage 也没有 light 的 facet 不出现在灯带里", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([{ dim: "jira.epic", value: "登录改版" }]);
+  expect(row.querySelectorAll(".status-dot").length).toBe(0);
+});
+
+test("点亮的点带 title，说明是哪个维度的什么值——不靠颜色单独传达信息", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.status", value: "Ready for Release", stage: { hue: "ok", filled: false } },
+  ]);
+  const dot = row.querySelector(".status-dot")!;
+  expect(dot.getAttribute("title")).toContain("Ready for Release");
+});
+
+test("有明细的灯点一下能打开跟原 chip 一样的详情浮层", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    {
+      dim: "jira.prs", value: "1", tone: "warn", light: true,
+      detail: [{ label: "修登录页", value: "DECLINED" }],
+    },
+  ]);
+  const dot = row.querySelector(".status-dot") as HTMLButtonElement;
+  expect(dot.tagName).toBe("BUTTON");
+  dot.click();
+  const sheet = document.querySelector(".sheet-backdrop")!;
+  expect(sheet).toBeTruthy();
+  expect(sheet.textContent).toContain("DECLINED");
+});
+
+test("没有明细的灯是静态的，不是按钮", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.status", value: "Done", stage: { hue: "ok", filled: true } },
+  ]);
+  const dot = row.querySelector(".status-dot")!;
+  expect(dot.tagName).toBe("SPAN");
+});
+
+test("itemHead 把灯带排进头部，跟着来源徽标之后", async () => {
+  const { itemHead } = await load();
+  const head = itemHead(
+    { id: "it-1", title: "修登录页", source: { provider: "jira", ref: "AB-1" } },
+    [
+      { dim: "jira.status", value: "Done", stage: { hue: "ok", filled: true } },
+      { dim: "jira.checks", value: "0/2", tone: "ok", light: true },
+    ],
+    0,
+  );
+  expect(head.querySelectorAll(".status-dot").length).toBe(2);
+});
+
 // --- openDetailSheet：group 字段按 PR 分组 -----------------------------------
 
 test("连续同 group 的行只画一条组标题，不重复", async () => {
