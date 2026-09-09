@@ -1,7 +1,7 @@
 import { readJiraConfig, writeJiraConfig, DEFAULT_JQL, type JiraConfig } from "./config";
 import { fetchIssue, fetchIssues, fetchIssueDescription, type Issue, type IssuesResult } from "./client";
 import { fetchDev, type DevResult, type PullRequest } from "./dev";
-import { transitionIssue, commentOnPr } from "./writeback";
+import { transitionIssue } from "./writeback";
 import { syncIssues } from "./sync";
 import { incrementalJql } from "./jql";
 import { readSyncState, writeSyncState } from "./sync-state";
@@ -733,13 +733,12 @@ function jiraStatusFor(config: JiraConfig, to: ItemStatus): string {
 }
 
 /**
- * ItemLifecycle 迁移之后的写回：转 Jira 状态,进入 in_review 时额外评论一句。
+ * ItemLifecycle 迁移之后的写回：只转 Jira 状态。
  *
- * 只在这一步评论——"从没人看到有 PR 可以看"是唯一一个需要把人叫过来的时刻,
- * `in_merge`/`done` 这类内部记账式的迁移不该打扰 PR 评论区(见 spec)。
+ * 不写 PR：评论区是给人看的地方，不该由工具自动灌水。
  *
  * 不吞异常：调用方（`plugins/handlers.ts` 的 `notifyLifecycleChange`）已经在
- * 外层 try/catch+超时，这里如实抛出，两步各自失败不影响另一步。
+ * 外层 try/catch+超时，这里如实抛出。
  */
 export async function onLifecycleChange(ref: string, from: ItemStatus, to: ItemStatus): Promise<void> {
   const config = await readJiraConfig();
@@ -747,15 +746,6 @@ export async function onLifecycleChange(ref: string, from: ItemStatus, to: ItemS
 
   const targetStatus = jiraStatusFor(config, to);
   await transitionIssue(config, ref, targetStatus).catch(() => {});
-
-  if (to !== "in_review") return;
-  const issue = await refreshIssue(ref);
-  if (!issue) return;
-  const got = await dev(issue.id, issue.key, false);
-  if (!got.ok) return;
-  const open = got.prs.find((pr) => pr.status === "OPEN");
-  if (!open) return;
-  await commentOnPr(config, open.url, "tmux-next：这张单已经在这个 PR 上开工了。").catch(() => {});
 }
 
 /**
