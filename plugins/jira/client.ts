@@ -20,6 +20,8 @@ export type Issue = {
   status: string;
   statusCategory: string;
   updated: number;
+  /** 工单在 Jira 里创建的时间，解析不出来时是 0——跟 updated 同一套规则。 */
+  created: number;
   /** 类型名，原样来自实例——它是可以被改名的，所以只当标签用。 */
   type: string;
   /**
@@ -47,7 +49,7 @@ export type IssuesResult =
 /** Jira 挂了不能把页面吊死。 */
 const TIMEOUT_MS = 8000;
 
-const FIELDS = "summary,status,updated,issuetype,parent,assignee";
+const FIELDS = "summary,status,updated,created,issuetype,parent,assignee";
 
 /**
  * 一行搜索结果 → 一个 Issue，认不出就是 null。
@@ -95,6 +97,7 @@ export function toIssue(row: unknown): Issue | null {
     statusCategory:
       typeof f.status?.statusCategory?.key === "string" ? f.status.statusCategory.key : "",
     updated: Date.parse(typeof f.updated === "string" ? f.updated : "") || 0,
+    created: Date.parse(typeof f.created === "string" ? f.created : "") || 0,
     type: typeof t.name === "string" ? t.name : "",
     hierarchy,
     parent,

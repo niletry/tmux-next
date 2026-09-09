@@ -24,6 +24,7 @@ function issue(over: Partial<Issue> = {}): Issue {
     status: "In Progress",
     statusCategory: "indeterminate",
     updated: 0,
+    created: Date.parse("2026-08-01T09:00:00.000+0000"),
     type: "Task",
     hierarchy: 0,
     parent: null,
@@ -51,6 +52,16 @@ test("缓存里没有这个单号时，不给维度也不抛", () => {
 test("有工单就给状态", () => {
   const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map());
   expect(dims(got)["jira.status"]).toBe("In Progress");
+});
+
+test("有工单就给创建日期，格式是 YYYY-MM-DD", () => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map());
+  expect(dims(got)["jira.created"]).toBe("2026-08-01");
+});
+
+test("created 缺失（解析不出来是 0）时不产出 jira.created 维度", () => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue({ created: 0 })]]), new Map());
+  expect(dims(got)["jira.created"]).toBeUndefined();
 });
 
 test("已完成的工单，状态给 dim 色", () => {
