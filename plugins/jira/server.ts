@@ -11,6 +11,7 @@ import { bindSession, unbindSession, resolveBindings, type ResolvedBinding } fro
 import { sessionIdentities } from "../../src/tmux/session-list";
 import type { Facet, ItemRef } from "../types";
 import type { SyncResult } from "../handlers";
+import { classifyStatusStage } from "./status-stage";
 
 /**
  * 工单插件的服务端。
@@ -193,6 +194,17 @@ function prFacetTone(status: string): "ok" | "warn" | "dim" | undefined {
   return undefined;
 }
 
+/**
+ * jira.prs 这一整颗 facet 的聚合色——单条 PR 已经有 prFacetTone 各自的说法，这里
+ * 要的是"这一堆 PR 加起来该亮什么灯"：有一个被拒就是要看一眼的事，压过"其余的
+ * 都合并了"；全部合并才算真的可以不管；还有 OPEN 没定论的，谁都说不好，不染色。
+ */
+function prsFacetTone(prs: { status: string }[]): "ok" | "warn" | "dim" | undefined {
+  if (prs.some((pr) => pr.status === "DECLINED")) return "warn";
+  if (prs.every((pr) => pr.status === "MERGED")) return "dim";
+  return undefined;
+}
+
 function checkFacetTone(state: string): "ok" | "warn" | "dim" {
   if (state === "FAILED" || state === "STOPPED") return "warn";
   if (state === "INPROGRESS") return "dim";
@@ -317,6 +329,9 @@ export function facetsFor(
       value: issue.status,
       tone:
         issue.statusCategory === "done" ? "dim" : issue.statusCategory === "indeterminate" ? "ok" : undefined,
+      // 阶段灯挂在同一个 facet 上——状态名到阶段的归类是纯关键词匹配，跟
+      // statusCategory 那三档粗粒度分类是两件独立的事，互不影响。
+      stage: classifyStatusStage(issue.status),
     },
   ];
   // created 是 0 表示解析不出来（老实例、字段缺失），给一个空维度不如不给。
@@ -340,6 +355,11 @@ export function facetsFor(
       // 值是个光秃秃的数字，卡片上不带维度名就读不出意思。给个图标比给"PR"两个字
       // 省地方，也跟这一行别的 chip 一样只占一个字的宽度。
       icon: PR_ICON,
+      // 聚合色跟灯带用同一个信号：一堆 PR 里只要有一个被拒就要看一眼，全部合并
+      // 才算真的不用管，还有 OPEN 没定论的不染色。
+      tone: prsFacetTone(got.prs),
+      // 灯带里除了状态阶段灯，PR 健康度也想要一眼看到，不用点开 chip。
+      light: true,
       // 数字说不出是哪个分支、开着还是并了。明细一行一个 PR：标题、状态、链接。
       // 这里给 url 而 checks 不给，是因为一个 PR 有自己的地址而一次检查在这份数据
       // 里没有——不是两处标准不一样。
@@ -361,6 +381,8 @@ export function facetsFor(
         value: `${failed}/${all.length}`,
         tone: failed ? "warn" : "ok",
         icon: CHECK_ICON,
+        // 同上：灯带里也要一颗检查健康度的点，不用点开 chip 才看得到。
+        light: true,
         // 汇总数字只说"几个挂了"，说不出**是哪个**挂了——而那才是看到红色之后
         // 唯一想知道的事。明细把每个检查的名字（形如 ci/circleci: test）和状态
         // 带上去，首页因此不必再跳一趟工单页。

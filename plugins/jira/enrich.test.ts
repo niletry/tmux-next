@@ -375,3 +375,68 @@ test("认不出来的类型：有维度，没形状", () => {
   expect(type.value).toBe("Spike");
   expect(type.icon).toBeUndefined();
 });
+
+// --- 状态灯：jira.status 挂 stage，jira.prs/jira.checks 挂 light ------------
+
+test("jira.status 带上按状态名分类出的 stage", () => {
+  const got = facetsFor(
+    jiraItem,
+    new Map([["EXAMPLE-1", issue({ status: "Ready for Release" })]]),
+    new Map(),
+  );
+  expect(got.find((f) => f.dim === "jira.status")!.stage).toEqual({ hue: "ok", filled: false });
+});
+
+test("jira.prs 全部已合并给 dim 聚合色，并标 light", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      { id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "MERGED", checks: [], checksKnown: true },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  const prs = got.find((f) => f.dim === "jira.prs")!;
+  expect(prs.tone).toBe("dim");
+  expect(prs.light).toBe(true);
+});
+
+test("jira.prs 有一个被拒就给 warn 聚合色，哪怕别的已合并", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      { id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "MERGED", checks: [], checksKnown: true },
+      { id: "2", title: "b", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "DECLINED", checks: [], checksKnown: true },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  expect(got.find((f) => f.dim === "jira.prs")!.tone).toBe("warn");
+});
+
+test("jira.prs 还有 OPEN 的没定论时给 undefined 聚合色", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      { id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "OPEN", checks: [], checksKnown: true },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  expect(got.find((f) => f.dim === "jira.prs")!.tone).toBeUndefined();
+});
+
+test("jira.checks 也标 light，跟已有的聚合 tone 一起进灯带", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      {
+        id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "OPEN", checksKnown: true,
+        checks: [{ name: "ci", state: "SUCCESSFUL", url: "u" }],
+      },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  expect(got.find((f) => f.dim === "jira.checks")!.light).toBe(true);
+});

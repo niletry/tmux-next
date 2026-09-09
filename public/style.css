@@ -796,6 +796,46 @@ a.item-source.is-link:hover {
   max-width: 100%;
 }
 
+/* 卡片头部的灯带：一排小圆点，一眼扫过整张卡片就知道大致进度和 PR/检查健不健康，
+   不用点开任何一格 chip。跟单号紧挨着，同一行 flex-wrap。 */
+.status-lights {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  padding: 0;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  cursor: default;
+  /* 24px 的点按目标：可点的点（有明细、画成 <button>）用透明边框把命中区撑到跟
+     别处一致，不靠视觉尺寸本身去够触屏最小尺寸。 */
+  position: relative;
+}
+
+.status-dot::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+
+button.status-dot {
+  cursor: pointer;
+}
+
+/* 实心：填充自己的颜色。空心：只留描边，中心透底色——同一色相靠这一级区分
+   阶段的早晚，不新增任何颜色。颜色只从角色令牌来，跟 .facet.ok/.warn/.dim
+   同一套——src/themes.test.ts 扫的就是这条。 */
+.status-dot.filled { background: currentColor; }
+.status-dot.ok { color: var(--ok); }
+.status-dot.warn { color: var(--danger); }
+.status-dot.dim { color: var(--text-2); }
+.status-dot.accent { color: var(--accent); }
+
 /* 维度 chips 一行、可换行——不能挤破卡片宽度，标签数量是数据决定的，没有上限。 */
 .facets {
   display: flex;

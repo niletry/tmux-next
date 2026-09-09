@@ -43,6 +43,9 @@ import { PLUGINS } from "../plugins/registry.js";
  * @property {boolean} [badge]
  * @property {string} [icon] SVG 路径，不是图标名
  * @property {DetailRow[]} [detail]
+ * @property {{hue: "dim"|"accent"|"ok", filled: boolean}} [stage] 挂在灯带上
+ *   的阶段灯，色相+空心/实心
+ * @property {boolean} [light] 这个 facet 的 tone 也要在灯带里额外出一个点
  */
 /**
  * @typedef {object} SessionLike
@@ -524,6 +527,46 @@ export function sessionRow(session, onUnbind) {
 }
 
 /**
+ * 卡片头部的灯带：把带 `stage` 或 `light` 的 facet 各画成一颗小圆点，一眼扫过
+ * 就知道这张单大致在流程的哪个位置、PR/检查健不健康——不用点开任何一格 chip。
+ *
+ * 内核不认识"这是状态"还是"这是检查"，只认这两个字段：`stage` 给色相+空心/实心，
+ * `light` 让一个已经有 `tone` 的 facet 额外在这里出一个点。原有的文字 chip
+ * 照常画，灯带是纯粹的额外概览层，不取代它们。
+ *
+ * 点上的颜色只是辅助——`title`/aria-label 带着这个 facet 的原始文字，不靠颜色
+ * 单独传达信息（同一条规矩贯穿这个文件里所有 tone 的用法）。有 `detail` 的点
+ * 画成按钮，点开跟对应 chip 一样的详情浮层；没有就是个静态点。
+ *
+ * @param {Facet[]} facets
+ */
+export function statusLightRow(facets) {
+  const row = el("div", "status-lights");
+  for (const facet of facets ?? []) {
+    if (!facet.stage && !facet.light) continue;
+    const hue = facet.stage?.hue ?? facet.tone;
+    const filled = facet.stage ? facet.stage.filled : true;
+    const cls = ["status-dot", hue, filled ? "filled" : ""].filter(Boolean).join(" ");
+    const label = `${dimLabelOf(facet.dim)}: ${facet.value}`;
+    const rows = Array.isArray(facet.detail) ? facet.detail : [];
+    /** @type {HTMLElement} */
+    let dot;
+    if (rows.length) {
+      const btn = el("button", cls);
+      btn.type = "button";
+      btn.addEventListener("click", () => openDetailSheet(label, rows));
+      dot = btn;
+    } else {
+      dot = el("span", cls);
+    }
+    dot.title = label;
+    dot.setAttribute("aria-label", label);
+    row.append(dot);
+  }
+  return row;
+}
+
+/**
  * 卡片头部：标题、单号前那枚徽标、单号本身，以及有几个会话。
  *
  * 不含右上角那三个动作（首页的 ⋯）：那是首页的事，浮层是只读的。调用方拿到这个
@@ -561,6 +604,10 @@ export function itemHead(item, facets, sessionCount) {
       head.append(el("span", "item-source", item.source.ref));
     }
   }
+  // 灯带紧跟在单号后面：先说"这是什么单"，再说"它此刻怎么样"，跟单号徽标同一
+  // 条排布逻辑。
+  const lights = statusLightRow(facets ?? []);
+  if (lights.childElementCount) head.append(lights);
   if (sessionCount) head.append(el("span", "item-count", tr("items.sessions", { n: sessionCount })));
   return head;
 }
