@@ -278,6 +278,16 @@ function epicSummaryOf(issue: Issue): string | null {
   return issue.parent.summary || issue.parent.key;
 }
 
+/**
+ * epoch 毫秒 → `YYYY-MM-DD`，UTC 固定，不看服务器时区。
+ *
+ * 工单创建时间是个静态事实，不该跟着服务运行的机器换答案——UTC 日期在哪台机器上
+ * 跑出来都一样，本地时区拼出来的日期反而会因为跨了午夜线而在两台机器上不一致。
+ */
+function isoDate(epochMs: number): string {
+  return new Date(epochMs).toISOString().slice(0, 10);
+}
+
 export function facetsFor(
   item: ItemRef,
   issues: Map<string, Issue>,
@@ -309,6 +319,8 @@ export function facetsFor(
         issue.statusCategory === "done" ? "dim" : issue.statusCategory === "indeterminate" ? "ok" : undefined,
     },
   ];
+  // created 是 0 表示解析不出来（老实例、字段缺失），给一个空维度不如不给。
+  if (issue.created) facets.splice(1, 0, { dim: "jira.created", value: isoDate(issue.created) });
   // 史诗名走 `parent`，不是一个独立的 epicName 字段：`parent` 同时装着普通工单的
   // 史诗和子任务的父任务，`hierarchy >= 1` 才是史诗——跟 public/filter.js 的
   // epicKeyOf 和 public/jira.js 里卡片上的判断保持一致。

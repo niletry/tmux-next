@@ -33,6 +33,7 @@ const OK_BODY = {
       fields: {
         summary: "登录页在窄屏下换行",
         updated: "2026-08-30T10:00:00.000+0000",
+        created: "2026-08-01T09:00:00.000+0000",
         status: { name: "In Progress", statusCategory: { key: "indeterminate" } },
         issuetype: { name: "Bug", hierarchyLevel: 0 },
         parent: {
@@ -57,6 +58,7 @@ test("成功时把响应裁成渲染要用的形状", async () => {
         status: "In Progress",
         statusCategory: "indeterminate",
         updated: Date.parse("2026-08-30T10:00:00.000+0000"),
+        created: Date.parse("2026-08-01T09:00:00.000+0000"),
         type: "Bug",
         hierarchy: 0,
         parent: { key: "EXAMPLE-100", summary: "登录体验", hierarchy: 1 },
