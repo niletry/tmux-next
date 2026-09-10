@@ -237,9 +237,10 @@ const PLUGINS_DIR = new URL("../plugins/", import.meta.url).pathname;
  * 一张单的全貌：单本身、它此刻活着的会话、以及它这一列 facet。
  *
  * 首页那条 /api/items 是整表算一次；这里把入参收成一张单，算法一模一样（内核的
- * kernelFacets 加插件的 collectFacets），所以浮层里的 chip 和首页卡片上的不会是
- * 两套说法。facets 给的是这一张单的那一列数组，不是 { itemId: Facet[] } 的表——
- * 只问一张单的人不该再去表里取一次键。
+ * kernelFacets 加插件的 collectFacets），所以浮层里的 chip 和首页卡片上不会是两套
+ * 说法——唯一的差别是 cap：首页要护着"一张卡最多几个"，这里问的只有一张单、不是
+ * 卡片，传 Infinity 跳过那条封顶，见 collectFacets 的注释。facets 给的是这一张单
+ * 的那一列数组，不是 { itemId: Facet[] } 的表——只问一张单的人不该再去表里取一次键。
  *
  * 单不存在就 404，包括"绑定还指着一张已经被扫掉的单"这种：那跟"这个会话没挂单"
  * 对调用方是同一件事，页面两种情况都是不画那个入口。
@@ -257,9 +258,12 @@ async function itemDetail(id: string): Promise<Response> {
   );
   const sessions = live.filter((s) => mine.has(s.name));
   const kernel = kernelFacets([item], live, bindings)[item.id] ?? [];
-  const theirs = await collectFacets([
-    { id: item.id, source: item.source ? { provider: item.source.provider, ref: item.source.ref } : null },
-  ]);
+  // 面板不是卡片，不受首页那条"一张卡最多几个"的护栏——见 collectFacets 的 cap 注释。
+  const theirs = await collectFacets(
+    [{ id: item.id, source: item.source ? { provider: item.source.provider, ref: item.source.ref } : null }],
+    undefined,
+    Infinity,
+  );
   return Response.json({ item, sessions, facets: [...kernel, ...(theirs[item.id] ?? [])] });
 }
 

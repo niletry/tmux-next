@@ -205,10 +205,17 @@ function safeHttpUrl(value: unknown): string | undefined {
  *
  * enrichers 是参数而不是直接用 ENRICHERS，好让内核侧的测试能塞进一个会抛、一个会
  * 卡住的假插件——注册表是编译期写死的，没有这个参数就没法测这条安全阀。
+ *
+ * cap 默认是 MAX_FACETS_PER_ITEM——首页卡片和批量的生命周期推进都要这个"一张卡最多
+ * 几个"的护栏。单张单的详情面板（`itemDetail`）不是卡片，没有那个空间限制，问的又
+ * 只有一张单，传 `Infinity` 跳过截断——否则一张 Jira 单只要维度凑够 7 个（type /
+ * created / status / epic / assignee / prs / checks），最后一个（往往正是用户点开
+ * 详情最想看的 checks）就会被这条为首页设计的护栏悄悄吃掉。
  */
 export async function collectFacets(
   items: ItemRef[],
   enrichers: Record<string, PluginEnricher> = ENRICHERS,
+  cap: number = MAX_FACETS_PER_ITEM,
 ): Promise<Record<string, Facet[]>> {
   const enabled = new Set(enabledPlugins().map((p) => p.id));
   // 真实插件按启用状态过滤；测试注进来的假插件不在注册表里，一律放行。
@@ -296,7 +303,7 @@ export async function collectFacets(
       (merged[id] ??= []).push(...facets);
     }
   }
-  for (const id of Object.keys(merged)) merged[id] = merged[id]!.slice(0, MAX_FACETS_PER_ITEM);
+  for (const id of Object.keys(merged)) merged[id] = merged[id]!.slice(0, cap);
   return merged;
 }
 

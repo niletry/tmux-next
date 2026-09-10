@@ -96,6 +96,16 @@ test("每单最多 6 个 facet", async () => {
   expect(got["it-1"]!.length).toBe(MAX_FACETS_PER_ITEM);
 });
 
+// 详情面板不是卡片：itemDetail 传 Infinity 跳过这条护栏，不然一张 Jira 单凑够 7 个
+// 维度，最后一个（往往是 checks）就会被这条为首页设计的封顶悄悄吃掉。
+test("cap 传 Infinity 时不截断", async () => {
+  const flood: PluginEnricher = async () => ({
+    "it-1": Array.from({ length: 50 }, (_, i) => ({ dim: `d${i}`, value: String(i) })),
+  });
+  const got = await collectFacets(items, { flood }, Infinity);
+  expect(got["it-1"]!.length).toBe(50);
+});
+
 // 上一条用单个插件×50 条，就算把封顶挪回每个插件自己清理那一步（每个插件各自
 // 砍到 6 条）也照样绿——那条测不出"两个插件加起来不能刷爆一张卡片"这条真正的
 // 属性。这里换成两个插件各给 4 条，合起来 8 条：封顶必须在合并之后做才能压到
