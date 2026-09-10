@@ -8,6 +8,7 @@ import { readIds, toggleId } from "./collapse-store.js";
 // 仍然是旁边那个「关联到单」。
 import { openItemPanel } from "./item-panel.js";
 import { isWaiting } from "./session-state.js";
+import { statusLightRow } from "./item-card.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
@@ -390,7 +391,7 @@ function openActions(session, itemsById) {
   });
 }
 
-function card(session, itemsById) {
+function card(session, itemsById, facetsById) {
   const wrapper = el("div", "card");
   const link = el("a", "card-main");
   link.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
@@ -416,6 +417,11 @@ function card(session, itemsById) {
     chip.title = `${tr("list.itemOf")}: ${item.title}`;
     chip.setAttribute("aria-label", chip.title);
     nameRow.append(chip);
+    // 单的状态灯带：跟单列表/单浮层同一份画法（见 item-card.js 顶部那条"两处
+    // 各画一套会漂移"的理由），只是挂在会话名旁边而不是单号旁边。没挂单或这张
+    // 单没有状态类维度时 statusLightRow 返回空节点，什么都不画。
+    const lights = statusLightRow(facetsById?.get(item.id) ?? []);
+    if (lights.childElementCount) nameRow.append(lights);
   }
   link.append(nameRow);
 
@@ -538,11 +544,11 @@ function groupHeader(label, path, key, count, collapsed) {
   return head;
 }
 
-function groupOf(label, path, key, sessions, collapsed, itemsById) {
+function groupOf(label, path, key, sessions, collapsed, itemsById, facetsById) {
   const group = el("section", "group" + (collapsed ? " collapsed" : ""));
   group.append(groupHeader(label, path, key, sessions.length, collapsed));
   if (!collapsed)
-    for (const session of sessions) group.append(card(session, itemsById));
+    for (const session of sessions) group.append(card(session, itemsById, facetsById));
   return group;
 }
 
@@ -557,7 +563,7 @@ function groupOf(label, path, key, sessions, collapsed, itemsById) {
  * Groups are ordered by their most recent member, so the project being worked
  * on rises to the top on its own.
  */
-function sections(sessions, itemsById) {
+function sections(sessions, itemsById, facetsById) {
   const out = [];
   const collapsed = collapsedSet();
 
@@ -568,7 +574,7 @@ function sections(sessions, itemsById) {
     out.push(
       groupOf(
         tr("list.pinnedGroup"), null, "\u0000pinned", pinned,
-        collapsed.has("\u0000pinned"), itemsById,
+        collapsed.has("\u0000pinned"), itemsById, facetsById,
       ),
     );
   }
@@ -588,7 +594,7 @@ function sections(sessions, itemsById) {
     // A session whose directory tmux could not report still needs a home; it
     // gets its own heading rather than silently joining someone else's.
     const label = path ? path.replace(/\/+$/, "").split("/").pop() || path : tr("list.noProject");
-    out.push(groupOf(label, path, path, members, collapsed.has(path), itemsById));
+    out.push(groupOf(label, path, path, members, collapsed.has(path), itemsById, facetsById));
   }
   return out;
 }
@@ -737,8 +743,14 @@ async function render() {
     // sessions may be bound to. Keep tolerating the bare-array shape either
     // way — an old page can hit a new server just as easily as the reverse —
     // so `items` simply falls back to empty.
-    const { sessions, items } = Array.isArray(body) ? { sessions: body, items: [] } : body;
+    // Older servers (and a stale cached page) also lack `facets` entirely —
+    // same tolerance as `items` above, falling back to an empty map so a
+    // dangling item still degrades to "no status dot" rather than throwing.
+    const { sessions, items, facets } = Array.isArray(body)
+      ? { sessions: body, items: [], facets: {} }
+      : body;
     const itemsById = new Map((items ?? []).map((item) => [item.id, item]));
+    const facetsById = new Map(Object.entries(facets ?? {}));
     setCount(sessions.length ? tr("list.count", { n: sessions.length }) : "");
     setTabWaiting(sessions.filter(isWaiting).length);
 
@@ -748,7 +760,7 @@ async function render() {
     // acting on right now.
     const children = [
       ...(sessions.length
-        ? sections(sessions, itemsById)
+        ? sections(sessions, itemsById, facetsById)
         : [el("p", "empty", tr("list.noSessions"))]),
     ];
     if (restorable.length) children.push(restoreBanner(restorable));

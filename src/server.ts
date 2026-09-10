@@ -367,9 +367,25 @@ export function startServer(
           resolveBindings(sessions.map((s) => ({ name: s.name, sessionId: s.sessionId }))),
         ]);
         const itemOf = new Map(bindings.map((b) => [b.session, b.itemId]));
+        // 只给挂了会话的单算 facet：这个端点画的是会话列表，没被任何会话绑定的单
+        // 不会出现在卡片上，替它们也跑一遍插件的 enrich 只是白费那 300ms 预算。
+        const boundIds = new Set(itemOf.values());
+        const boundItems = items.filter((i) => boundIds.has(i.id));
+        const mine = kernelFacets(boundItems, sessions, bindings);
+        const theirs = await collectFacets(
+          boundItems.map((i) => ({
+            id: i.id,
+            source: i.source ? { provider: i.source.provider, ref: i.source.ref } : null,
+          })),
+        );
+        const facets: Record<string, Facet[]> = {};
+        for (const item of boundItems) {
+          facets[item.id] = [...(mine[item.id] ?? []), ...(theirs[item.id] ?? [])];
+        }
         return Response.json({
           sessions: sessions.map((s) => ({ ...s, itemId: itemOf.get(s.name) ?? null })),
           items,
+          facets,
         });
       }
 
