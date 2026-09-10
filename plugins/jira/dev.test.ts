@@ -77,6 +77,13 @@ test("workspace 段为空的地址拼不出 API，返回 null 而不是坏 URL",
   expect(parsePrUrl("https://example.org/not-a-pr")).toBeNull();
 });
 
+test("大括号被百分号编码（%7B/%7D）也要解出同样的 workspace/repo，不能连编码一起当成 UUID 的一部分", () => {
+  expect(
+    parsePrUrl("https://bitbucket.org/%7Bws-uuid%7D/%7Brepo-uuid%7D/pull-requests/371"),
+  ).toEqual({ workspace: "ws-uuid", repo: "repo-uuid", id: "371" });
+  expect(parsePrUrl("https://bitbucket.org/%7B%7D/%7Brepo-uuid%7D/pull-requests/654")).toBeNull();
+});
+
 test("两跳都通时，PR 带着它的检查回来", async () => {
   const res = await fetchDev(CONFIG, "10001", "EXAMPLE-1", routed({ dev: [200, DEV_BODY], status: [200, STATUS_BODY] }));
   expect(res.ok).toBe(true);
