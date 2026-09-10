@@ -24,6 +24,7 @@ function issue(over: Partial<Issue> = {}): Issue {
     status: "In Progress",
     statusCategory: "indeterminate",
     updated: 0,
+    created: Date.parse("2026-08-01T09:00:00.000+0000"),
     type: "Task",
     hierarchy: 0,
     parent: null,
@@ -51,6 +52,16 @@ test("缓存里没有这个单号时，不给维度也不抛", () => {
 test("有工单就给状态", () => {
   const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map());
   expect(dims(got)["jira.status"]).toBe("In Progress");
+});
+
+test("有工单就给创建日期，格式是 YYYY-MM-DD", () => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map());
+  expect(dims(got)["jira.created"]).toBe("2026-08-01");
+});
+
+test("created 缺失（解析不出来是 0）时不产出 jira.created 维度", () => {
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue({ created: 0 })]]), new Map());
+  expect(dims(got)["jira.created"]).toBeUndefined();
 });
 
 test("已完成的工单，状态给 dim 色", () => {
@@ -130,6 +141,35 @@ test("有检查失败给 warn 色", () => {
   const checks = got.find((f) => f.dim === "jira.checks")!;
   expect(checks.value).toBe("1/2");
   expect(checks.tone).toBe("warn");
+});
+
+// 只有失败/停止的检查才配"发给会话"这句提示——通过和进行中的检查没什么好
+// 让人去修的，不该在明细行上多出一个点了也没用的按钮。
+test("只有失败/停止的检查行带 send，通过和进行中的不带", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      {
+        id: "1", title: "a", url: "https://bitbucket.org/x/y/pull-requests/1", branch: "b",
+        destinationBranch: "", repo: "", updated: 0, status: "OPEN", checksKnown: true,
+        checks: [
+          { name: "ci", state: "FAILED", url: "u" },
+          { name: "deploy", state: "STOPPED", url: "u" },
+          { name: "lint", state: "SUCCESSFUL", url: "u" },
+          { name: "build", state: "INPROGRESS", url: "u" },
+        ],
+      },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  const rows = got.find((f) => f.dim === "jira.checks")!.detail!;
+  const byLabel = Object.fromEntries(rows.map((r) => [r.label, r.send]));
+  expect(byLabel.ci).toContain("https://bitbucket.org/x/y/pull-requests/1");
+  expect(byLabel.ci).toContain("ci");
+  expect(byLabel.deploy).toBeDefined();
+  expect(byLabel.lint).toBeUndefined();
+  expect(byLabel.build).toBeUndefined();
 });
 
 // 一个单常挂着好几个 PR（多仓库改动、或重开过一次）——拉平成一条检查列表时
@@ -334,4 +374,69 @@ test("认不出来的类型：有维度，没形状", () => {
   const type = got.find((f) => f.dim === "jira.type")!;
   expect(type.value).toBe("Spike");
   expect(type.icon).toBeUndefined();
+});
+
+// --- 状态灯：jira.status 挂 stage，jira.prs/jira.checks 挂 light ------------
+
+test("jira.status 带上按状态名分类出的 stage", () => {
+  const got = facetsFor(
+    jiraItem,
+    new Map([["EXAMPLE-1", issue({ status: "Ready for Release" })]]),
+    new Map(),
+  );
+  expect(got.find((f) => f.dim === "jira.status")!.stage).toEqual({ hue: "ok", filled: false });
+});
+
+test("jira.prs 全部已合并给 dim 聚合色，并标 light", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      { id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "MERGED", checks: [], checksKnown: true },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  const prs = got.find((f) => f.dim === "jira.prs")!;
+  expect(prs.tone).toBe("dim");
+  expect(prs.light).toBe(true);
+});
+
+test("jira.prs 有一个被拒就给 warn 聚合色，哪怕别的已合并", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      { id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "MERGED", checks: [], checksKnown: true },
+      { id: "2", title: "b", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "DECLINED", checks: [], checksKnown: true },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  expect(got.find((f) => f.dim === "jira.prs")!.tone).toBe("warn");
+});
+
+test("jira.prs 还有 OPEN 的没定论时给 undefined 聚合色", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      { id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "OPEN", checks: [], checksKnown: true },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  expect(got.find((f) => f.dim === "jira.prs")!.tone).toBeUndefined();
+});
+
+test("jira.checks 也标 light，跟已有的聚合 tone 一起进灯带", () => {
+  const dev: DevResult = {
+    ok: true,
+    hidden: 0,
+    prs: [
+      {
+        id: "1", title: "a", url: "u", branch: "b", destinationBranch: "", repo: "", updated: 0, status: "OPEN", checksKnown: true,
+        checks: [{ name: "ci", state: "SUCCESSFUL", url: "u" }],
+      },
+    ],
+  };
+  const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
+  expect(got.find((f) => f.dim === "jira.checks")!.light).toBe(true);
 });

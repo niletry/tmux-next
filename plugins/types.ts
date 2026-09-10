@@ -69,6 +69,55 @@ export type Plugin = {
    * 插件自己（handlers.ts 的 readSettings / writeSettings）。
    */
   settings?: SettingField[];
+  /**
+   * 设置页那一节里、Save 按钮旁边的按钮。跟 settings 同一步棋：内核照着画按钮，
+   * 但**不认识按下去会发生什么**——它只知道按了会 POST 到
+   * `/api/plugins/<id>/actions/<key>`，回来一个布尔，成不成功由插件说了算。
+   *
+   * 一次「完整同步」跟一个配置字段是同一类东西：一个数据源特有的操作，只有
+   * 那个插件自己知道该做什么。字段声明了值怎么存取，这个声明了动作怎么触发，
+   * 两者都不该让内核多认识一个插件。
+   */
+  actions?: SettingAction[];
+  /**
+   * 这个插件想在新建会话页上多提供的一种会话类型，比如监察者。
+   *
+   * 新建会话页已经有一套目录浏览器（面包屑、收藏、最近使用、建目录），一个插件
+   * 如果也要"建个东西、填个目录"，正确的做法是加一个选项，不是另起一张自己的
+   * 表单页去重新发明目录选择。跟 settings/actions 同一步棋：内核照着画一个单选项
+   * 和它的 fields 表单，但**不认识选中它之后到底会发生什么**——选中时页面只是
+   * 隐藏"普通会话"才有意义的控件（agent 选择、跳过权限、恢复历史、模板选择器），
+   * 提交时把 `{ kind, dir, name, fields }` 原样 POST 给
+   * `/api/<插件 id>/create-session`，这条路由已经在既有的 `/api/<id>/*` 分发
+   * 下，不需要内核再开一条新路由。
+   */
+  sessionKinds?: SessionKind[];
+};
+
+/**
+ * 新建会话页上，一个插件声明的会话类型。
+ */
+export type SessionKind = {
+  /** 提交时带给插件的类型键。 */
+  key: string;
+  /** 选项文案的 i18n 键。 */
+  labelKey: string;
+  /** 可选的一行说明，也是 i18n 键。 */
+  hintKey?: string;
+  /** 选中这一项时额外要填的字段，复用配置项的形状。 */
+  fields?: SettingField[];
+};
+
+/**
+ * 设置页里的一个插件动作按钮。
+ */
+export type SettingAction = {
+  /** 传给插件 runAction 的键。 */
+  key: string;
+  /** 按钮文案的 i18n 键，跟 titleKey 一样并进两份字典。 */
+  labelKey: string;
+  /** 点下去之后那句回执的 i18n 键；插件成功与否只报一个布尔，文案由清单定。 */
+  doneKey: string;
 };
 
 /**
@@ -153,6 +202,15 @@ export type FacetDetail = {
    * 链接图标去哪"，两者可能同时存在，也可能只有其中一个。
    */
   groupUrl?: string;
+  /**
+   * 这一行"该往正在跑的会话里发什么"——不透明文本，跟 label/value 一样内核不
+   * 解释含义,只知道有它就能画一个按钮。只在这张单**恰好绑了一个会话**时才画
+   * 出来（内核不替用户在多个会话间选一个），点击后原样 POST 给
+   * `/api/sessions/:name/keys`，跟已有的"回复正在跑的会话"走的是同一条既有
+   * 通路（见 src/tmux/send-text.ts）。插件决定哪些行该有这个按钮——比如只给
+   * 失败的检查项配一句修复提示，通过的检查没什么好发的。
+   */
+  send?: string;
 };
 
 export type Facet = {
@@ -185,6 +243,19 @@ export type Facet = {
    * ICON_SHAPES）。它不解析、不缓存、也不问这个形状是什么意思。
    */
   icon?: string;
+  /**
+   * 这个 facet 也代表工作流所处的阶段，画成卡片头部灯带上的一颗状态灯（跟下面
+   * 那格 chip 并存，不是取代它）。三种色相（dim/accent/ok）跟 tone 是同一套角色
+   * 令牌，`filled` 只是同一色相内再分深浅——不新增任何颜色。谁认定"到了哪个阶段"
+   * 完全是插件的事，内核只管拿这两个值去套一颗圆点。
+   */
+  stage?: { hue: "dim" | "accent" | "ok"; filled: boolean };
+  /**
+   * 这个 facet 除了原有的文字 chip 外，还要在灯带里额外出一颗点（用它自己的
+   * `tone` 上色）——给"健康度"类的信号一个不用点开就能扫到的位置，同时不丢
+   * chip 里的文字细节。跟 `stage` 一样，内核不关心这是哪个插件的哪个维度。
+   */
+  light?: boolean;
 };
 
 /**

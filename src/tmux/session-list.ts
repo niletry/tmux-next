@@ -52,12 +52,13 @@ export type SessionSummary = {
   /**
    * 从 transcript 读出来的轮次状态，读不出来是 null。
    *
-   * **过渡字段。** 它跟同一行上那个由屏幕推出来的 `idle` 可能给出不同说法：`idle`
-   * 认的是 TUI 上的空闲标记，会随 agent 改版失效；这个读的是 `stop_reason`，是记录
-   * 格式的一部分。现在两者并存，是为了让新读法先在工单页上跑一段而不动会话列表。
+   * 跟同一行上那个由屏幕推出来的 `idle` 可能给出不同说法：`idle` 认的是 TUI 上的
+   * 空闲标记，会随 agent 改版失效；这个读的是 `stop_reason`，是记录格式的一部分。
    *
-   * 必须收敛：要么列表页改用它（`idle` 退为没有 transcript 时的兜底），要么删掉。
-   * 长期并存会变成同一个会话在两个页面上说法不一致。
+   * 已收敛：sessions 列表页（`public/session-state.js`）和工单页（`item-facets.ts`
+   * 的 `stateOf`）都是 `turn` 优先、`turn` 为 null 时才退回 `idle`。两个字段都留着
+   * 是有意的——没有 transcript 的会话（早于绑定记录、或者跑的根本不是 Claude）只有
+   * `idle` 这一个信息源，删掉它会让这些会话在列表上完全没有状态。
    */
   turn: TurnState | null;
   // The agent the binding record names, and its display label. A record that

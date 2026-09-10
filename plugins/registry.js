@@ -13,6 +13,7 @@
 import gallery from "./gallery/plugin.js";
 import notifications from "./notifications/plugin.js";
 import jira from "./jira/plugin.js";
+import supervisor from "./supervisor/plugin.js";
 
 /** @type {import("./types").Plugin[]} */
-export const PLUGINS = [gallery, notifications, jira];
+export const PLUGINS = [gallery, notifications, jira, supervisor];

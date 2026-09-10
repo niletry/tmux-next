@@ -32,6 +32,8 @@ import { PLUGINS } from "../plugins/registry.js";
  *   只认"连续几行 group 相同就画在同一组标题下面"这一件事,不解释文本本身。
  * @property {string} [groupUrl] 组标题旁边那个链接图标指去哪——跟 url 一样只认
  *   内核已经放行过的 http/https 绝对地址。
+ * @property {string} [send] 这一行该往会话里发的原始文本——内核不解释含义,只
+ *   知道有它就画一个"发给会话"按钮。是否给这行配这个字段是插件的判断。
  */
 /**
  * @typedef {object} Facet
@@ -41,6 +43,9 @@ import { PLUGINS } from "../plugins/registry.js";
  * @property {boolean} [badge]
  * @property {string} [icon] SVG 路径，不是图标名
  * @property {DetailRow[]} [detail]
+ * @property {{hue: "dim"|"accent"|"ok", filled: boolean}} [stage] 挂在灯带上
+ *   的阶段灯，色相+空心/实心
+ * @property {boolean} [light] 这个 facet 的 tone 也要在灯带里额外出一个点
  */
 /**
  * @typedef {object} SessionLike
@@ -127,9 +132,49 @@ export const ITEM_DIM_LABEL = {
  * 这些行的含义内核一概不知道：它只把 label / value 按 textContent 放进去，
  * tone 决定颜色。是 CI 检查还是别的，只有给出它的插件知道。
  */
-/** 一行明细：能点的画成链接，不能点的是纯文字，状态色靠 tone。 */
-/** @param {DetailRow} row */
-function detailRowLine(row) {
+/**
+ * 把一行明细的 `send` 文本发给一个正在跑的会话。走已经存在的那条通路——回复
+ * 正在跑的会话用的就是这个端点（见 plugins/jira/public/jira.js 的 openQuestion）,
+ * 这里不是新开一条,是同一个动作换了一个入口。
+ *
+ * 成功后按钮短暂切成勾选态再恢复，不关掉浮层——旁边可能还有别的失败检查也
+ * 想发。失败复用 push.actionFailed，那是站里唯一一个已有的"操作失败"通用键。
+ *
+ * @param {string} sessionName
+ * @param {string} text
+ * @param {HTMLButtonElement} btn
+ */
+async function sendToSession(sessionName, text, btn) {
+  btn.disabled = true;
+  try {
+    const res = await fetch(url(`api/sessions/${encodeURIComponent(sessionName)}/keys`), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    const original = btn.textContent;
+    btn.textContent = tr("items.sent");
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.disabled = false;
+    }, 1500);
+  } catch {
+    alert(tr("push.actionFailed"));
+    btn.disabled = false;
+  }
+}
+
+/**
+ * 一行明细：能点的画成链接，不能点的是纯文字，状态色靠 tone。
+ *
+ * `sessionName` 只在这张单**恰好绑了一个会话**时才由调用方传进来——多个会话
+ * 时内核不替用户猜该发给哪个，直接不画按钮（调用方传 null）。
+ *
+ * @param {DetailRow} row
+ * @param {string | null} [sessionName]
+ */
+function detailRowLine(row, sessionName) {
   const line = el("div", "detail-row");
   if (row.url) {
     // 内核只放行 http/https（plugins/handlers.ts 的 safeHttpUrl），到这里已经是
@@ -145,6 +190,13 @@ function detailRowLine(row) {
     line.append(el("span", "detail-label", row.label));
   }
   line.append(el("span", row.tone ? `detail-state ${row.tone}` : "detail-state", row.value));
+  if (row.send && sessionName) {
+    const btn = el("button", "detail-send", tr("items.sendToSession"));
+    btn.type = "button";
+    const text = row.send;
+    btn.addEventListener("click", () => sendToSession(sessionName, text, btn));
+    line.append(btn);
+  }
   return line;
 }
 
@@ -160,8 +212,9 @@ function detailRowLine(row) {
  * @param {string} title
  * @param {DetailRow[]} rows
  * @param {string} [groupUrl]
+ * @param {string | null} [sessionName]
  */
-function detailGroup(title, rows, groupUrl) {
+function detailGroup(title, rows, groupUrl, sessionName) {
   const box = el("div", "detail-group");
   const head = el("div", "detail-group-head");
 
@@ -183,7 +236,7 @@ function detailGroup(title, rows, groupUrl) {
   }
 
   const body = el("div", "detail-group-rows");
-  for (const row of rows) body.append(detailRowLine(row));
+  for (const row of rows) body.append(detailRowLine(row, sessionName));
   box.append(head, body);
 
   /** @param {boolean} open */
@@ -200,8 +253,10 @@ function detailGroup(title, rows, groupUrl) {
 /**
  * @param {string} title
  * @param {DetailRow[]} rows
+ * @param {string | null} [sessionName] 恰好绑了一个会话时的会话名,穿透给能
+ *   发"发给会话"按钮的那些行；多会话或没会话时传 null/不传，按钮不出现。
  */
-export function openDetailSheet(title, rows) {
+export function openDetailSheet(title, rows, sessionName) {
   const back = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
   const close = () => back.remove();
@@ -218,9 +273,9 @@ export function openDetailSheet(title, rows) {
     if (row.group) {
       const group = [];
       while (i < rows.length && rows[i].group === row.group) group.push(rows[i++]);
-      list.append(detailGroup(row.group, group, row.groupUrl));
+      list.append(detailGroup(row.group, group, row.groupUrl, sessionName));
     } else {
-      list.append(detailRowLine(row));
+      list.append(detailRowLine(row, sessionName));
       i++;
     }
   }
@@ -252,13 +307,16 @@ export function openDetailSheet(title, rows) {
  */
 /**
  * @param {Facet} facet
- * @param {{showLabel?: boolean}} [opts] showLabel: 强制带上维度名，不管是不是
- *   光秃秃的数字。列表视图用——那边没有表格曾经给的列头，"To Do"、"Sam"这种
- *   值离了列头就读不出是状态还是负责人，必须靠 chip 自己带名字说清楚。卡片上
- *   不传，保持"默认只画值"那条判断（见下面的长注释）。
+ * @param {{showLabel?: boolean, sessionName?: string | null}} [opts] showLabel: 强制
+ *   带上维度名，不管是不是光秃秃的数字。列表视图用——那边没有表格曾经给的列头，
+ *   "To Do"、"Sam"这种值离了列头就读不出是状态还是负责人，必须靠 chip 自己带名字
+ *   说清楚。卡片上不传，保持"默认只画值"那条判断（见下面的长注释）。
+ *   sessionName：这张单恰好绑了一个会话时的会话名，穿透给明细里"发给会话"按钮；
+ *   没有或有多个绑定会话时不传，按钮不出现。
  */
 export function facetChip(facet, opts) {
   const showLabel = opts?.showLabel ?? false;
+  const sessionName = opts?.sessionName ?? null;
   // tr() 本身查不到键就退回键名，插件维度（开放集合）和真正没配置的 dim 都
   // 落到这条路；内核的五个维度走上面的字面量表，只是为了不被死键扫描误判。
   const label = dimLabelOf(facet.dim);
@@ -271,7 +329,7 @@ export function facetChip(facet, opts) {
   if (rows.length) {
     const btn = el("button", facet.tone ? `facet has-detail ${facet.tone}` : "facet has-detail");
     btn.type = "button";
-    btn.addEventListener("click", () => openDetailSheet(`${label}: ${value}`, rows));
+    btn.addEventListener("click", () => openDetailSheet(`${label}: ${value}`, rows, sessionName));
     chip = btn;
   } else {
     chip = el("span", facet.tone ? `facet ${facet.tone}` : "facet");
@@ -469,6 +527,46 @@ export function sessionRow(session, onUnbind) {
 }
 
 /**
+ * 卡片头部的灯带：把带 `stage` 或 `light` 的 facet 各画成一颗小圆点，一眼扫过
+ * 就知道这张单大致在流程的哪个位置、PR/检查健不健康——不用点开任何一格 chip。
+ *
+ * 内核不认识"这是状态"还是"这是检查"，只认这两个字段：`stage` 给色相+空心/实心，
+ * `light` 让一个已经有 `tone` 的 facet 额外在这里出一个点。原有的文字 chip
+ * 照常画，灯带是纯粹的额外概览层，不取代它们。
+ *
+ * 点上的颜色只是辅助——`title`/aria-label 带着这个 facet 的原始文字，不靠颜色
+ * 单独传达信息（同一条规矩贯穿这个文件里所有 tone 的用法）。有 `detail` 的点
+ * 画成按钮，点开跟对应 chip 一样的详情浮层；没有就是个静态点。
+ *
+ * @param {Facet[]} facets
+ */
+export function statusLightRow(facets) {
+  const row = el("div", "status-lights");
+  for (const facet of facets ?? []) {
+    if (!facet.stage && !facet.light) continue;
+    const hue = facet.stage?.hue ?? facet.tone;
+    const filled = facet.stage ? facet.stage.filled : true;
+    const cls = ["status-dot", hue, filled ? "filled" : ""].filter(Boolean).join(" ");
+    const label = `${dimLabelOf(facet.dim)}: ${facet.value}`;
+    const rows = Array.isArray(facet.detail) ? facet.detail : [];
+    /** @type {HTMLElement} */
+    let dot;
+    if (rows.length) {
+      const btn = el("button", cls);
+      btn.type = "button";
+      btn.addEventListener("click", () => openDetailSheet(label, rows));
+      dot = btn;
+    } else {
+      dot = el("span", cls);
+    }
+    dot.title = label;
+    dot.setAttribute("aria-label", label);
+    row.append(dot);
+  }
+  return row;
+}
+
+/**
  * 卡片头部：标题、单号前那枚徽标、单号本身，以及有几个会话。
  *
  * 不含右上角那三个动作（首页的 ⋯）：那是首页的事，浮层是只读的。调用方拿到这个
@@ -506,6 +604,10 @@ export function itemHead(item, facets, sessionCount) {
       head.append(el("span", "item-source", item.source.ref));
     }
   }
+  // 灯带紧跟在单号后面：先说"这是什么单"，再说"它此刻怎么样"，跟单号徽标同一
+  // 条排布逻辑。
+  const lights = statusLightRow(facets ?? []);
+  if (lights.childElementCount) head.append(lights);
   if (sessionCount) head.append(el("span", "item-count", tr("items.sessions", { n: sessionCount })));
   return head;
 }

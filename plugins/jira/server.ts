@@ -1,14 +1,17 @@
 import { readJiraConfig, writeJiraConfig, DEFAULT_JQL, type JiraConfig } from "./config";
 import { fetchIssue, fetchIssues, fetchIssueDescription, type Issue, type IssuesResult } from "./client";
 import { fetchDev, type DevResult, type PullRequest } from "./dev";
-import { transitionIssue, commentOnPr } from "./writeback";
+import { transitionIssue } from "./writeback";
 import { syncIssues } from "./sync";
+import { incrementalJql } from "./jql";
+import { readSyncState, writeSyncState } from "./sync-state";
 import { readItems, ensureItemForSource } from "../../src/items";
 import type { ItemStatus } from "../../src/item-lifecycle";
 import { bindSession, unbindSession, resolveBindings, type ResolvedBinding } from "../../src/session-binding";
 import { sessionIdentities } from "../../src/tmux/session-list";
 import type { Facet, ItemRef } from "../types";
 import type { SyncResult } from "../handlers";
+import { classifyStatusStage } from "./status-stage";
 
 /**
  * 工单插件的服务端。
@@ -23,13 +26,35 @@ const CACHE_MS = 60_000;
 
 let cache: { at: number; result: IssuesResult } | null = null;
 
-async function issues(refresh: boolean): Promise<IssuesResult> {
+/**
+ * 单个 issue 的缓存,按 key,跟 JQL 结果缓存分开存。
+ *
+ * JQL 结果缓存装的是"当前这条查询命中了什么",而这条查询通常长着
+ * `status not IN (Done, Closed, Abandoned)` 这样的尾巴——工单一旦转到 Done
+ * 就不再匹配,下一次 `issues()` 的结果里直接没有它了。`enrich()` 曾经只从这份
+ * 缓存里找 issue,于是一个刚做完的单立刻从卡片上掉光所有 facet(状态、PR、
+ * 检查全没了),而点「刷新」也救不回来:`refreshIssue` 单独去问了这一个 key,
+ * 但只在它还在 `cache` 的列表里时才写得进去——不在,查到的结果就被扔掉。
+ *
+ * 单独一份缓存是解法:一次针对某个 key 的 fetch,结果该不该留下来,不该取决于
+ * 这个 key 眼下在不在查询范围里。
+ */
+export const ISSUE_CACHE_MS = 5 * 60_000;
+const issueCache = new Map<string, { at: number; issue: Issue }>();
+
+export async function issues(refresh: boolean): Promise<IssuesResult> {
   if (!refresh && cache && Date.now() - cache.at < CACHE_MS) return cache.result;
   const config = await readJiraConfig();
   if (!config) return { ok: false, reason: "unconfigured" };
   const result = await fetchIssues(config);
   // 只缓存成功：一次网络抖动不该让人盯着错误看满一分钟。
-  if (result.ok) cache = { at: Date.now(), result };
+  if (result.ok) {
+    cache = { at: Date.now(), result };
+    // 顺手预热单号缓存,让它在正常流程(定时/手动全量同步)里就有内容,不是只有
+    // 点过一次单条刷新的单才留得下东西。
+    const at = Date.now();
+    for (const issue of result.issues) issueCache.set(issue.key, { at, issue });
+  }
   return result;
 }
 
@@ -90,16 +115,23 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Prom
  * 写回是要紧的一步：不写回的话，这次拿到的新状态只活在这一个响应里，页面下一次
  * 重画（或者别处触发的一次渲染）就会用回缓存里的旧值，看起来像是刷新没生效。
  */
-async function refreshIssue(key: string): Promise<Issue | null> {
+export async function refreshIssue(key: string): Promise<Issue | null> {
   const config = await readJiraConfig();
   if (!config) return null;
   const got = await fetchIssue(config, key);
   if (!got.ok) return null;
 
+  // 无条件写进单号缓存——这一步不看这个 key 在不在 JQL 结果里,理由见 issueCache
+  // 上面的注释:一次刷新问到的答案,不该因为工单已经不在查询范围里就被扔掉。
+  issueCache.set(key, { at: Date.now(), issue: got.issue });
+
   if (cache?.result.ok) {
     const list = cache.result.issues;
     const at = list.findIndex((i) => i.key === key);
     if (at >= 0) list[at] = got.issue;
+    // 不在列表里的单不追加进去:`cache` 是"这条 JQL 眼下命中了什么"的真相来源,
+    // /api/jira 拿它原样渲染成"当前查询结果"——塞一个查询本该排除的单进去,
+    // 会让工单页显示出一条它自己的查询条件说不该出现的行。
   }
   return got.issue;
 }
@@ -162,10 +194,30 @@ function prFacetTone(status: string): "ok" | "warn" | "dim" | undefined {
   return undefined;
 }
 
+/**
+ * jira.prs 这一整颗 facet 的聚合色——单条 PR 已经有 prFacetTone 各自的说法，这里
+ * 要的是"这一堆 PR 加起来该亮什么灯"：有一个被拒就是要看一眼的事，压过"其余的
+ * 都合并了"；全部合并才算真的可以不管；还有 OPEN 没定论的，谁都说不好，不染色。
+ */
+function prsFacetTone(prs: { status: string }[]): "ok" | "warn" | "dim" | undefined {
+  if (prs.some((pr) => pr.status === "DECLINED")) return "warn";
+  if (prs.every((pr) => pr.status === "MERGED")) return "dim";
+  return undefined;
+}
+
 function checkFacetTone(state: string): "ok" | "warn" | "dim" {
   if (state === "FAILED" || state === "STOPPED") return "warn";
   if (state === "INPROGRESS") return "dim";
   return "ok";
+}
+
+/**
+ * 一条失败检查该往会话里发的话。只给 FAILED/STOPPED（跟 checkFacetTone 判
+ * warn 是同一条件）配这句提示——通过或进行中的检查没什么好让人去修的,不该
+ * 在明细行上多出一个点了也没用的按钮。
+ */
+function checkFixPrompt(pr: PullRequest, c: { name: string; state: string }): string {
+  return `PR ${pr.url} 的检查「${c.name}」失败（状态：${c.state}），请检查并修复。`;
 }
 
 /**
@@ -238,6 +290,16 @@ function epicSummaryOf(issue: Issue): string | null {
   return issue.parent.summary || issue.parent.key;
 }
 
+/**
+ * epoch 毫秒 → `YYYY-MM-DD`，UTC 固定，不看服务器时区。
+ *
+ * 工单创建时间是个静态事实，不该跟着服务运行的机器换答案——UTC 日期在哪台机器上
+ * 跑出来都一样，本地时区拼出来的日期反而会因为跨了午夜线而在两台机器上不一致。
+ */
+function isoDate(epochMs: number): string {
+  return new Date(epochMs).toISOString().slice(0, 10);
+}
+
 export function facetsFor(
   item: ItemRef,
   issues: Map<string, Issue>,
@@ -267,8 +329,13 @@ export function facetsFor(
       value: issue.status,
       tone:
         issue.statusCategory === "done" ? "dim" : issue.statusCategory === "indeterminate" ? "ok" : undefined,
+      // 阶段灯挂在同一个 facet 上——状态名到阶段的归类是纯关键词匹配，跟
+      // statusCategory 那三档粗粒度分类是两件独立的事，互不影响。
+      stage: classifyStatusStage(issue.status),
     },
   ];
+  // created 是 0 表示解析不出来（老实例、字段缺失），给一个空维度不如不给。
+  if (issue.created) facets.splice(1, 0, { dim: "jira.created", value: isoDate(issue.created) });
   // 史诗名走 `parent`，不是一个独立的 epicName 字段：`parent` 同时装着普通工单的
   // 史诗和子任务的父任务，`hierarchy >= 1` 才是史诗——跟 public/filter.js 的
   // epicKeyOf 和 public/jira.js 里卡片上的判断保持一致。
@@ -288,6 +355,11 @@ export function facetsFor(
       // 值是个光秃秃的数字，卡片上不带维度名就读不出意思。给个图标比给"PR"两个字
       // 省地方，也跟这一行别的 chip 一样只占一个字的宽度。
       icon: PR_ICON,
+      // 聚合色跟灯带用同一个信号：一堆 PR 里只要有一个被拒就要看一眼，全部合并
+      // 才算真的不用管，还有 OPEN 没定论的不染色。
+      tone: prsFacetTone(got.prs),
+      // 灯带里除了状态阶段灯，PR 健康度也想要一眼看到，不用点开 chip。
+      light: true,
       // 数字说不出是哪个分支、开着还是并了。明细一行一个 PR：标题、状态、链接。
       // 这里给 url 而 checks 不给，是因为一个 PR 有自己的地址而一次检查在这份数据
       // 里没有——不是两处标准不一样。
@@ -309,6 +381,8 @@ export function facetsFor(
         value: `${failed}/${all.length}`,
         tone: failed ? "warn" : "ok",
         icon: CHECK_ICON,
+        // 同上：灯带里也要一颗检查健康度的点，不用点开 chip 才看得到。
+        light: true,
         // 汇总数字只说"几个挂了"，说不出**是哪个**挂了——而那才是看到红色之后
         // 唯一想知道的事。明细把每个检查的名字（形如 ci/circleci: test）和状态
         // 带上去，首页因此不必再跳一趟工单页。
@@ -320,15 +394,21 @@ export function facetsFor(
         // 属于哪个 PR。group 把归属贴回每一行：同一个 PR 的检查连续排、共享同
         // 一个组标题，内核只管"group 变了就另起一组"，不需要认识 PR 是什么。
         detail: known.flatMap((pr) =>
-          pr.checks.map((c) => ({
-            label: c.name,
-            value: c.state,
-            tone: checkFacetTone(c.state),
-            group: prGroupLabel(pr),
-            // 组标题旁边那个链接图标指回这个 PR 本身——不是某一次检查的地址，
-            // 是"这一组说的是哪个 PR"，所以每一行都贴同一个 pr.url。
-            groupUrl: pr.url,
-          })),
+          pr.checks.map((c) => {
+            const tone = checkFacetTone(c.state);
+            return {
+              label: c.name,
+              value: c.state,
+              tone,
+              group: prGroupLabel(pr),
+              // 组标题旁边那个链接图标指回这个 PR 本身——不是某一次检查的地址，
+              // 是"这一组说的是哪个 PR"，所以每一行都贴同一个 pr.url。
+              groupUrl: pr.url,
+              // 只给失败/停止的检查配这句提示——内核只认"有 send 就画按钮"，
+              // 这一步"该不该给这行按钮"的判断留在插件这边。
+              ...(tone === "warn" ? { send: checkFixPrompt(pr, c) } : {}),
+            };
+          }),
         ),
       });
     }
@@ -346,6 +426,23 @@ export async function enrich(items: ItemRef[]): Promise<Record<string, Facet[]>>
   const issueMap = new Map<string, Issue>(
     cache?.result.ok ? cache.result.issues.map((i) => [i.key, i]) : [],
   );
+  // 补第二份来源:眼下不在 JQL 结果里的单(比如刚转 Done、掉出了查询条件),
+  // 但被单条刷新过的那些——issueCache 独立于 JQL 结果存在,理由见它的定义处。
+  // 只补 issueMap 里没有的键:JQL 结果仍然是主来源,它命中的单不该被这份
+  // 更久之前的缓存盖过去。
+  //
+  // 不看 ISSUE_CACHE_MS 做新鲜度过滤,故意的:一个几分钟前刷新过的状态,
+  // 也好过完全没有状态——这条路上的单往往正是那些不会再被任何一次 JQL
+  // 结果自动刷新到的单(已经掉出查询范围),过滤掉陈旧条目等于让这个修复
+  // 对它本该修的那种单重新失效。跟 devMap 下面这一行是同一个先例:
+  // devCache 的读取端也从不按 DEV_CACHE_MS 过滤,只在写入端(`dev()`)用它
+  // 判断"要不要重新去问"。
+  for (const item of items) {
+    const key = item.source?.provider === "jira" ? item.source.ref : undefined;
+    if (!key || issueMap.has(key)) continue;
+    const hit = issueCache.get(key);
+    if (hit) issueMap.set(key, hit.issue);
+  }
   const devMap = new Map([...devCache].map(([id, hit]) => [id, hit.result]));
 
   const out: Record<string, Facet[]> = {};
@@ -437,6 +534,52 @@ export function devTargets(items: ItemRef[], bindings: ResolvedBinding[]): strin
 }
 
 /**
+ * 给一批单号（key）解析出 dev-status 要用的 id：先查当次拿到的结果，查不到
+ * 再退回上一次缓存的全量列表，两边都没有就跳过。
+ *
+ * 增量同步下"这次的结果"只有变过的那几条——一个活跃绑定的单如果本身没变，就
+ * 不在这次结果里，但它挂的 PR 完全可能刚跑完一次构建，仍然值得重刷一次。只
+ * 看当次结果会让这种单悄悄停止收到 CI 刷新，这跟"只给有活跃会话的单拉"是完全
+ * 不同的两件事：那条限制是故意少问，这里是因为问漏了，不该混在一起。
+ *
+ * 纯函数：两份 issue 列表和目标 key 都是参数，能无头测；真的去打 dev-status
+ * 的那半不需要也不能测，devTargets 已经把"该拉谁"的判断从网络里摘出来过一次，
+ * 这是同一个理由的延伸。
+ */
+export function resolveDevIds(
+  current: Issue[],
+  cached: Issue[],
+  keys: Iterable<string>,
+): Array<{ id: string; key: string }> {
+  const byKey = new Map<string, Issue>();
+  for (const i of cached) byKey.set(i.key, i);
+  // 当次结果后写，同一个 key 两边都有时以当次为准——它更可能是最新的。
+  for (const i of current) byKey.set(i.key, i);
+
+  const out: Array<{ id: string; key: string }> = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const issue = byKey.get(key);
+    if (issue?.id) out.push({ id: issue.id, key: issue.key });
+  }
+  return out;
+}
+
+/**
+ * 增量同步问多久的窗口：从上次成功同步"发起"的那一刻到现在，再加 2 分钟的
+ * 余量。
+ *
+ * +2 分钟是给 Jira 的分钟级时间戳精度和两边的时钟偏差留的安全边际——把边缘
+ * 上一两条已经见过的单再问一遍是无害的（ensureItemForSource 是幂等的，重复
+ * 写一次跟没写没区别），漏掉一条真正变了的单才是问题，所以窗口宁可宽一点。
+ */
+function incrementalWindowMinutes(lastSyncAt: number): number {
+  return Math.ceil((Date.now() - lastSyncAt) / 60_000) + 2;
+}
+
+/**
  * 把 config.json 里的 JQL 结果同步进内核的单列表，再给正开着会话的那些拉一次
  * PR/检查。
  *
@@ -449,10 +592,52 @@ export function devTargets(items: ItemRef[], bindings: ResolvedBinding[]): strin
  * 在旧数据上、什么都不说。日志因此打在这里——`!result.ok` 分支自己才是真正
  * 知道"问不到、以及为什么"的地方，把 log 塞进 start() 的 catch 只是一段看着
  * 像在处理这件事、实际永远不会跑的死代码。
+ *
+ * `opts.full` 之外，还有四种情况必须退回全量，而不是这个调用方自己选：从没
+ * 同步成功过（没有游标可用）、游标记的 JQL 跟现在的 config.jql 不一样（用户
+ * 改过查询——旧游标描述的是另一条查询，拿它当"这之后有什么变了"没有意义，见
+ * sync-state.ts）、系统时钟往回跳导致 `lastSyncAt` 比现在还晚，以及进程内的
+ * `cache` 还是冷的。时钟那条不是 `incrementalWindowMinutes` 自己去钳：钳出来
+ * 的窗口是"至少 1 分钟"，而时钟不可信的时候"至少 1 分钟"恰恰是最危险的答
+ * 案——它看起来像一次正常的增量、实际上把过去这一整段时间的改动全部漏掉了。
+ * 时钟不可信就该整段不信，退回全量，而不是拿一个算出来的负数窗口硬凑一个正数。
+ *
+ * `cache` 冷这一条是增量同步自己造出来的缺口：下面能看到,增量分支故意绕开
+ * `issues()`、直接调 `fetchIssues`,理由是增量结果只有"这次变了的几条",写进
+ * `cache` 会把工单页的"全部列表"污染成"最近改过的几条"。但游标是存盘的,能
+ * 活过一次进程重启;`cache` 不能——重启后哪怕磁盘上的游标依然有效,内存里的
+ * `cache` 也是 null。增量分支既然从不写它,就永远轮不到别人把它焐热,于是
+ * `enrich()` 只能从 `issueCache` 的边角料(单独刷新过的那几个 key)里找,首页
+ * 绝大多数单子一个 facet 都拿不到——这正是重启后在生产上实测到的样子:353 个
+ * 单里只有 5 个还挂着 facet。所以 `cache` 是 null 时必须强制走一次全量,不管
+ * 游标看起来多有效:这一次全量,才是唯一会把 `cache` 填上的机会。
  */
-export async function sync(): Promise<SyncResult> {
-  // 显式同步动作，绕开 60 秒的页面缓存——用户点了同步，就该真的问一次。
-  const result = await issues(true);
+export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
+  const config = await readJiraConfig();
+  if (!config) return { created: 0, updated: 0, total: 0, truncated: false };
+
+  const state = await readSyncState();
+  const clockWentBackward = !!state && Date.now() < state.lastSyncAt;
+  const full = !!opts?.full || !state || state.jql !== config.jql || clockWentBackward || !cache;
+
+  // 用请求**发起**的时间，不是拿到结果之后的时间——不然请求这段时间里发生的
+  // 改动会被下一次的窗口漏掉。
+  const startedAt = Date.now();
+
+  let result: IssuesResult;
+  if (full) {
+    // 显式同步动作，绕开 60 秒的页面缓存——用户点了同步，或者游标不可用，就该
+    // 真的问一次全量。issues() 会把结果写进模块级缓存，工单页的列表跟着更新。
+    result = await issues(true);
+  } else {
+    // 增量必须绕开 issues() 的模块级缓存，不能顺手调用它：那份缓存同时也是
+    // /api/jira 给工单页展示"全部工单列表"用的数据源。增量结果天然只有"这次
+    // 变了的那几条"，如果把它写进那份缓存，页面就会把"最近改过的几条"渲染成
+    // "这就是全部工单"，凭空丢掉一大片没变的单。所以这里直接调 fetchIssues，
+    // 结果只喂给下面的 syncIssues/dev 刷新，从不碰 cache。
+    result = await fetchIssues(config, fetch, incrementalJql(config.jql, incrementalWindowMinutes(state.lastSyncAt)));
+  }
+
   if (!result.ok) {
     // 这里才是真正知道"问不到"这件事的地方——不是 start() 那个永远等不到异常
     // 的 .catch()。unconfigured 不算失败：还没配置的人不该每次启动都吃一行
@@ -460,10 +645,14 @@ export async function sync(): Promise<SyncResult> {
     // 值得写进日志的——只打分类过的原因，不打原始响应体：那里面带账号信息，
     // 跟 /api/jira/config 从不回显 token 是同一条线。
     if (result.reason !== "unconfigured") {
-      console.error(`[jira] 启动同步失败：${result.reason}`);
+      console.error(`[jira] ${full ? "全量" : "增量"}同步失败：${result.reason}`);
     }
     return { created: 0, updated: 0, total: 0, truncated: false };
   }
+
+  // 游标只在拉取成功之后才前移，失败绝不推进——推进了就等于承认"这段时间的
+  // 改动我们已经看过了"，而实际上一条都没看到。
+  await writeSyncState({ lastSyncAt: startedAt, jql: config.jql });
 
   // 同步之前先记下已经存在的 (provider, ref)：ensureItemForSource 返回的是
   // WorkItem 本身，不带"是不是新建的"这个标志——加这个标志要为了这一个调用方
@@ -476,7 +665,7 @@ export async function sync(): Promise<SyncResult> {
   // 工单页地址。只有产生这个来源的一方知道怎么拼——内核不该替它猜，所以由这里
   // 一并写进 source.url，首页那颗单号徽标据此变成可点的链接。
   const browse = await browseUrl();
-  const syncResult = await syncIssues(result.issues, async (ref, title) => {
+  const syncResult = await syncIssues(result, async (ref, title) => {
     const created = !existingRefs.has(ref);
     await ensureItemForSource("jira", ref, title, { refreshTitle: true, ...browse(ref) });
     return { created };
@@ -485,18 +674,42 @@ export async function sync(): Promise<SyncResult> {
   // PR/检查是独立的一步：这一步失败不该把已经写好的工单同步结果变成失败。
   try {
     const [afterItems, bindings] = await Promise.all([readItems(), resolveBindings(await liveFromKernel())]);
-    const targets = new Set(devTargets(afterItems, bindings));
-    if (targets.size) {
-      const keyById = new Map(result.issues.map((i) => [i.key, i.id]));
-      const ids = [...targets].map((key) => keyById.get(key)).filter((id): id is string => !!id);
-      const keyOfId = new Map(result.issues.map((i) => [i.id, i.key]));
-      await mapLimited(ids, DEV_CONCURRENCY, (id) => dev(id, keyOfId.get(id) ?? "", true));
+    const targets = devTargets(afterItems, bindings);
+    if (targets.length) {
+      // 增量结果里查不到的活跃绑定单（本身没变，但仍想刷一次 PR/CI），退回
+      // 上一次缓存的全量列表去找——见 resolveDevIds 的注释。
+      const cachedIssues = cache?.result.ok ? cache.result.issues : [];
+      const resolved = resolveDevIds(result.issues, cachedIssues, targets);
+      await mapLimited(resolved, DEV_CONCURRENCY, ({ id, key }) => dev(id, key, true));
     }
   } catch {
     // 拉 PR/检查失败不影响已经同步好的工单结果。
   }
 
   return syncResult;
+}
+
+/**
+ * 设置页里 JQL 旁边那颗「完整同步」按钮。
+ *
+ * 只认一个 key：`full-sync`，别的一律 false——这不是给内核挡的（runPluginAction
+ * 已经在清单这一层挡过一次），是给这个函数自己留一条"我不认识的键不装懂"的路。
+ *
+ * 成功与否要说的是用户按下这颗按钮时真正关心的事："这次点击有没有真的去问了
+ * Jira"，不是"每一步内部细节都顺利"——那件事 sync() 本身就不区分：它对"还没
+ * 配置"和"配置了但连不上/认证失败"用的是同一个返回值（零结果），原因见 sync()
+ * 顶上的注释——background 的 start() 不该有一条异常路径能把启动流程带崩，那条
+ * 边界现在仍然成立，改 sync() 的返回形状会连累 runSync()/start() 每一个调用方。
+ * 所以这里能诚实回答的只有"配置存不存在"：没配置，这次点击注定什么都问不到，
+ * 答 false；配置存在，就真的发了一轮网络请求，答 true——至于这一轮里某个字段
+ * 认证失败或者连不上，那是 sync() 已经在打的日志，跟"点没点着"是两件事。
+ */
+export async function runAction(key: string): Promise<boolean> {
+  if (key !== "full-sync") return false;
+  const config = await readJiraConfig();
+  if (!config) return false;
+  await sync({ full: true });
+  return true;
 }
 
 /**
@@ -542,13 +755,12 @@ function jiraStatusFor(config: JiraConfig, to: ItemStatus): string {
 }
 
 /**
- * ItemLifecycle 迁移之后的写回：转 Jira 状态,进入 in_review 时额外评论一句。
+ * ItemLifecycle 迁移之后的写回：只转 Jira 状态。
  *
- * 只在这一步评论——"从没人看到有 PR 可以看"是唯一一个需要把人叫过来的时刻,
- * `in_merge`/`done` 这类内部记账式的迁移不该打扰 PR 评论区(见 spec)。
+ * 不写 PR：评论区是给人看的地方，不该由工具自动灌水。
  *
  * 不吞异常：调用方（`plugins/handlers.ts` 的 `notifyLifecycleChange`）已经在
- * 外层 try/catch+超时，这里如实抛出，两步各自失败不影响另一步。
+ * 外层 try/catch+超时，这里如实抛出。
  */
 export async function onLifecycleChange(ref: string, from: ItemStatus, to: ItemStatus): Promise<void> {
   const config = await readJiraConfig();
@@ -556,15 +768,6 @@ export async function onLifecycleChange(ref: string, from: ItemStatus, to: ItemS
 
   const targetStatus = jiraStatusFor(config, to);
   await transitionIssue(config, ref, targetStatus).catch(() => {});
-
-  if (to !== "in_review") return;
-  const issue = await refreshIssue(ref);
-  if (!issue) return;
-  const got = await dev(issue.id, issue.key, false);
-  if (!got.ok) return;
-  const open = got.prs.find((pr) => pr.status === "OPEN");
-  if (!open) return;
-  await commentOnPr(config, open.url, "tmux-next：这张单已经在这个 PR 上开工了。").catch(() => {});
 }
 
 /**

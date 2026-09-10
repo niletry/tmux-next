@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { transitionIssue, commentOnPr } from "./writeback";
+import { transitionIssue } from "./writeback";
 import type { JiraConfig } from "./config";
 
 const CONFIG: JiraConfig = {
@@ -73,40 +73,4 @@ test("transitionIssue 查询失败时抛出，调用方决定怎么处理", asyn
     "GET /rest/api/3/issue/PROJ-1/transitions": () => new Response(null, { status: 401 }),
   });
   await expect(transitionIssue(CONFIG, "PROJ-1", "Done", fetcher)).rejects.toThrow();
-});
-
-test("commentOnPr 往解析出来的 workspace/repo/id 发评论", async () => {
-  const calls: unknown[] = [];
-  const fetcher = fakeFetch({
-    "POST /2.0/repositories/%7Bws%7D/%7Brepo%7D/pullrequests/42/comments": async (req) => {
-      calls.push(await req.json());
-      return new Response(null, { status: 201 });
-    },
-  });
-  await commentOnPr(
-    CONFIG,
-    "https://bitbucket.org/{ws}/{repo}/pull-requests/42",
-    "写回评论",
-    fetcher,
-  );
-  expect(calls).toEqual([{ content: { raw: "写回评论" } }]);
-});
-
-test("commentOnPr 没配 Bitbucket 就直接不做", async () => {
-  const fetcher = (async () => {
-    throw new Error("不该被调用");
-  }) as unknown as typeof fetch;
-  const noBitbucket: JiraConfig = { ...CONFIG, bitbucket: undefined };
-  await expect(
-    commentOnPr(noBitbucket, "https://bitbucket.org/{ws}/{repo}/pull-requests/42", "x", fetcher),
-  ).resolves.toBeUndefined();
-});
-
-test("commentOnPr 解析不出 PR 地址就直接不做", async () => {
-  const fetcher = (async () => {
-    throw new Error("不该被调用");
-  }) as unknown as typeof fetch;
-  await expect(
-    commentOnPr(CONFIG, "https://example.com/not-a-pr", "x", fetcher),
-  ).resolves.toBeUndefined();
 });

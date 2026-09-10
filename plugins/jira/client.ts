@@ -20,6 +20,8 @@ export type Issue = {
   status: string;
   statusCategory: string;
   updated: number;
+  /** 工单在 Jira 里创建的时间，解析不出来时是 0——跟 updated 同一套规则。 */
+  created: number;
   /** 类型名，原样来自实例——它是可以被改名的，所以只当标签用。 */
   type: string;
   /**
@@ -41,13 +43,13 @@ export type Issue = {
 };
 
 export type IssuesResult =
-  | { ok: true; issues: Issue[] }
+  | { ok: true; issues: Issue[]; truncated: boolean }
   | { ok: false; reason: "unconfigured" | "auth" | "query" | "unreachable" };
 
 /** Jira 挂了不能把页面吊死。 */
 const TIMEOUT_MS = 8000;
 
-const FIELDS = "summary,status,updated,issuetype,parent,assignee";
+const FIELDS = "summary,status,updated,created,issuetype,parent,assignee";
 
 /**
  * 一行搜索结果 → 一个 Issue，认不出就是 null。
@@ -95,6 +97,7 @@ export function toIssue(row: unknown): Issue | null {
     statusCategory:
       typeof f.status?.statusCategory?.key === "string" ? f.status.statusCategory.key : "",
     updated: Date.parse(typeof f.updated === "string" ? f.updated : "") || 0,
+    created: Date.parse(typeof f.created === "string" ? f.created : "") || 0,
     type: typeof t.name === "string" ? t.name : "",
     hierarchy,
     parent,
@@ -104,47 +107,86 @@ export function toIssue(row: unknown): Issue | null {
   };
 }
 
+/** 一页问多少条。`/search/jql` 这条新接口的单页上限是 100（旧 `/search` 是 100 也一样）。 */
+const PAGE_SIZE = 100;
+
+/**
+ * 翻页翻到几条为止就不再问下一页——这是唯一的上限，sync.ts 不再单独截一刀。
+ *
+ * 曾经有过两层：这里 500，sync.ts 的 MAX_SYNC_ITEMS 另设 200，靠"谁比谁宽"
+ * 来让 sync.ts 判断"超没超"。结果是这个仓库自己的 Jira 实例装到 249 条匹配
+ * 的工单后，每次同步都只落库排在最前的 200 条，其余的永远同步不到，而且没有
+ * 任何提示——因为 200 这道业务上限本身就比这个仓库需要的规模小，两层与其说是
+ * 防线不如说是白丢数据。现在只留一层：这里翻到没有下一页，或者拿够
+ * MAX_FETCH_ITEMS 为止；是否撞到了这道安全阀（Jira 那边其实还有更多）由这个
+ * 函数自己算出来，通过 truncated 字段直接告诉调用方，不再靠两个数字的大小
+ * 关系去猜。500 本身仍然是"客户端别把 Jira 问穿"的安全阀，防的是一条写错的
+ * JQL 匹配上几千条——items.json 是纯文本全量读写，不该被这种查询喂到无限大。
+ */
+const MAX_FETCH_ITEMS = 500;
+
 export async function fetchIssues(
   config: JiraConfig,
   fetcher: typeof fetch = fetch,
+  // 增量同步要问一句"config.jql 加了时间条件"之后的 JQL，而不是原样的
+  // config.jql——这个参数是那唯一的口子。JQL 只来自配置，永不来自请求这条
+  // 边界仍然成立：这里的默认值就是 config.jql 本身，唯一会传别的值进来的
+  // 调用方（server.ts 的 sync()）也是拿 config.jql 现算的（见 jql.ts），
+  // 从没有一条路径把请求体里的字符串接到这个参数上。
+  jql: string = config.jql,
 ): Promise<IssuesResult> {
-  // JQL 只来自配置，永不来自请求：否则这个无认证服务就是个任人查询的 Jira 代理。
-  // URLSearchParams 把空格编成 "+"（application/x-www-form-urlencoded），但查询串
-  // 里更规范的写法是 %20——换成 %20 才能被当普通 URI 编码正确解出空格。
-  const query = new URLSearchParams({ jql: config.jql, fields: FIELDS, maxResults: "50" })
-    .toString()
-    .replace(/\+/g, "%20");
   const auth = "Basic " + btoa(`${config.email}:${config.token}`);
-
-  let res: Response;
-  try {
-    res = await fetcher(`${config.url}/rest/api/3/search/jql?${query}`, {
-      headers: { authorization: auth, accept: "application/json" },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-  } catch {
-    // 超时、DNS、连接被拒——对用户都是同一件事：现在拿不到。
-    return { ok: false, reason: "unreachable" };
-  }
-
-  if (res.status === 401 || res.status === 403) return { ok: false, reason: "auth" };
-  if (res.status >= 500) return { ok: false, reason: "unreachable" };
-  if (!res.ok) return { ok: false, reason: "query" };
-
-  let data: { issues?: unknown };
-  try {
-    data = (await res.json()) as { issues?: unknown };
-  } catch {
-    return { ok: false, reason: "unreachable" };
-  }
-
-  const rows = Array.isArray(data?.issues) ? data.issues : [];
   const issues: Issue[] = [];
-  for (const row of rows) {
-    const issue = toIssue(row);
-    if (issue) issues.push(issue);
-  }
-  return { ok: true, issues };
+  let pageToken: string | undefined;
+
+  // 翻页翻到没有下一页，或者已经拿够了让 sync.ts 判得出"超没超"为止——不是翻到
+  // 底：一个几千条的 JQL 不该让每次同步都把 Jira 问穿。
+  do {
+    // URLSearchParams 把空格编成 "+"（application/x-www-form-urlencoded），但查询串
+    // 里更规范的写法是 %20——换成 %20 才能被当普通 URI 编码正确解出空格。
+    const params: Record<string, string> = { jql, fields: FIELDS, maxResults: String(PAGE_SIZE) };
+    if (pageToken) params.nextPageToken = pageToken;
+    const query = new URLSearchParams(params).toString().replace(/\+/g, "%20");
+
+    let res: Response;
+    try {
+      res = await fetcher(`${config.url}/rest/api/3/search/jql?${query}`, {
+        headers: { authorization: auth, accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch {
+      // 超时、DNS、连接被拒——对用户都是同一件事：现在拿不到。翻到一半断了也是
+      // 整体失败，不返回已经拿到的半份列表——那会让"200 条"和"网络在第 2 页断了
+      // 只有 100 条"看起来一样，而后者不该被当成同步完整跑完了。
+      return { ok: false, reason: "unreachable" };
+    }
+
+    if (res.status === 401 || res.status === 403) return { ok: false, reason: "auth" };
+    if (res.status >= 500) return { ok: false, reason: "unreachable" };
+    if (!res.ok) return { ok: false, reason: "query" };
+
+    let data: { issues?: unknown; nextPageToken?: unknown };
+    try {
+      data = (await res.json()) as { issues?: unknown; nextPageToken?: unknown };
+    } catch {
+      return { ok: false, reason: "unreachable" };
+    }
+
+    const rows = Array.isArray(data?.issues) ? data.issues : [];
+    for (const row of rows) {
+      const issue = toIssue(row);
+      if (issue) issues.push(issue);
+    }
+
+    // 没有 nextPageToken（或这一页本来就是空的）就是最后一页——这条新接口用
+    // token 的有无表示"还有没有下一页"，不是老接口那种数 total/startAt 的算法。
+    pageToken = typeof data?.nextPageToken === "string" && data.nextPageToken ? data.nextPageToken : undefined;
+    if (!rows.length) break;
+  } while (pageToken && issues.length < MAX_FETCH_ITEMS);
+
+  // 循环退出时 pageToken 还有值，说明不是"翻到底了"，是撞到了 MAX_FETCH_ITEMS
+  // 这道安全阀——Jira 那边还有更多，只是不打算再问下去。
+  return { ok: true, issues, truncated: !!pageToken };
 }
 
 /**

@@ -43,6 +43,26 @@ test("插件不认的子路径落到 404，而不是被它吞掉", async () => {
   expect(res.status).toBe(404);
 });
 
+// 设置页那颗动作按钮（比如 Jira 的「完整同步」）。这里的 TMUX_NEXT_JIRA_DIR 是
+// 一个全新的临时目录、没有 config.json，所以声明过的动作也答 false——这条断言
+// 要的不是"同步真的成功了"，而是"请求真的落到了这条路由、答的是 {ok:boolean}"。
+test("声明过的插件动作会被调用，答 { ok }", async () => {
+  const res = await fetch(`${base()}/api/plugins/jira/actions/full-sync`, { method: "POST" });
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ ok: false });
+});
+
+// 清单没声明的动作键不能碰到插件——跟 savePluginSettings 只认声明过的配置键
+// 是同一道闸门，这里断言的是路由把它挡在了内核这一侧，从不落到 404（跟 settings
+// 路由不同：这条路由从不 404，一律 200 { ok: false }）。
+test("没声明的动作键不会落到插件", async () => {
+  const res = await fetch(`${base()}/api/plugins/jira/actions/not-a-real-action`, {
+    method: "POST",
+  });
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ ok: false });
+});
+
 test("状态目录可以用 env 顶掉，且惰性读取", () => {
   // 惰性：这个 env 是在文件顶部、import 之前设的，模块加载时若捕获了值，
   // 下面这两行就会读到 home 底下的真实目录——正是 CLAUDE.md 里那条规矩。
@@ -218,7 +238,7 @@ test("查询串里的 jql 到不了 Jira——真正发出去的还是配置里�
       `${base()}/api/jira/issues?jql=${encodeURIComponent("project = SECRET-PROXY-ATTEMPT")}&refresh=1`,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, issues: [] });
+    expect(await res.json()).toEqual({ ok: true, issues: [], truncated: false });
   } finally {
     globalThis.fetch = realFetch;
     process.env.TMUX_NEXT_JIRA_DIR = prevDir;

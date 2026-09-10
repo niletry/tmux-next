@@ -4,6 +4,7 @@ import { FIELD_KEY_CHARS } from "../src/template";
 import type { ItemStatus } from "../src/item-lifecycle";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
+import { handle as supervisor } from "./supervisor/server";
 import {
   handle as jira,
   enrich as jiraEnrich,
@@ -14,6 +15,7 @@ import {
   onLifecycleChange as jiraOnLifecycleChange,
   readSettings as jiraReadSettings,
   writeSettings as jiraWriteSettings,
+  runAction as jiraRunAction,
 } from "./jira/server";
 
 /**
@@ -62,11 +64,18 @@ export type PluginServer = {
    * 内核不知道哪个键是密钥的旧值存在哪。抛出即失败，调用方只会知道"没存上"。
    */
   writeSettings?: (values: Record<string, string | boolean>) => Promise<void>;
+  /**
+   * 设置页那颗动作按钮按下去要做的事，`key` 是清单里 actions[].key 之一——
+   * 内核在 runPluginAction() 里已经挡过一次"清单没声明的键不传进来"，这里
+   * 只管认识自己声明过的那几个。返回值是"做没做成"，页面据此显示哪句回执。
+   */
+  runAction?: (key: string) => Promise<boolean>;
 };
 
 export const SERVERS: Record<string, PluginServer> = {
   gallery: { handle: gallery },
   notifications: { handle: notifications },
+  supervisor: { handle: supervisor },
   jira: {
     handle: jira,
     enrich: jiraEnrich,
@@ -77,6 +86,7 @@ export const SERVERS: Record<string, PluginServer> = {
     onLifecycleChange: jiraOnLifecycleChange,
     readSettings: jiraReadSettings,
     writeSettings: jiraWriteSettings,
+    runAction: jiraRunAction,
   },
 };
 
@@ -106,6 +116,14 @@ export const ENRICH_TIMEOUT_MS = 300;
 
 /** 一条 facet 文本的上限，够放一个状态或一个史诗名，不够撑破一张卡片。 */
 const MAX_TEXT = 120;
+
+/**
+ * 一行明细"发给会话"的文本上限。这不是给人看的一格标签，是要塞进
+ * `send-keys` 的一整句话（比如带上 PR 地址和检查名），所以给得比 MAX_TEXT 宽——
+ * 但仍然远小于 sendText 自己的 2000 上限（src/tmux/send-text.ts 的 MAX_TEXT），
+ * 留出余量不至于插件这边刚好顶格就被下游再截一次。
+ */
+const MAX_SEND_TEXT = 500;
 
 /**
  * 合并后的**插件** facet，每张单最多留几条——只管这一份，不是一张卡片上全部
@@ -236,6 +254,7 @@ export async function collectFacets(
                 const rowUrl = safeHttpUrl(r?.url);
                 const rowGroup = trim(r?.group, MAX_TEXT);
                 const rowGroupUrl = safeHttpUrl(r?.groupUrl);
+                const rowSend = trim(r?.send, MAX_SEND_TEXT);
                 detail.push({
                   label,
                   value: rowValue,
@@ -243,6 +262,7 @@ export async function collectFacets(
                   ...(rowUrl ? { url: rowUrl } : {}),
                   ...(rowGroup ? { group: rowGroup } : {}),
                   ...(rowGroupUrl ? { groupUrl: rowGroupUrl } : {}),
+                  ...(rowSend ? { send: rowSend } : {}),
                 });
               }
             }
@@ -620,4 +640,38 @@ export async function savePluginSettings(
     false,
     timeoutMs,
   );
+}
+
+/**
+ * 设置页那颗动作按钮，比如 Jira 的「完整同步」。
+ *
+ * 跟 pluginSettings/savePluginSettings 一模一样的形状：`isConsidered` 挡关掉的
+ * 插件，`timeoutMs` 默认 SOURCE_TIMEOUT_MS——这是显式的一次按钮点击，允许真的
+ * 发网络请求，30 秒是这类动作已经在用的预算，没道理另开一个。
+ *
+ * 只把**清单声明过**的 key 交给插件：请求里的 key 是任意字符串，不挡的话这个
+ * 无认证的服务就是一个任意字符串执行器——跟 savePluginSettings 只认声明过的
+ * 配置键同一个理由。servers/plugins 作为参数、真表做默认值，理由也一样：
+ * 注册表是编译期常量，没有这个参数就没法塞进"会抛"和"会卡住"的假插件去证明
+ * 安全阀真的会兜住。
+ */
+export async function runPluginAction(
+  id: string,
+  key: string,
+  servers: Record<string, PluginServer> = SERVERS,
+  plugins: Plugin[] = PLUGINS,
+  timeoutMs = SOURCE_TIMEOUT_MS,
+): Promise<boolean> {
+  const enabled = new Set(enabledPlugins().map((p) => p.id));
+  if (!isConsidered(id, enabled)) return false;
+  const declared = plugins.find((p) => p.id === id)?.actions?.some((a) => a.key === key);
+  if (!declared) return false;
+  const run = servers[id]?.runAction;
+  if (!run) return false;
+
+  try {
+    return await withTimeout(run(key), false, timeoutMs);
+  } catch {
+    return false;
+  }
 }

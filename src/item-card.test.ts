@@ -79,6 +79,16 @@ test("带明细的维度画成按钮，点开列出每一行", async () => {
   expect(sheet.textContent).toContain("OPEN");
 });
 
+test("facetChip 把 sessionName 一路传给明细里的发送按钮", async () => {
+  const { facetChip } = await load();
+  const chip = facetChip(
+    { dim: "jira.checks", value: "1/1", detail: [{ label: "ci/test", value: "FAILED", tone: "warn", send: "修复它" }] },
+    { sessionName: "web-1-a" },
+  );
+  chip.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  expect(document.querySelector(".detail-send")).not.toBeNull();
+});
+
 test("agent 维度的取值走字典，不把内部词露出来", async () => {
   const { facetChip } = await load();
   const chip = facetChip({ dim: "item.agent", value: "waiting" });
@@ -119,6 +129,80 @@ test("本地单没有来源徽标，也不画会话数", async () => {
   const head = itemHead({ id: "it-2", title: "本地的活", source: null }, [], 0);
   expect(head.querySelector(".item-source")).toBeNull();
   expect(head.querySelector(".item-count")).toBeNull();
+});
+
+// --- statusLightRow：卡片头部的灯带 -------------------------------------------
+
+test("带 stage 的 facet 画成一颗状态灯，颜色和空心/实心跟 stage 走", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.status", value: "Ready for Release", stage: { hue: "ok", filled: false } },
+  ]);
+  const dot = row.querySelector(".status-dot")!;
+  expect(dot.classList.contains("ok")).toBe(true);
+  expect(dot.classList.contains("filled")).toBe(false);
+});
+
+test("标 light 的 facet 也画一颗点，用它自己的 tone 上色", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.checks", value: "1/2", tone: "warn", light: true },
+  ]);
+  const dot = row.querySelector(".status-dot")!;
+  expect(dot.classList.contains("warn")).toBe(true);
+});
+
+test("没有 stage 也没有 light 的 facet 不出现在灯带里", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([{ dim: "jira.epic", value: "登录改版" }]);
+  expect(row.querySelectorAll(".status-dot").length).toBe(0);
+});
+
+test("点亮的点带 title，说明是哪个维度的什么值——不靠颜色单独传达信息", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.status", value: "Ready for Release", stage: { hue: "ok", filled: false } },
+  ]);
+  const dot = row.querySelector(".status-dot")!;
+  expect(dot.getAttribute("title")).toContain("Ready for Release");
+});
+
+test("有明细的灯点一下能打开跟原 chip 一样的详情浮层", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    {
+      dim: "jira.prs", value: "1", tone: "warn", light: true,
+      detail: [{ label: "修登录页", value: "DECLINED" }],
+    },
+  ]);
+  const dot = row.querySelector(".status-dot") as HTMLButtonElement;
+  expect(dot.tagName).toBe("BUTTON");
+  dot.click();
+  const sheet = document.querySelector(".sheet-backdrop")!;
+  expect(sheet).toBeTruthy();
+  expect(sheet.textContent).toContain("DECLINED");
+});
+
+test("没有明细的灯是静态的，不是按钮", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.status", value: "Done", stage: { hue: "ok", filled: true } },
+  ]);
+  const dot = row.querySelector(".status-dot")!;
+  expect(dot.tagName).toBe("SPAN");
+});
+
+test("itemHead 把灯带排进头部，跟着来源徽标之后", async () => {
+  const { itemHead } = await load();
+  const head = itemHead(
+    { id: "it-1", title: "修登录页", source: { provider: "jira", ref: "AB-1" } },
+    [
+      { dim: "jira.status", value: "Done", stage: { hue: "ok", filled: true } },
+      { dim: "jira.checks", value: "0/2", tone: "ok", light: true },
+    ],
+    0,
+  );
+  expect(head.querySelectorAll(".status-dot").length).toBe(2);
 });
 
 // --- openDetailSheet：group 字段按 PR 分组 -----------------------------------
@@ -198,4 +282,69 @@ test("没有 groupUrl 就不画那个链接入口", async () => {
     { label: "ci/test", value: "SUCCESSFUL", tone: "ok", group: "web-app #371 · fix/login → main · OPEN" },
   ]);
   expect(document.querySelector(".detail-group-link")).toBeNull();
+});
+
+// --- 明细行「发给会话」按钮：只在有 send 且恰好一个绑定会话时才出现 --------
+
+test("有 send 且传了 sessionName 才画按钮", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "FAILED", tone: "warn", send: "请修复 ci/test" },
+  ], "web-1-a");
+  const btn = document.querySelector(".detail-send") as HTMLButtonElement;
+  expect(btn).not.toBeNull();
+  expect(btn.textContent).toBe(tr("items.sendToSession"));
+});
+
+test("没有 send 就不画按钮，就算传了 sessionName", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [{ label: "ci/test", value: "SUCCESSFUL", tone: "ok" }], "web-1-a");
+  expect(document.querySelector(".detail-send")).toBeNull();
+});
+
+test("多会话或没有会话时不传 sessionName，按钮不出现", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "FAILED", tone: "warn", send: "请修复 ci/test" },
+  ], null);
+  expect(document.querySelector(".detail-send")).toBeNull();
+});
+
+test("点击按钮把 send 文本发给传入的会话，成功后短暂反馈再恢复", async () => {
+  const { openDetailSheet } = await load();
+  const real = globalThis.fetch;
+  const calls: { url: string; body: unknown }[] = [];
+  (globalThis as any).fetch = async (u: unknown, init?: RequestInit) => {
+    calls.push({ url: String(u), body: init?.body ? JSON.parse(String(init.body)) : null });
+    return new Response(null, { status: 204 });
+  };
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "FAILED", tone: "warn", send: "请修复 ci/test" },
+  ], "web-1-a");
+  const btn = document.querySelector(".detail-send") as HTMLButtonElement;
+  btn.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 10));
+  (globalThis as any).fetch = real;
+
+  expect(calls.length).toBe(1);
+  expect(calls[0]!.url).toContain("api/sessions/web-1-a/keys");
+  expect(calls[0]!.body).toEqual({ text: "请修复 ci/test" });
+  expect(btn.disabled).toBe(true);
+  expect(btn.textContent).toBe(tr("items.sent"));
+});
+
+test("发送失败时提示错误，按钮重新可点", async () => {
+  const { openDetailSheet } = await load();
+  const real = globalThis.fetch;
+  (globalThis as any).fetch = async () => new Response(null, { status: 500 });
+  openDetailSheet("检查: 1/1", [
+    { label: "ci/test", value: "FAILED", tone: "warn", send: "请修复 ci/test" },
+  ], "web-1-a");
+  const btn = document.querySelector(".detail-send") as HTMLButtonElement;
+  btn.dispatchEvent(new (globalThis as any).window.Event("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 10));
+  (globalThis as any).fetch = real;
+
+  expect(btn.disabled).toBe(false);
+  expect(btn.textContent).toBe(tr("items.sendToSession"));
 });

@@ -796,6 +796,46 @@ a.item-source.is-link:hover {
   max-width: 100%;
 }
 
+/* 卡片头部的灯带：一排小圆点，一眼扫过整张卡片就知道大致进度和 PR/检查健不健康，
+   不用点开任何一格 chip。跟单号紧挨着，同一行 flex-wrap。 */
+.status-lights {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  padding: 0;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  cursor: default;
+  /* 24px 的点按目标：可点的点（有明细、画成 <button>）用透明边框把命中区撑到跟
+     别处一致，不靠视觉尺寸本身去够触屏最小尺寸。 */
+  position: relative;
+}
+
+.status-dot::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+
+button.status-dot {
+  cursor: pointer;
+}
+
+/* 实心：填充自己的颜色。空心：只留描边，中心透底色——同一色相靠这一级区分
+   阶段的早晚，不新增任何颜色。颜色只从角色令牌来，跟 .facet.ok/.warn/.dim
+   同一套——src/themes.test.ts 扫的就是这条。 */
+.status-dot.filled { background: currentColor; }
+.status-dot.ok { color: var(--ok); }
+.status-dot.warn { color: var(--danger); }
+.status-dot.dim { color: var(--text-2); }
+.status-dot.accent { color: var(--accent); }
+
 /* 维度 chips 一行、可换行——不能挤破卡片宽度，标签数量是数据决定的，没有上限。 */
 .facets {
   display: flex;
@@ -1750,6 +1790,25 @@ body.no-select {
 
 .agent-chip.missing { opacity: 0.4; text-decoration: line-through; }
 
+/* Session-kind picker. Hidden entirely when no enabled plugin declares a
+   sessionKinds entry, so a machine with none installed sees exactly the
+   ordinary-session form it always did. */
+.kind-row { display: flex; gap: 6px; margin: 4px 0 2px; flex-wrap: wrap; }
+
+.kind-chip {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 13px/1 -apple-system, system-ui, sans-serif;
+}
+
+.kind-chip.on { border-color: var(--accent-text); background: var(--accent); color: var(--on-accent); }
+
+.kind-fields { display: flex; flex-direction: column; gap: 8px; margin: 4px 0; }
+
 /* Template picker. Only drawn when the page was opened from a work item and
    that item has templates, so it costs nothing for anyone who never made one. */
 .template-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -2042,6 +2101,23 @@ a.detail-label:hover {
 .detail-state.ok { color: var(--ok); }
 .detail-state.warn { color: var(--danger); }
 .detail-state.dim { color: var(--text-2); }
+
+/* 一行明细上的「发给会话」按钮：跟状态词一样不占宽度，颜色走 accent 而不是
+   跟着这一行的 tone 走——它是一个动作，不是这一行状态的一部分。 */
+.detail-send {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-5);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+.detail-send:disabled {
+  color: var(--text-2);
+  cursor: default;
+}
 
 .sheet-close {
   display: block;
