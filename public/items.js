@@ -413,6 +413,83 @@ function saveGroupBy(dim) {
   }
 }
 
+const SORT_KEY = "tmux-next.items.sort";
+const DEFAULT_SORT = "created-desc";
+/**
+ * 固定几档，选项自带方向——不是"字段+方向"两个控件，理由跟 view-mode/group-by
+ * 一样：这份列表里但凡有方向的控件都是一个下拉框，不额外加一层。
+ */
+const SORT_VALUES = [
+  "none",
+  "created-desc", "created-asc",
+  "stage-asc", "stage-desc",
+  "assignee-asc", "assignee-desc",
+];
+
+function loadSort() {
+  try {
+    const raw = localStorage.getItem(SORT_KEY) ?? "";
+    return SORT_VALUES.includes(raw) ? raw : DEFAULT_SORT;
+  } catch {
+    return DEFAULT_SORT;
+  }
+}
+
+function saveSort(value) {
+  try {
+    localStorage.setItem(SORT_KEY, value);
+  } catch {
+    // 隐私窗口：记不住就记不住，不是页面能崩的理由。
+  }
+}
+
+/**
+ * 在一张单的 facet 列表里找一个带着某个 sortKey.key 的 facet。内核不知道这个
+ * key 具体是什么意思（"stage"、"assignee"……），只负责把同一个 key 的 facet
+ * 聚到排序下拉的同一个选项里——跟灯带认 `stage`/`light` 是同一条规矩。
+ * @param {Facet[]|undefined} facets
+ * @param {string} key
+ */
+function sortValueOf(facets, key) {
+  return (facets ?? []).find((f) => f.sortKey?.key === key);
+}
+
+/**
+ * 按当前排序选择给 `items` 排一份新数组（不改原数组，`groupItems` 之后会照抄
+ * 这个顺序）。
+ *
+ * 「没有这个 facet 的单，不管升排降排都排在最后」是核心规则：缺数据不是
+ * "最小"也不是"最大"，是"不知道"，两种方向下都该待在看不出偏向的那一端——
+ * 跟卡片头部灯带那条"没有明细的灯不点开"是同一种诚实。
+ *
+ * @param {ItemLike[]} items
+ * @param {Record<string, Facet[]>} facetsById
+ * @param {string} sortValue
+ */
+function sortItems(items, facetsById, sortValue) {
+  if (sortValue === "none") return items;
+  if (sortValue === "created-desc") return [...items].sort((a, b) => b.createdAt - a.createdAt);
+  if (sortValue === "created-asc") return [...items].sort((a, b) => a.createdAt - b.createdAt);
+
+  const key = sortValue.startsWith("stage") ? "stage" : sortValue.startsWith("assignee") ? "assignee" : null;
+  if (!key) return items;
+  const dir = sortValue.endsWith("-desc") ? -1 : 1;
+
+  return [...items].sort((a, b) => {
+    const fa = sortValueOf(facetsById[a.id], key);
+    const fb = sortValueOf(facetsById[b.id], key);
+    // 缺数据的一律排最后，两边都缺就保持原有相对顺序。
+    if (!fa && !fb) return 0;
+    if (!fa) return 1;
+    if (!fb) return -1;
+    const va = fa.sortKey?.rank ?? fa.value;
+    const vb = fb.sortKey?.rank ?? fb.value;
+    if (va < vb) return -dir;
+    if (va > vb) return dir;
+    return 0;
+  });
+}
+
 /**
  * 读存下来的筛选选择。JSON 坏了（手改、旧版本写的形状不同）当作没有筛选，
  * 不是当作"什么都不匹配"——前者是安全的默认，后者会让页面看起来像坏了。
@@ -815,6 +892,35 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
   groupWrap.append(select);
   actions.append(groupWrap);
 
+  // 排序跟「分组」并排，同一档控件：分组是"分成几堆"，排序是"堆里/堆外先看谁"，
+  // 两者互不干扰——sortItems 排在 groupItems 之前，组内顺序原样继承。
+  const sortWrap = el("label", "toolbar-control is-field group-by-wrap");
+  sortWrap.append(el("span", "toolbar-label", tr("items.sortBy")));
+  const sortSelect = document.createElement("select");
+  sortSelect.id = "sort-by";
+  // 字面量的 tr()，不是 tr(变量)——死键扫描只认字面量（同上面 view-mode 的写法）。
+  for (const [value, label] of [
+    ["none", () => tr("items.sortNone")],
+    ["created-desc", () => tr("items.sortCreatedDesc")],
+    ["created-asc", () => tr("items.sortCreatedAsc")],
+    ["stage-asc", () => tr("items.sortStageAsc")],
+    ["stage-desc", () => tr("items.sortStageDesc")],
+    ["assignee-asc", () => tr("items.sortAssigneeAsc")],
+    ["assignee-desc", () => tr("items.sortAssigneeDesc")],
+  ]) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label();
+    sortSelect.append(opt);
+  }
+  sortSelect.value = loadSort();
+  sortSelect.addEventListener("change", () => {
+    saveSort(sortSelect.value);
+    onChange();
+  });
+  sortWrap.append(sortSelect);
+  actions.append(sortWrap);
+
   // 视图切换跟「分组」并排：两个都是"这份列表怎么排给我看"，不跟同步那种动作混。
   // 900px 以下整个控件不画（.view-mode-wrap）——这是坐在电脑前扫一屏用的排法，
   // 手机上意义不大。
@@ -1137,9 +1243,17 @@ async function render(fromSync = false) {
     // 开工筛选跟筛选行是"与"的关系，不是替代：两个都设就是"没会话、且状态是 X"。
     // 它排在 facet 筛选之后，所以计数、空状态那几条判断照旧只看一个 filtered。
     const sessionMode = loadSessionFilter();
-    const filtered = filterItems(visible, visibleFacets, selected).filter((it) =>
-      passesSessionFilter(sessionMode, visibleFacets[it.id]),
+    const sorted = sortItems(
+      filterItems(visible, visibleFacets, selected).filter((it) =>
+        passesSessionFilter(sessionMode, visibleFacets[it.id]),
+      ),
+      visibleFacets,
+      loadSort(),
     );
+    // 排完再筛完的这份顺序是分组要继承的那份——groupItems 只保留输入顺序，
+    // 不自己排序，所以排序要在它之前应用，改名 filtered 是照抄下面所有既有
+    // 用法，不引入第二个名字。
+    const filtered = sorted;
 
     // 头部计数数的是筛完之后真正画出来的那些卡片，不是 visible.length——facet
     // 筛选生效时两者会不一样：filtered 是用户此刻在屏幕上能数出来的数字，

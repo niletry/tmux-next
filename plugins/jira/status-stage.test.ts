@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { classifyStatusStage } from "./status-stage";
+import { classifyStatusStage, stageRank } from "./status-stage";
 
 /**
  * 状态灯用的六档归类：3 种已有色相（dim/accent/ok）× 空心/实心，映射真实的
@@ -37,4 +37,18 @@ test("大小写不敏感", () => {
 
 test("认不出的状态名兜底为灰色空心，不抛错", () => {
   expect(classifyStatusStage("某种自定义状态")).toEqual({ hue: "dim", filled: false });
+});
+
+// --- stageRank：排序用的数字序，todo(0) → done(5) -----------------------------
+
+test("六档 stage 依次编号 0-5，越靠后越接近完成", () => {
+  const ranks = [
+    classifyStatusStage("To Do"),
+    classifyStatusStage("In Progress"),
+    classifyStatusStage("Ready for Acceptance"),
+    classifyStatusStage("Accepted"),
+    classifyStatusStage("Ready for Release"),
+    classifyStatusStage("Done"),
+  ].map(stageRank);
+  expect(ranks).toEqual([0, 1, 2, 3, 4, 5]);
 });

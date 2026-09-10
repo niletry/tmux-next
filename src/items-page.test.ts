@@ -513,6 +513,82 @@ test("存的是一个数据里已经没有的维度时退回默认，不是空�
   expect(root.querySelectorAll(".item-card").length).toBe(1);
 });
 
+// --- 排序 --------------------------------------------------------------------
+
+test("排序选择器改一下就存回 localStorage", async () => {
+  const store: Record<string, string> = { "tmux-next.items.groupBy": "" };
+  const root = await mount(payload({ items: [item()] }), store);
+  const select = root.querySelector("#sort-by") as unknown as HTMLSelectElement;
+  select.value = "created-asc";
+  select.dispatchEvent(new (globalThis as any).window.Event("change", { bubbles: true }));
+  expect(store["tmux-next.items.sort"]).toBe("created-asc");
+});
+
+test("存的排序值认不出来时退回默认(创建时间新→旧)", async () => {
+  const store = { "tmux-next.items.groupBy": "", "tmux-next.items.sort": "gone-value" };
+  const root = await mount(payload({ items: [item()] }), store);
+  const select = root.querySelector("#sort-by") as unknown as HTMLSelectElement;
+  expect(select.value).toBe("created-desc");
+});
+
+test("按创建时间新→旧排序", async () => {
+  const store = { "tmux-next.items.groupBy": "" };
+  const root = await mount(payload({
+    items: [
+      item({ id: "it-1", title: "老的", createdAt: NOW - 100 }),
+      item({ id: "it-2", title: "新的", createdAt: NOW }),
+    ],
+  }), store);
+  const titles = [...root.querySelectorAll(".item-title")].map((n) => n.textContent);
+  expect(titles).toEqual(["新的", "老的"]);
+});
+
+test("按创建时间旧→新排序", async () => {
+  const store = { "tmux-next.items.groupBy": "", "tmux-next.items.sort": "created-asc" };
+  const root = await mount(payload({
+    items: [
+      item({ id: "it-1", title: "老的", createdAt: NOW - 100 }),
+      item({ id: "it-2", title: "新的", createdAt: NOW }),
+    ],
+  }), store);
+  const titles = [...root.querySelectorAll(".item-title")].map((n) => n.textContent);
+  expect(titles).toEqual(["老的", "新的"]);
+});
+
+test("按状态排序，没有 stage 数据的单排最后", async () => {
+  const store = { "tmux-next.items.groupBy": "", "tmux-next.items.sort": "stage-asc" };
+  const root = await mount(payload({
+    items: [
+      item({ id: "it-1", title: "已完成" }),
+      item({ id: "it-2", title: "没有状态数据" }),
+      item({ id: "it-3", title: "待办" }),
+    ],
+    facets: {
+      "it-1": [{ dim: "jira.status", value: "Done", sortKey: { key: "stage", rank: 5 } }],
+      "it-3": [{ dim: "jira.status", value: "To Do", sortKey: { key: "stage", rank: 0 } }],
+    },
+  }), store);
+  const titles = [...root.querySelectorAll(".item-title")].map((n) => n.textContent);
+  expect(titles).toEqual(["待办", "已完成", "没有状态数据"]);
+});
+
+test("按分配排序，未分配的单排最后，不管升序降序", async () => {
+  const store = { "tmux-next.items.groupBy": "", "tmux-next.items.sort": "assignee-desc" };
+  const root = await mount(payload({
+    items: [
+      item({ id: "it-1", title: "李雷的单" }),
+      item({ id: "it-2", title: "未分配" }),
+      item({ id: "it-3", title: "王芳的单" }),
+    ],
+    facets: {
+      "it-1": [{ dim: "jira.assignee", value: "李雷", sortKey: { key: "assignee" } }],
+      "it-3": [{ dim: "jira.assignee", value: "王芳", sortKey: { key: "assignee" } }],
+    },
+  }), store);
+  const titles = [...root.querySelectorAll(".item-title")].map((n) => n.textContent);
+  expect(titles).toEqual(["王芳的单", "李雷的单", "未分配"]);
+});
+
 /**
  * 真正筛空的情形：两个维度的取值在数据里都存在，但没有一张单同时满足。
  *

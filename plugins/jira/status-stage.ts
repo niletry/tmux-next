@@ -30,3 +30,20 @@ export function classifyStatusStage(statusName: string): StatusStage {
   }
   return FALLBACK;
 }
+
+/**
+ * 排序用的数字序：跟灯带上从灰空心到绿实心的视觉顺序完全一致，0 是 todo，
+ * 5 是 done。给排序下拉用——列表按「状态」排序时比的就是这个数字。
+ */
+const ORDER: StatusStage[] = [
+  { hue: "dim", filled: false },
+  { hue: "dim", filled: true },
+  { hue: "accent", filled: false },
+  { hue: "accent", filled: true },
+  { hue: "ok", filled: false },
+  { hue: "ok", filled: true },
+];
+
+export function stageRank(stage: StatusStage): number {
+  return ORDER.findIndex((s) => s.hue === stage.hue && s.filled === stage.filled);
+}

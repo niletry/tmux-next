@@ -256,6 +256,14 @@ export type Facet = {
    * chip 里的文字细节。跟 `stage` 一样，内核不关心这是哪个插件的哪个维度。
    */
   light?: boolean;
+  /**
+   * 这个 facet 参与列表的「排序」——`key` 是插件自己起的抽象名字（比如
+   * "stage"/"assignee"），内核不解释它是什么意思，只用它把同一个 key 的 facet
+   * 聚到排序下拉的同一个选项里。给了 `rank` 就按数字比；没给就退回比这个 facet
+   * 自己的 `value` 字符串——覆盖"这个概念有天然顺序"（阶段）和"只有字母序"
+   * （人名）两种情况，不用内核认识具体是哪一种。
+   */
+  sortKey?: { key: string; rank?: number };
 };
 
 /**

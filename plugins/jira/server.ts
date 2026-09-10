@@ -11,7 +11,7 @@ import { bindSession, unbindSession, resolveBindings, type ResolvedBinding } fro
 import { sessionIdentities } from "../../src/tmux/session-list";
 import type { Facet, ItemRef } from "../types";
 import type { SyncResult } from "../handlers";
-import { classifyStatusStage } from "./status-stage";
+import { classifyStatusStage, stageRank } from "./status-stage";
 
 /**
  * 工单插件的服务端。
@@ -332,6 +332,9 @@ export function facetsFor(
       // 阶段灯挂在同一个 facet 上——状态名到阶段的归类是纯关键词匹配，跟
       // statusCategory 那三档粗粒度分类是两件独立的事，互不影响。
       stage: classifyStatusStage(issue.status),
+      // 排序下拉的「状态」选项要的就是这个数字——跟灯带用的是同一份归类，
+      // 不是另算一遍。
+      sortKey: { key: "stage", rank: stageRank(classifyStatusStage(issue.status)) },
     },
   ];
   // created 是 0 表示解析不出来（老实例、字段缺失），给一个空维度不如不给。
@@ -344,7 +347,8 @@ export function facetsFor(
   // 未分配是 null，不产出维度——"没有负责人"和"负责人是某个空值"是两回事，
   // 混成一个维度会让卡片上出现一个读不出意思的 chip。
   if (issue.assignee) {
-    facets.push({ dim: "jira.assignee", value: issue.assignee });
+    // 没有天然顺序，不给 rank——内核退回按 value 本身的字符串排序。
+    facets.push({ dim: "jira.assignee", value: issue.assignee, sortKey: { key: "assignee" } });
   }
 
   const got = dev.get(issue.id);

@@ -3,6 +3,7 @@ import { facetsFor } from "./server";
 import type { Issue } from "./client";
 import type { DevResult } from "./dev";
 import type { ItemRef } from "../types";
+import { classifyStatusStage, stageRank } from "./status-stage";
 
 /**
  * 这条路每次页面加载都跑，预算 300ms——所以 enrich 只读已有缓存，绝不发请求。
@@ -374,6 +375,27 @@ test("认不出来的类型：有维度，没形状", () => {
   const type = got.find((f) => f.dim === "jira.type")!;
   expect(type.value).toBe("Spike");
   expect(type.icon).toBeUndefined();
+});
+
+// --- 排序：jira.status 挂 sortKey("stage")，jira.assignee 挂 sortKey("assignee") ---
+
+test("jira.status 带上排序用的 sortKey，rank 跟 stageRank 一致", () => {
+  const got = facetsFor(
+    jiraItem,
+    new Map([["EXAMPLE-1", issue({ status: "Ready for Release" })]]),
+    new Map(),
+  );
+  const status = got.find((f) => f.dim === "jira.status")!;
+  expect(status.sortKey).toEqual({ key: "stage", rank: stageRank(classifyStatusStage("Ready for Release")) });
+});
+
+test("jira.assignee 带上排序用的 sortKey，没有 rank，退回按 value 比字符串", () => {
+  const got = facetsFor(
+    jiraItem,
+    new Map([["EXAMPLE-1", issue({ assignee: "李雷" } as Partial<Issue>)]]),
+    new Map(),
+  );
+  expect(got.find((f) => f.dim === "jira.assignee")!.sortKey).toEqual({ key: "assignee" });
 });
 
 // --- 状态灯：jira.status 挂 stage，jira.prs/jira.checks 挂 light ------------
