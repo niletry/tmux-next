@@ -84,18 +84,34 @@ const CI_CONCURRENCY = 4;
 /**
  * 从 PR 的网页地址里取出 workspace / repo / PR 号。
  *
- * 形如 `https://bitbucket.org/{uuid}/{uuid}/pull-requests/371`，大括号可有可无。
+ * 形如 `https://bitbucket.org/{uuid}/{uuid}/pull-requests/371`，大括号可有可无，
+ * 也可能被 Jira 百分号编码成 `%7Buuid%7D`——那种字面上不含 `{`/`}`，得先解码一次
+ * 才认得出来。不解码就直接拼进 API 地址，会把 `%7B` 当成 UUID 的一部分再包一层
+ * `%7B...%7D`，变成双重编码打出去 404，而不是缺检查——之前就是这么坏的。
  * 实测有的 PR 的 workspace 段是空的（`https://bitbucket.org/{}/{uuid}/…`）——那种
  * 拼不出可用的 API 地址，返回 null 让调用方跳过 CI，而不是拿个坏 URL 去打。
  */
 export function parsePrUrl(
   url: string,
 ): { workspace: string; repo: string; id: string } | null {
-  const m = /^https:\/\/bitbucket\.org\/\{?([^/{}]*)\}?\/\{?([^/{}]*)\}?\/pull-requests\/(\d+)/.exec(url);
+  const m = /^https:\/\/bitbucket\.org\/([^/]+)\/([^/]+)\/pull-requests\/(\d+)/.exec(url);
   if (!m) return null;
-  const [, workspace, repo, id] = m;
+  const [, rawWorkspace, rawRepo, id] = m;
+  const workspace = unwrapBraces(rawWorkspace);
+  const repo = unwrapBraces(rawRepo);
   if (!workspace || !repo || !id) return null;
   return { workspace, repo, id };
+}
+
+/** 剥掉可能存在的大括号——字面的 `{uuid}`，或者被百分号编码过的 `%7Buuid%7D`。 */
+function unwrapBraces(segment: string): string {
+  let decoded = segment;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    // 不是合法的百分号编码，原样按字面处理。
+  }
+  return decoded.replace(/^\{|\}$/g, "");
 }
 
 function basic(user: string, secret: string): string {
