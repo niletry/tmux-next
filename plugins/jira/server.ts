@@ -11,7 +11,7 @@ import { bindSession, unbindSession, resolveBindings, type ResolvedBinding } fro
 import { sessionIdentities } from "../../src/tmux/session-list";
 import type { Facet, ItemRef } from "../types";
 import type { SyncResult } from "../handlers";
-import { classifyStatusStage, stageRank } from "./status-stage";
+import { classifyStatusStage, stageRank, STAGE_COUNT } from "./status-stage";
 
 /**
  * 工单插件的服务端。
@@ -330,8 +330,9 @@ export function facetsFor(
       tone:
         issue.statusCategory === "done" ? "dim" : issue.statusCategory === "indeterminate" ? "ok" : undefined,
       // 阶段灯挂在同一个 facet 上——状态名到阶段的归类是纯关键词匹配，跟
-      // statusCategory 那三档粗粒度分类是两件独立的事，互不影响。
-      stage: classifyStatusStage(issue.status),
+      // statusCategory 那三档粗粒度分类是两件独立的事，互不影响。灯带只要
+      // "第几步/一共几步"两个数字，颜色是内核决定的，这里不再传色相。
+      stage: { rank: stageRank(classifyStatusStage(issue.status)), total: STAGE_COUNT },
       // 排序下拉的「状态」选项要的就是这个数字——跟灯带用的是同一份归类，
       // 不是另算一遍。
       sortKey: { key: "stage", rank: stageRank(classifyStatusStage(issue.status)) },

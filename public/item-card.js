@@ -43,9 +43,11 @@ import { PLUGINS } from "../plugins/registry.js";
  * @property {boolean} [badge]
  * @property {string} [icon] SVG 路径，不是图标名
  * @property {DetailRow[]} [detail]
- * @property {{hue: "dim"|"accent"|"ok", filled: boolean}} [stage] 挂在灯带上
- *   的阶段灯，色相+空心/实心
- * @property {boolean} [light] 这个 facet 的 tone 也要在灯带里额外出一个点
+ * @property {{rank: number, total: number}} [stage] 一条线性流程走到第几步：
+ *   `rank` 是第几步（从 0 开始），`total` 是一共几步。灯带画 `total` 颗点，
+ *   第 0..rank 颗是"已经走过"，颜色由内核决定（见 statusLightRow），插件不传色。
+ * @property {boolean} [light] 这个 facet 的 tone 是不是 warn，决定同一批 facet
+ *   里 stage 台阶灯当前那一步要不要改画成红色——不再单独出一颗点。
  */
 /**
  * @typedef {object} SessionLike
@@ -527,41 +529,76 @@ export function sessionRow(session, onUnbind) {
 }
 
 /**
- * 卡片头部的灯带：把带 `stage` 或 `light` 的 facet 各画成一颗小圆点，一眼扫过
- * 就知道这张单大致在流程的哪个位置、PR/检查健不健康——不用点开任何一格 chip。
+ * 一颗灯带上的点：静态 span，或者（给了 detail 时）能点开详情浮层的按钮。
+ * @param {string} cls
+ * @param {string} label
+ * @param {DetailRow[]} rows
+ */
+function lightDot(cls, label, rows) {
+  /** @type {HTMLElement} */
+  let dot;
+  if (rows.length) {
+    const btn = el("button", cls);
+    btn.type = "button";
+    btn.addEventListener("click", () => openDetailSheet(label, rows));
+    dot = btn;
+  } else {
+    dot = el("span", cls);
+  }
+  dot.title = label;
+  dot.setAttribute("aria-label", label);
+  return dot;
+}
+
+/**
+ * 卡片头部的灯带：一条固定步数的台阶，一眼扫过就知道这张单在流程里走到第几步、
+ * 卡没卡住——不用点开任何一格 chip，也不用先记住一套颜色对照表。
  *
- * 内核不认识"这是状态"还是"这是检查"，只认这两个字段：`stage` 给色相+空心/实心，
- * `light` 让一个已经有 `tone` 的 facet 额外在这里出一个点。原有的文字 chip
- * 照常画，灯带是纯粹的额外概览层，不取代它们。
+ * 找这批 facet 里带 `stage` 的那一个（一张单同时只有一条线性流程，多个也只画
+ * 第一个），按它的 `rank`/`total` 画出 `total` 颗点：第 0..rank 颗是"走过的"，
+ * 涂 ok（绿）；再往后的是"没走到的"，涂 dim（灰）——颜色只有这两种，插件不传
+ * 色，是内核在这两个状态之间做的选择。
  *
- * 点上的颜色只是辅助——`title`/aria-label 带着这个 facet 的原始文字，不靠颜色
- * 单独传达信息（同一条规矩贯穿这个文件里所有 tone 的用法）。有 `detail` 的点
- * 画成按钮，点开跟对应 chip 一样的详情浮层；没有就是个静态点。
+ * 有没有卡住是另一条独立的判断：这批 facet 里只要有一个 `light` 且 `tone` 是
+ * warn（PR 被拒、检查失败……），就把"走到的"那一颗——也就是当前所在这一步——
+ * 改画成 warn（红），代替本该有的绿色，点开它看到的是那个卡住信号自己的明细
+ * （比如具体哪条检查失败），而不是状态本身的明细（状态通常没有明细）。
+ *
+ * 没有 `stage` 可挂时退回旧规矩：`light` 的 facet 各自画一颗点，用它自己的
+ * `tone` 上色——防止一个健康度信号因为凑不到台阶灯就整个消失。
  *
  * @param {Facet[]} facets
  */
 export function statusLightRow(facets) {
   const row = el("div", "status-lights");
-  for (const facet of facets ?? []) {
-    if (!facet.stage && !facet.light) continue;
-    const hue = facet.stage?.hue ?? facet.tone;
-    const filled = facet.stage ? facet.stage.filled : true;
-    const cls = ["status-dot", hue, filled ? "filled" : ""].filter(Boolean).join(" ");
-    const label = `${dimLabelOf(facet.dim)}: ${facet.value}`;
-    const rows = Array.isArray(facet.detail) ? facet.detail : [];
-    /** @type {HTMLElement} */
-    let dot;
-    if (rows.length) {
-      const btn = el("button", cls);
-      btn.type = "button";
-      btn.addEventListener("click", () => openDetailSheet(label, rows));
-      dot = btn;
-    } else {
-      dot = el("span", cls);
+  const list = facets ?? [];
+  const stageFacet = list.find((f) => f.stage);
+  const blockers = list.filter((f) => f.light && f.tone === "warn");
+
+  if (stageFacet) {
+    const { rank, total } = /** @type {{rank: number, total: number}} */ (stageFacet.stage);
+    const phaseLabel = `${dimLabelOf(stageFacet.dim)}: ${stageFacet.value}`;
+    const phaseDetail = Array.isArray(stageFacet.detail) ? stageFacet.detail : [];
+    const blockLabel = blockers.map((f) => `${dimLabelOf(f.dim)}: ${f.value}`).join(" · ");
+    const blockDetail = blockers.flatMap((f) => (Array.isArray(f.detail) ? f.detail : []));
+    for (let i = 0; i < total; i++) {
+      const passed = i <= rank;
+      const blockedHere = i === rank && blockers.length > 0;
+      const cls = ["status-dot", blockedHere ? "warn" : passed ? "ok" : "dim", passed ? "filled" : ""]
+        .filter(Boolean)
+        .join(" ");
+      const label = blockedHere ? `${phaseLabel} · ${blockLabel}` : phaseLabel;
+      const rows = blockedHere ? blockDetail : phaseDetail;
+      row.append(lightDot(cls, label, rows));
     }
-    dot.title = label;
-    dot.setAttribute("aria-label", label);
-    row.append(dot);
+  } else {
+    for (const facet of list) {
+      if (!facet.light) continue;
+      const cls = ["status-dot", facet.tone ?? "dim", "filled"].filter(Boolean).join(" ");
+      const label = `${dimLabelOf(facet.dim)}: ${facet.value}`;
+      const rows = Array.isArray(facet.detail) ? facet.detail : [];
+      row.append(lightDot(cls, label, rows));
+    }
   }
   return row;
 }
