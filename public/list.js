@@ -422,15 +422,16 @@ function card(session, itemsById, facetsById) {
   const item = session.itemId ? itemsById?.get(session.itemId) : null;
   if (item) {
     const itemRow = el("div", "row item-row");
+    // 灯带排在标题前面：卡片密度高、标题常常被截断，先露出状态色再让眼睛
+    // 去读文字。用的还是跟单列表/单浮层同一份画法（见 item-card.js 顶部那条
+    // "两处各画一套会漂移"的理由），只是这里画在标题左边而不是右边。没有
+    // 状态类维度时 statusLightRow 返回空节点，什么都不画。
+    const lights = statusLightRow(facetsById?.get(item.id) ?? []);
+    if (lights.childElementCount) itemRow.append(lights);
     const chip = el("span", "item-chip", item.title);
     chip.title = `${tr("list.itemOf")}: ${item.title}`;
     chip.setAttribute("aria-label", chip.title);
     itemRow.append(chip);
-    // 单的状态灯带：跟单列表/单浮层同一份画法（见 item-card.js 顶部那条"两处
-    // 各画一套会漂移"的理由），只是挂在单标题旁边而不是单号旁边。没有状态类
-    // 维度时 statusLightRow 返回空节点，什么都不画。
-    const lights = statusLightRow(facetsById?.get(item.id) ?? []);
-    if (lights.childElementCount) itemRow.append(lights);
     link.append(itemRow);
   }
 
