@@ -61,6 +61,9 @@ async function load() {
       const card = el("div", "card");
       const link = el("a", "card-main");
       link.href = url(`terminal.html?target=${encodeURIComponent(n.session)}&from=notifications`);
+      // 终端是自己在跑的另一个东西，原地跳走会把通知列表这一页一起带走。
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
       const row = el("div", "row");
       row.append(el("span", "name", n.session));
       row.append(el("span", "time", relativeTime(n.ts)));

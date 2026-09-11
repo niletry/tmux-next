@@ -312,6 +312,9 @@ function cardActions(session, itemsById) {
 
   const open = el("a", "card-act primary");
   open.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
+  // 终端是自己在跑的另一个东西，原地跳走会把会话列表这一页一起带走。
+  open.target = "_blank";
+  open.rel = "noopener noreferrer";
   open.innerHTML = icon("terminal");
   open.append(document.createTextNode(tr("list.openSession")));
   bar.append(open);
@@ -395,6 +398,10 @@ function card(session, itemsById, facetsById) {
   const wrapper = el("div", "card");
   const link = el("a", "card-main");
   link.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
+  // The terminal is its own running thing — navigating away in place would
+  // take this session list with it.
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
 
   // The name gets a line to itself: sharing one with the badges, status and
   // timestamp squeezed it down to an ellipsis on a phone.

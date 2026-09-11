@@ -351,6 +351,9 @@ async function openQuestion(session) {
     closeBtn.addEventListener("click", close);
     const open = el("a", "btn primary", tr("jira.open"));
     open.href = terminalHref(session);
+    // 终端是自己在跑的另一个东西，原地跳走会把这个浮层所在的这一页一起带走。
+    open.target = "_blank";
+    open.rel = "noopener noreferrer";
     actions.append(closeBtn, open);
     sheet.append(actions);
 
@@ -487,6 +490,8 @@ function sessionRow(binding) {
 
   const link = el("a", "jira-session-link", binding.session);
   link.href = terminalHref(binding.session);
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
   link.title = tr("jira.open");
   row.append(link);
 

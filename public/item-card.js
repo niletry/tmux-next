@@ -503,6 +503,9 @@ function confirmUnbind(name, onConfirm) {
 export function sessionRow(session, onUnbind) {
   const link = el("a", "item-session");
   link.href = url(`terminal.html?target=${encodeURIComponent(session.name)}`);
+  // 终端是自己在跑的另一个东西，原地跳走会把点开它之前那一页一起带走。
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
   link.append(el("span", "s-name", session.name));
   link.append(el("span", "s-state", sessionState(session)));
   link.append(el("span", "s-open", tr("items.open")));
