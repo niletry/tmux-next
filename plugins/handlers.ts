@@ -156,6 +156,32 @@ const MAX_ICON = 2000;
  * .test.ts 那条用例把它逼出来的。所以属性也得逐个列，列的都是几何和描边属性，
  * 没有任何一个能执行代码。
  */
+/**
+ * 灯带用的阶段：色相白名单 + 空心/实心的布尔。三个色相复用 Facet.tone 已经
+ * 有的那三个 CSS 角色令牌，不给插件开一条新增颜色的口子——跟 tone 白名单同一条
+ * 理由。
+ */
+function safeStage(value: unknown): Facet["stage"] {
+  const s = value as Record<string, unknown> | undefined;
+  if (!s || typeof s !== "object") return undefined;
+  if (s.hue !== "dim" && s.hue !== "accent" && s.hue !== "ok") return undefined;
+  if (typeof s.filled !== "boolean") return undefined;
+  return { hue: s.hue, filled: s.filled };
+}
+
+/**
+ * 排序键：一个不透明的分组名 + 可选的数字序。跟 dim/value 一样限长，rank 必须
+ * 是有限数——不然一个 NaN/Infinity 混进比较函数会把整个排序结果搅乱。
+ */
+function safeSortKey(value: unknown): Facet["sortKey"] {
+  const s = value as Record<string, unknown> | undefined;
+  if (!s || typeof s !== "object") return undefined;
+  const key = trim(s.key, MAX_TEXT);
+  if (!key) return undefined;
+  const rank = typeof s.rank === "number" && Number.isFinite(s.rank) ? s.rank : undefined;
+  return { key, ...(rank !== undefined ? { rank } : {}) };
+}
+
 const ICON_SHAPES = new RegExp(
   "^(?:<(?:path|circle|rect|line|polyline|polygon|ellipse)" +
     '(?:\\s+(?:d|cx|cy|r|rx|ry|x|y|x1|y1|x2|y2|width|height|points|transform|' +
@@ -274,6 +300,8 @@ export async function collectFacets(
               }
             }
             const iconPaths = safeIconPaths(f?.icon);
+            const stage = safeStage(f?.stage);
+            const sortKey = safeSortKey(f?.sortKey);
             facets.push({
               dim,
               value,
@@ -284,6 +312,12 @@ export async function collectFacets(
               // 让插件多说任何话——徽标里画的还是同一个 value 和同一个图标，
               // 两者都已经过上面的限长与净化。
               ...(f?.badge === true ? { badge: true } : {}),
+              // stage 挂在灯带上，light 让一个已有 tone 的 facet 额外在灯带里
+              // 出一个点——两个字段本来就在 Facet 类型里声明了，之前只是漏了
+              // 在净化时透传，灯带因此从未在任何页面画出过一个点。
+              ...(stage ? { stage } : {}),
+              ...(f?.light === true ? { light: true } : {}),
+              ...(sortKey ? { sortKey } : {}),
             });
           }
           if (facets.length) clean[id] = facets;
