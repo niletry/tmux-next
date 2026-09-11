@@ -65,6 +65,7 @@ test("刷新成功时把新标题写回内核的单", async () => {
             summary: "远端改过的新标题",
             status: { name: "In Progress", statusCategory: { key: "indeterminate" } },
             issuetype: { name: "Bug", hierarchyLevel: 0 },
+            created: "2023-11-14T22:13:20.000+0000",
           },
         }),
         { status: 200 },
@@ -81,6 +82,9 @@ test("刷新成功时把新标题写回内核的单", async () => {
     const items = await readItems();
     const item = items.find((i) => i.source?.provider === "jira" && i.source.ref === "EXAMPLE-9");
     expect(item?.title).toBe("远端改过的新标题");
+    // 排序要靠得住的是工单真正的创建时间，不是这次刷新发生的时间——见
+    // src/items.ts 的 ensureItemForSource 和 plugins/jira/sync.ts 的同一条注释。
+    expect(item?.createdAt).toBe(1700000000);
   } finally {
     globalThis.fetch = realFetch;
     process.env.TMUX_NEXT_JIRA_DIR = prevDir;

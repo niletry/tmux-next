@@ -670,9 +670,9 @@ export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
   // 工单页地址。只有产生这个来源的一方知道怎么拼——内核不该替它猜，所以由这里
   // 一并写进 source.url，首页那颗单号徽标据此变成可点的链接。
   const browse = await browseUrl();
-  const syncResult = await syncIssues(result, async (ref, title) => {
+  const syncResult = await syncIssues(result, async (ref, title, createdAt) => {
     const created = !existingRefs.has(ref);
-    await ensureItemForSource("jira", ref, title, { refreshTitle: true, ...browse(ref) });
+    await ensureItemForSource("jira", ref, title, { refreshTitle: true, createdAt, ...browse(ref) });
     return { created };
   });
 
@@ -740,7 +740,8 @@ export async function refreshItem(ref: string): Promise<void> {
   if (!issue) throw new Error(`refreshIssue(${ref}) 没问到——未配置或 Jira 不通`);
   await dev(issue.id, issue.key, true);
   const browse = await browseUrl();
-  await ensureItemForSource("jira", ref, issue.summary, { refreshTitle: true, ...browse(ref) });
+  const createdAt = issue.created ? Math.floor(issue.created / 1000) : undefined;
+  await ensureItemForSource("jira", ref, issue.summary, { refreshTitle: true, createdAt, ...browse(ref) });
 }
 
 /** `ItemStatus` → 这个实例配的 Jira 状态名。`unclaimed` 不是一次迁移，没有对应项。 */
