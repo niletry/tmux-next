@@ -3,7 +3,7 @@ import { facetsFor } from "./server";
 import type { Issue } from "./client";
 import type { DevResult } from "./dev";
 import type { ItemRef } from "../types";
-import { classifyStatusStage, stageRank } from "./status-stage";
+import { classifyStatusStage, stageRank, STAGE_COUNT } from "./status-stage";
 
 /**
  * 这条路每次页面加载都跑，预算 300ms——所以 enrich 只读已有缓存，绝不发请求。
@@ -400,13 +400,16 @@ test("jira.assignee 带上排序用的 sortKey，没有 rank，退回按 value �
 
 // --- 状态灯：jira.status 挂 stage，jira.prs/jira.checks 挂 light ------------
 
-test("jira.status 带上按状态名分类出的 stage", () => {
+test("jira.status 带上按状态名分类出的 stage：走到第几步 / 一共几步", () => {
   const got = facetsFor(
     jiraItem,
     new Map([["EXAMPLE-1", issue({ status: "Ready for Release" })]]),
     new Map(),
   );
-  expect(got.find((f) => f.dim === "jira.status")!.stage).toEqual({ hue: "ok", filled: false });
+  expect(got.find((f) => f.dim === "jira.status")!.stage).toEqual({
+    rank: stageRank(classifyStatusStage("Ready for Release")),
+    total: STAGE_COUNT,
+  });
 });
 
 test("jira.prs 全部已合并给 dim 聚合色，并标 light", () => {

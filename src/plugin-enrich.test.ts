@@ -342,15 +342,18 @@ const withStage = (stage: unknown): PluginEnricher => async () => ({
   "it-1": [{ dim: "jira.status", value: "Ready for release", stage } as Facet],
 });
 
-test("stage：合法的 {hue, filled} 原样带过去", async () => {
-  const got = await collectFacets(items, { p: withStage({ hue: "ok", filled: false }) });
-  expect(got["it-1"]![0]!.stage).toEqual({ hue: "ok", filled: false });
+test("stage：合法的 {rank, total} 原样带过去", async () => {
+  const got = await collectFacets(items, { p: withStage({ rank: 4, total: 6 }) });
+  expect(got["it-1"]![0]!.stage).toEqual({ rank: 4, total: 6 });
 });
 
 test.each([
-  [{ hue: "purple", filled: true }],
-  [{ hue: "ok" }],
-  [{ hue: "ok", filled: "yes" }],
+  [{ rank: -1, total: 6 }],
+  [{ rank: 1.5, total: 6 }],
+  [{ rank: 6, total: 6 }], // rank 不能越过或等于 total
+  [{ rank: 0 }],
+  [{ total: 6 }],
+  [{ rank: "0", total: 6 }],
   ["ok"],
   [null],
 ])("stage：形状不对的 %p 当没给", async (bad) => {

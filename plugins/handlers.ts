@@ -157,16 +157,18 @@ const MAX_ICON = 2000;
  * 没有任何一个能执行代码。
  */
 /**
- * 灯带用的阶段：色相白名单 + 空心/实心的布尔。三个色相复用 Facet.tone 已经
- * 有的那三个 CSS 角色令牌，不给插件开一条新增颜色的口子——跟 tone 白名单同一条
- * 理由。
+ * 灯带台阶：走到第几步 / 一共几步，两个都必须是非负整数，且 rank 不能越过
+ * total——插件不传颜色，颜色（走过的绿、没走到的灰、卡住的红）完全是内核在
+ * statusLightRow 里决定的，这里只验形状，不验语义之外的东西。
  */
 function safeStage(value: unknown): Facet["stage"] {
   const s = value as Record<string, unknown> | undefined;
   if (!s || typeof s !== "object") return undefined;
-  if (s.hue !== "dim" && s.hue !== "accent" && s.hue !== "ok") return undefined;
-  if (typeof s.filled !== "boolean") return undefined;
-  return { hue: s.hue, filled: s.filled };
+  const { rank, total } = s;
+  if (typeof rank !== "number" || !Number.isInteger(rank) || rank < 0) return undefined;
+  if (typeof total !== "number" || !Number.isInteger(total) || total <= 0) return undefined;
+  if (rank >= total) return undefined;
+  return { rank, total };
 }
 
 /**

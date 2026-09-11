@@ -131,51 +131,83 @@ test("本地单没有来源徽标，也不画会话数", async () => {
   expect(head.querySelector(".item-count")).toBeNull();
 });
 
-// --- statusLightRow：卡片头部的灯带 -------------------------------------------
+// --- statusLightRow：卡片头部的台阶灯 -----------------------------------------
 
-test("带 stage 的 facet 画成一颗状态灯，颜色和空心/实心跟 stage 走", async () => {
+test("带 stage 的 facet 画成固定几步的台阶，走过的绿、没走到的灰", async () => {
   const { statusLightRow } = await load();
   const row = statusLightRow([
-    { dim: "jira.status", value: "Ready for Release", stage: { hue: "ok", filled: false } },
+    { dim: "jira.status", value: "Ready for Release", stage: { rank: 4, total: 6 } },
   ]);
-  const dot = row.querySelector(".status-dot")!;
-  expect(dot.classList.contains("ok")).toBe(true);
-  expect(dot.classList.contains("filled")).toBe(false);
+  const dots = row.querySelectorAll(".status-dot");
+  expect(dots.length).toBe(6);
+  for (let i = 0; i < 6; i++) {
+    const passed = i <= 4;
+    expect(dots[i]!.classList.contains(passed ? "ok" : "dim")).toBe(true);
+    expect(dots[i]!.classList.contains("filled")).toBe(passed);
+  }
 });
 
-test("标 light 的 facet 也画一颗点，用它自己的 tone 上色", async () => {
+test("同一批 facet 里有 light 且 tone 是 warn 时，当前那一步改画成红色", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.status", value: "In Progress", stage: { rank: 1, total: 6 } },
+    { dim: "jira.checks", value: "1/2", tone: "warn", light: true },
+  ]);
+  const dots = row.querySelectorAll(".status-dot");
+  // 走过的两步（0、1）里，当前所在的那一步（1）改红，之前的（0）仍然是绿。
+  expect(dots[0]!.classList.contains("ok")).toBe(true);
+  expect(dots[1]!.classList.contains("warn")).toBe(true);
+  expect(dots[1]!.classList.contains("ok")).toBe(false);
+  // 没走到的照旧灰，不受卡住信号影响。
+  expect(dots[2]!.classList.contains("dim")).toBe(true);
+});
+
+test("light 的 tone 是 ok（一切正常）时不改色，台阶照常画", async () => {
+  const { statusLightRow } = await load();
+  const row = statusLightRow([
+    { dim: "jira.status", value: "Done", stage: { rank: 5, total: 6 } },
+    { dim: "jira.checks", value: "0/2", tone: "ok", light: true },
+  ]);
+  const dots = row.querySelectorAll(".status-dot");
+  expect(dots[5]!.classList.contains("ok")).toBe(true);
+  expect(dots[5]!.classList.contains("warn")).toBe(false);
+});
+
+test("没有 stage 时，light 的 facet 各自退回画一颗点，不会因为凑不到台阶就消失", async () => {
   const { statusLightRow } = await load();
   const row = statusLightRow([
     { dim: "jira.checks", value: "1/2", tone: "warn", light: true },
   ]);
-  const dot = row.querySelector(".status-dot")!;
-  expect(dot.classList.contains("warn")).toBe(true);
+  const dots = row.querySelectorAll(".status-dot");
+  expect(dots.length).toBe(1);
+  expect(dots[0]!.classList.contains("warn")).toBe(true);
 });
 
-test("没有 stage 也没有 light 的 facet 不出现在灯带里", async () => {
+test("既没有 stage 也没有 light 的 facet 不出现在灯带里", async () => {
   const { statusLightRow } = await load();
   const row = statusLightRow([{ dim: "jira.epic", value: "登录改版" }]);
   expect(row.querySelectorAll(".status-dot").length).toBe(0);
 });
 
-test("点亮的点带 title，说明是哪个维度的什么值——不靠颜色单独传达信息", async () => {
+test("台阶带 title，说明是哪个维度的什么值——不靠颜色单独传达信息", async () => {
   const { statusLightRow } = await load();
   const row = statusLightRow([
-    { dim: "jira.status", value: "Ready for Release", stage: { hue: "ok", filled: false } },
+    { dim: "jira.status", value: "Ready for Release", stage: { rank: 4, total: 6 } },
   ]);
-  const dot = row.querySelector(".status-dot")!;
+  const dot = row.querySelectorAll(".status-dot")[4]!;
   expect(dot.getAttribute("title")).toContain("Ready for Release");
 });
 
-test("有明细的灯点一下能打开跟原 chip 一样的详情浮层", async () => {
+test("卡住的那一步点一下，打开的是卡住信号自己的明细，不是状态本身的明细", async () => {
   const { statusLightRow } = await load();
   const row = statusLightRow([
+    { dim: "jira.status", value: "In Progress", stage: { rank: 1, total: 6 } },
     {
       dim: "jira.prs", value: "1", tone: "warn", light: true,
       detail: [{ label: "修登录页", value: "DECLINED" }],
     },
   ]);
-  const dot = row.querySelector(".status-dot") as HTMLButtonElement;
+  const dot = row.querySelectorAll(".status-dot")[1] as HTMLButtonElement;
   expect(dot.tagName).toBe("BUTTON");
   dot.click();
   const sheet = document.querySelector(".sheet-backdrop")!;
@@ -183,26 +215,26 @@ test("有明细的灯点一下能打开跟原 chip 一样的详情浮层", async
   expect(sheet.textContent).toContain("DECLINED");
 });
 
-test("没有明细的灯是静态的，不是按钮", async () => {
+test("没有明细的台阶是静态的，不是按钮", async () => {
   const { statusLightRow } = await load();
   const row = statusLightRow([
-    { dim: "jira.status", value: "Done", stage: { hue: "ok", filled: true } },
+    { dim: "jira.status", value: "Done", stage: { rank: 5, total: 6 } },
   ]);
-  const dot = row.querySelector(".status-dot")!;
+  const dot = row.querySelectorAll(".status-dot")[5]!;
   expect(dot.tagName).toBe("SPAN");
 });
 
-test("itemHead 把灯带排进头部，跟着来源徽标之后", async () => {
+test("itemHead 把台阶灯排进头部，跟着来源徽标之后", async () => {
   const { itemHead } = await load();
   const head = itemHead(
     { id: "it-1", title: "修登录页", source: { provider: "jira", ref: "AB-1" } },
     [
-      { dim: "jira.status", value: "Done", stage: { hue: "ok", filled: true } },
+      { dim: "jira.status", value: "Done", stage: { rank: 5, total: 6 } },
       { dim: "jira.checks", value: "0/2", tone: "ok", light: true },
     ],
     0,
   );
-  expect(head.querySelectorAll(".status-dot").length).toBe(2);
+  expect(head.querySelectorAll(".status-dot").length).toBe(6);
 });
 
 // --- openDetailSheet：group 字段按 PR 分组 -----------------------------------
