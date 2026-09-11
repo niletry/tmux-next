@@ -110,6 +110,15 @@ test("会话行链到终端页，参数名是 target", async () => {
   expect(row.textContent).toContain(tr("items.agent.working"));
 });
 
+// 会话终端是自己在跑的另一个东西，不是"看完就关"的一次性内容——原地跳走会把
+// 点开它之前那一页（单面板、会话列表）一起带走。
+test("会话行的终端链接在新标签页打开", async () => {
+  const { sessionRow } = await load();
+  const row = sessionRow(session({ name: "web-1-a" }), null);
+  expect(row.getAttribute("target")).toBe("_blank");
+  expect(row.getAttribute("rel")).toBe("noopener noreferrer");
+});
+
 test("单头给出标题、单号链接与会话数", async () => {
   const { itemHead } = await load();
   const head = itemHead(

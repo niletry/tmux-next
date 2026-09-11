@@ -712,6 +712,18 @@ test("动作行的「打开」指向这个会话的终端", async () => {
   expect(open.href).toContain("terminal.html?target=orbit");
 });
 
+// 终端是自己在跑的另一个东西，原地跳走会把会话列表这一页一起带走——「打开」
+// 按钮和整张卡片的主链接都跳去同一个终端，两处都要在新标签页打开。
+test("「打开」和卡片主链接都在新标签页打开终端", async () => {
+  const root = await mount([session({ name: "orbit" })]);
+  const open = root.querySelector(".card-act.primary")!;
+  expect(open.getAttribute("target")).toBe("_blank");
+  expect(open.getAttribute("rel")).toBe("noopener noreferrer");
+  const main = root.querySelector(".card-main")!;
+  expect(main.getAttribute("target")).toBe("_blank");
+  expect(main.getAttribute("rel")).toBe("noopener noreferrer");
+});
+
 // 破坏性动作要跟另外三个分得开，靠的是它自己的 class——样式表按这个 class 把它
 // 顶到右端并染红。class 掉了的话，「结束」会安静地混进安全动作里排在中间。
 test("结束会话带 danger 标记", async () => {
