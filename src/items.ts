@@ -131,7 +131,7 @@ export async function ensureItemForSource(
   provider: string,
   ref: string,
   title?: string,
-  opts?: { refreshTitle?: boolean; url?: string },
+  opts?: { refreshTitle?: boolean; url?: string; createdAt?: number },
 ): Promise<WorkItem> {
   return serialized(async () => {
     const all = await readItems();
@@ -158,7 +158,10 @@ export async function ensureItemForSource(
       title: title || ref,
       source: { provider, ref, ...(opts?.url ? { url: opts.url } : {}) },
       tags: [],
-      createdAt: Math.floor(Date.now() / 1000),
+      // 调用方能给出这张单在来源那边真正的创建时间时用它——"我们第一次同步到它"
+      // 跟"它是什么时候被建出来的"是两件事，前者会让批量同步进来的一批单全部
+      // 挤在同一个时间点上，把排序变成"接口刚好按什么顺序吐出来"。
+      createdAt: opts?.createdAt ?? Math.floor(Date.now() / 1000),
       closedAt: null,
       status: DEFAULT_ITEM_STATUS,
     };

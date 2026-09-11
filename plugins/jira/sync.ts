@@ -16,7 +16,7 @@ import type { SyncResult } from "../handlers";
  */
 export async function syncIssues(
   fetched: { issues: Issue[]; truncated: boolean },
-  ensure: (ref: string, title: string) => Promise<{ created: boolean }>,
+  ensure: (ref: string, title: string, createdAt?: number) => Promise<{ created: boolean }>,
 ): Promise<SyncResult> {
   let created = 0;
   let updated = 0;
@@ -24,7 +24,11 @@ export async function syncIssues(
   // 串行处理每条工单。
   for (const issue of fetched.issues) {
     try {
-      const result = await ensure(issue.key, issue.summary);
+      // 毫秒转秒，跟 WorkItem.createdAt 的单位一致；0 是"解析不出来"，不传，让
+      // ensureItemForSource 退回它自己的 Date.now() 默认——不然会把"不知道"
+      // 误判成"发生在 1970 年"。
+      const createdAt = issue.created ? Math.floor(issue.created / 1000) : undefined;
+      const result = await ensure(issue.key, issue.summary, createdAt);
       if (result.created) {
         created++;
       } else {

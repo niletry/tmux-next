@@ -150,3 +150,18 @@ test("标题为空时不覆盖成空", async () => {
   const again = await ensureItemForSource("jira", "EXAMPLE-1", "", { refreshTitle: true });
   expect(again.title).toBe("旧标题");
 });
+
+// 按创建时间排序要靠得住的是工单真正的创建时间，不是"我们第一次同步到它的
+// 时间"——批量同步会在几秒内建一堆本地单，全都盖成 Date.now() 就会让它们的
+// 相对顺序变成"接口刚好按什么顺序吐出来"，而不是真实的先后。
+test("新建时给了 createdAt 就用它，不是 Date.now()", async () => {
+  const item = await ensureItemForSource("jira", "EXAMPLE-1", "标题", { createdAt: 1700000000 });
+  expect(item.createdAt).toBe(1700000000);
+});
+
+test("已经存在的单不会被后来传的 createdAt 改动（跟 title/tags 一样是本地已经落定的事）", async () => {
+  const first = await ensureItemForSource("jira", "EXAMPLE-1", "标题", { createdAt: 1700000000 });
+  const again = await ensureItemForSource("jira", "EXAMPLE-1", "标题", { createdAt: 1800000000 });
+  expect(again.id).toBe(first.id);
+  expect(again.createdAt).toBe(1700000000);
+});
