@@ -406,24 +406,33 @@ function card(session, itemsById, facetsById) {
     nameRow.append(dot);
   }
   nameRow.append(el("span", "name", session.name));
-  // A session bound to a work item shows that item's title. `itemId` pointing
-  // at nothing — the item was archived and swept, or an old page is reading a
-  // stale binding — is treated exactly like no binding at all: this list is
-  // not item-driven yet, so a dangling id must degrade silently rather than
-  // throw and blank the whole card.
+  link.append(nameRow);
+
+  // A session bound to a work item shows that item's title, on its own row —
+  // not sharing the name row with it. They used to share one, and depending
+  // on how much else was already in that row (a pin badge, the waiting dot)
+  // a long title would sometimes fit next to the name and sometimes wrap all
+  // the way past the status lights onto a third line: the same card shape
+  // landing in a different place card to card. A dedicated row means the
+  // chip and its lights sit in the same place regardless of what else is on
+  // the card. `itemId` pointing at nothing — the item was archived and
+  // swept, or an old page is reading a stale binding — is treated exactly
+  // like no binding at all: this list is not item-driven yet, so a dangling
+  // id must degrade silently rather than throw and blank the whole card.
   const item = session.itemId ? itemsById?.get(session.itemId) : null;
   if (item) {
+    const itemRow = el("div", "row item-row");
     const chip = el("span", "item-chip", item.title);
     chip.title = `${tr("list.itemOf")}: ${item.title}`;
     chip.setAttribute("aria-label", chip.title);
-    nameRow.append(chip);
+    itemRow.append(chip);
     // 单的状态灯带：跟单列表/单浮层同一份画法（见 item-card.js 顶部那条"两处
-    // 各画一套会漂移"的理由），只是挂在会话名旁边而不是单号旁边。没挂单或这张
-    // 单没有状态类维度时 statusLightRow 返回空节点，什么都不画。
+    // 各画一套会漂移"的理由），只是挂在单标题旁边而不是单号旁边。没有状态类
+    // 维度时 statusLightRow 返回空节点，什么都不画。
     const lights = statusLightRow(facetsById?.get(item.id) ?? []);
-    if (lights.childElementCount) nameRow.append(lights);
+    if (lights.childElementCount) itemRow.append(lights);
+    link.append(itemRow);
   }
-  link.append(nameRow);
 
   const row = el("div", "row meta-row");
   if (session.agentLabel) {

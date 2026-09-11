@@ -317,6 +317,23 @@ header .count {
   flex-wrap: wrap;
 }
 
+/* 单标题 + 状态灯带独占一行，不跟会话名共享 .name-row：以前两者挤在一起时，
+   这一行剩多少空间全看名字、置顶徽标、等待点占了多少，同一张卡片今天灯带
+   跟标题同行、明天就被挤到第三行——位置跟着内容长度漂移。固定成自己的一行
+   之后，灯带永远紧跟在标题右边，跟别的行不抢地方，也就不会再改行了。 */
+.item-row {
+  margin-top: 4px;
+  flex-wrap: nowrap;
+}
+
+.item-row .item-chip {
+  flex: 0 1 auto;
+}
+
+.item-row .status-lights {
+  flex: 0 0 auto;
+}
+
 .name {
   flex: 1 1 auto;
   min-width: 0;
