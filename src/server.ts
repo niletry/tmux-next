@@ -49,6 +49,7 @@ import {
 import { reapOrphanWebSessions } from "./tmux/session-manager";
 import { createItem, readItems, updateItem } from "./items";
 import { bindSession, readBindings, resolveBindings, unbindSession } from "./session-binding";
+import { historyForItem } from "./session-history";
 import { kernelFacets } from "./item-facets";
 import { advanceLifecycle } from "./item-lifecycle";
 import { notifyLifecycle } from "./push";
@@ -264,7 +265,8 @@ async function itemDetail(id: string): Promise<Response> {
     undefined,
     Infinity,
   );
-  return Response.json({ item, sessions, facets: [...kernel, ...(theirs[item.id] ?? [])] });
+  const history = await historyForItem(item.id);
+  return Response.json({ item, sessions, facets: [...kernel, ...(theirs[item.id] ?? [])], history });
 }
 
 /**

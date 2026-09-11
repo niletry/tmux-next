@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readBindings, bindSession, unbindSession, resolveBindings } from "./session-binding";
+import { readHistory } from "./session-history";
 
 /**
  * 按**会话**作键：一张单可以有多个会话（会话名唯一，单不唯一），反过来存则每次
@@ -16,15 +17,21 @@ import { readBindings, bindSession, unbindSession, resolveBindings } from "./ses
 let root: string;
 let saved: string | undefined;
 
+let savedHistory: string | undefined;
+
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "binding-"));
   saved = process.env.TMUX_NEXT_BINDINGS_PATH;
   process.env.TMUX_NEXT_BINDINGS_PATH = join(root, "bindings.json");
+  savedHistory = process.env.TMUX_NEXT_SESSION_HISTORY_PATH;
+  process.env.TMUX_NEXT_SESSION_HISTORY_PATH = join(root, "session-history.json");
 });
 
 afterEach(async () => {
   if (saved === undefined) delete process.env.TMUX_NEXT_BINDINGS_PATH;
   else process.env.TMUX_NEXT_BINDINGS_PATH = saved;
+  if (savedHistory === undefined) delete process.env.TMUX_NEXT_SESSION_HISTORY_PATH;
+  else process.env.TMUX_NEXT_SESSION_HISTORY_PATH = savedHistory;
   await rm(root, { recursive: true, force: true });
 });
 
@@ -107,4 +114,34 @@ test("id 对不上时按名字兜底", async () => {
   await bindSession("甲", "it-1", "$7");
   const out = await resolveBindings([{ name: "甲", sessionId: "$99" }]);
   expect(out).toEqual([{ session: "甲", itemId: "it-1", live: true }]);
+});
+
+test("bindSession 顺手在历史里开一段", async () => {
+  await bindSession("甲", "it-1", "$1");
+  const history = await readHistory();
+  expect(history).toEqual([
+    expect.objectContaining({ itemId: "it-1", session: "甲", sessionId: "$1", endedAt: null }),
+  ]);
+});
+
+test("unbindSession 顺手把历史那段关掉", async () => {
+  await bindSession("甲", "it-1", "$1");
+  await unbindSession("甲");
+  const history = await readHistory();
+  expect(history[0]?.endedAt).not.toBeNull();
+});
+
+test("resolveBindings 发现会话死了，顺手把历史那段关掉", async () => {
+  await bindSession("甲", "it-1", "$1");
+  await resolveBindings([]);
+  const history = await readHistory();
+  expect(history[0]?.endedAt).not.toBeNull();
+});
+
+test("resolveBindings 认回改名/活着的会话，不动历史记录", async () => {
+  await bindSession("旧名", "it-1", "$7");
+  await resolveBindings([{ name: "新名", sessionId: "$7" }]);
+  const history = await readHistory();
+  expect(history).toHaveLength(1);
+  expect(history[0]?.endedAt).toBeNull();
 });

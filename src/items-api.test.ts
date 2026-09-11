@@ -11,8 +11,11 @@ process.env.TMUX_NEXT_BINDINGS_PATH = join(tmpdir(), `bindings-test-${stamp}.jso
 // 防御地绝不能让它们指到用户真实的存档上，与迁移是否跑无关。
 process.env.TMUX_NEXT_JIRA_DIR = join(tmpdir(), `items-test-jira-${stamp}`);
 
+process.env.TMUX_NEXT_SESSION_HISTORY_PATH = join(tmpdir(), `session-history-test-${stamp}.json`);
+
 import { rm } from "node:fs/promises";
 import { startServer } from "./server";
+import { bindSession, unbindSession } from "./session-binding";
 
 let server: { stop(): void; port: number };
 const at = (path: string) => `http://127.0.0.1:${server.port}${path}`;
@@ -37,12 +40,14 @@ afterAll(async () => {
   server.stop();
   await rm(process.env.TMUX_NEXT_ITEMS_PATH!, { force: true });
   await rm(process.env.TMUX_NEXT_BINDINGS_PATH!, { force: true });
+  await rm(process.env.TMUX_NEXT_SESSION_HISTORY_PATH!, { force: true });
 });
 
 // 这些路由都读同一份文件，每条测试从空表开始。
 afterEach(async () => {
   await rm(process.env.TMUX_NEXT_ITEMS_PATH!, { force: true });
   await rm(process.env.TMUX_NEXT_BINDINGS_PATH!, { force: true });
+  await rm(process.env.TMUX_NEXT_SESSION_HISTORY_PATH!, { force: true });
 });
 
 test("空的时候给空表", async () => {
@@ -210,7 +215,7 @@ test("GET /api/items/:id 给出这张单、它的 facets 与它的会话", async
   const res = await fetch(at(`/api/items/${created.id}`));
   expect(res.status).toBe(200);
   const body = (await res.json()) as Record<string, any>;
-  expect(Object.keys(body).sort()).toEqual(["facets", "item", "sessions"]);
+  expect(Object.keys(body).sort()).toEqual(["facets", "history", "item", "sessions"]);
   expect(body.item.id).toBe(created.id);
   expect(body.item.title).toBe("看一眼这张单");
   // facets 是这一张单的那一列，不是首页那种 { itemId: Facet[] } 的表。
@@ -218,11 +223,27 @@ test("GET /api/items/:id 给出这张单、它的 facets 与它的会话", async
   expect(body.facets).toContainEqual({ dim: "item.agent", value: "none", tone: "dim" });
   // 没绑任何会话，所以是空表——不是整台机器的会话。
   expect(body.sessions).toEqual([]);
+  // 没有历史绑定过的会话，历史区也是空表。
+  expect(body.history).toEqual([]);
 });
 
 test("GET 一张不存在的单给 404", async () => {
   const res = await fetch(at("/api/items/it-nope"));
   expect(res.status).toBe(404);
+});
+
+test("GET /api/items/:id 带上这张单已经结束的绑定历史", async () => {
+  const created = await makeItem("修好它");
+  await bindSession("甲", created.id, "$1");
+  await unbindSession("甲");
+
+  const res = await fetch(at(`/api/items/${created.id}`));
+  const body = (await res.json()) as Record<string, any>;
+  expect(body.history).toContainEqual(
+    expect.objectContaining({ itemId: created.id, session: "甲" }),
+  );
+  const mine = body.history.find((h: any) => h.session === "甲");
+  expect(mine.endedAt).not.toBeNull();
 });
 
 // by-session 必须排在 ^/api/items/([^/]+)$ 之前，否则 "by-session" 会被那条正则

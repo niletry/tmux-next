@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, serialized } from "./json-store";
+import { recordBind, recordUnbind, recordDead } from "./session-history";
 
 /**
  * 会话属于哪张单。
@@ -47,6 +48,9 @@ export async function bindSession(
     all[session] = { itemId, sessionId, boundAt: Math.floor(Date.now() / 1000) };
     await writeJsonAtomic(bindingsPath(), all);
   });
+  // 在外面调用：session-history 自己也用这条共享队列，嵌在上面那段
+  // serialized 里面会自己等自己，死锁。
+  await recordBind(session, itemId, sessionId);
 }
 
 export async function unbindSession(session: string): Promise<void> {
@@ -55,6 +59,7 @@ export async function unbindSession(session: string): Promise<void> {
     delete all[session];
     await writeJsonAtomic(bindingsPath(), all);
   });
+  await recordUnbind(session);
 }
 
 /**
@@ -100,6 +105,9 @@ export async function resolveBindings(
       await writeJsonAtomic(bindingsPath(), next);
     });
   }
+
+  const dead = out.filter((b) => !b.live).map((b) => b.session);
+  if (dead.length) await recordDead(dead);
 
   return out;
 }

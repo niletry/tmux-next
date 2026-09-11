@@ -380,3 +380,29 @@ test("发送失败时提示错误，按钮重新可点", async () => {
   expect(btn.disabled).toBe(false);
   expect(btn.textContent).toBe(tr("items.sendToSession"));
 });
+
+test("没有历史记录时 historySection 什么都不画", async () => {
+  const { historySection } = await load();
+  expect(historySection([])).toBeNull();
+});
+
+test("historySection 每条历史记录画一行，带上会话名", async () => {
+  const { historySection } = await load();
+  const section = historySection([
+    { session: "甲", boundAt: NOW - 3600, endedAt: NOW - 1800 },
+    { session: "乙", boundAt: NOW - 7200, endedAt: NOW - 6000 },
+  ]);
+  expect(section).not.toBeNull();
+  expect(section!.textContent).toContain(tr("items.history"));
+  const rows = section!.querySelectorAll(".item-history-row");
+  expect(rows).toHaveLength(2);
+  expect(rows[0]!.textContent).toContain("甲");
+  expect(rows[1]!.textContent).toContain("乙");
+});
+
+test("仍是 open 的记录（endedAt 为 null）不该出现在历史区——调用方已经把它们过滤掉了，这里只管画", async () => {
+  const { historyRow } = await load();
+  const row = historyRow({ session: "甲", boundAt: NOW - 60, endedAt: NOW - 30 });
+  expect(row.className).toBe("item-history-row");
+  expect(row.textContent).toContain("甲");
+});

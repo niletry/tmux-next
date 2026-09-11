@@ -28,6 +28,7 @@ import {
   facetChip,
   chipVisible,
   sessionRow,
+  historySection,
   claimedProviders,
   refreshButton,
 } from "./item-card.js";
@@ -43,7 +44,7 @@ let current = /** @type {null | (() => void)} */ (null);
 
 /**
  * @param {PanelQuery} query
- * @returns {Promise<{item: any, sessions: any[], facets: any[]} | null>}
+ * @returns {Promise<{item: any, sessions: any[], facets: any[], history?: any[]} | null>}
  */
 async function fetchDetail(query) {
   const path = query.id
@@ -110,7 +111,7 @@ export async function openItemPanel(query, opts = {}) {
    * 顺带调一次调用方的 onClose——终端页拿它放下 modalOpen，焦点会在刷新的一瞬间
    * 被抢回终端。
    *
-   * @param {{item: any, sessions: any[], facets: any[]} | null} data
+   * @param {{item: any, sessions: any[], facets: any[], history?: any[]} | null} data
    */
   function fill(data) {
     sheet.textContent = "";
@@ -133,6 +134,10 @@ export async function openItemPanel(query, opts = {}) {
 
       // 解绑不给：这是只读的一眼，改绑定在首页和会话列表上都有入口。
       for (const session of sessions) sheet.append(sessionRow(session, null));
+
+      const history = Array.isArray(data.history) ? data.history : [];
+      const historyBox = historySection(history);
+      if (historyBox) sheet.append(historyBox);
 
       if (data.item.source && claimed.has(data.item.source.provider)) {
         const actions = document.createElement("div");

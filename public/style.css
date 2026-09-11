@@ -977,6 +977,24 @@ button.status-dot {
   white-space: nowrap;
 }
 
+/* 已经结束的绑定历史，只在浮层里出现（items.js 的卡片不画它）。
+   `.item-history-row` 复用 .item-session 的 s-name/s-state，但不是链接——
+   历史里的会话名只是抄下来的快照，点了大概率打不开任何东西。 */
+.item-history-title {
+  margin: 12px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.item-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-top: 1px solid color-mix(in srgb, var(--text-1) 8%, transparent);
+}
+
 /* 卡片底部的动作行：主动作「新会话」和「刷新」。关联已有会话和
    归档收在右上角的 ⋯（.item-more）里——那两个是偶尔才用一次的。 */
 .item-actions {

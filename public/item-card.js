@@ -61,6 +61,13 @@ import { PLUGINS } from "../plugins/registry.js";
  * @property {string} title
  * @property {{ref: string, url?: string} | null} source
  */
+/**
+ * @typedef {object} HistoryEntryLike 一段已经结束的绑定——见 src/session-history.ts。
+ *   `session` 只是绑定那一刻抄下来的名字快照，不是一个还能点进去的会话。
+ * @property {string} session
+ * @property {number} boundAt
+ * @property {number | null} endedAt
+ */
 
 /**
  * @template {keyof HTMLElementTagNameMap} K
@@ -526,6 +533,50 @@ export function sessionRow(session, onUnbind) {
   });
   row.append(unbind);
   return row;
+}
+
+/**
+ * 相对时间，跟 list.js/new.js 用的是同一套 "list.*" 键——那两处早就重复了这几行，
+ * 这里不算新起一份说法，只是第三处引用同一批已有的措辞。
+ * @param {number} epochSeconds
+ */
+function relativeTime(epochSeconds) {
+  const secs = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds));
+  if (secs < 60) return tr("list.justNow");
+  if (secs < 3600) return tr("list.minutesAgo", { n: Math.floor(secs / 60) });
+  if (secs < 86400) return tr("list.hoursAgo", { n: Math.floor(secs / 3600) });
+  return tr("list.daysAgo", { n: Math.floor(secs / 86400) });
+}
+
+/**
+ * 历史区里的一行：曾经绑过的会话名 + 那一段的起止时间。不可点——`session` 只是
+ * 绑定那一刻抄下来的快照，点了大概率打不开任何东西（改名、tmux 重启后 id 被
+ * 复用……），这也是它跟 sessionRow 不共用画法的原因。
+ * @param {HistoryEntryLike} entry
+ */
+export function historyRow(entry) {
+  const row = el("div", "item-history-row");
+  row.append(el("span", "s-name", entry.session));
+  const range = tr("items.historyRange", {
+    from: relativeTime(entry.boundAt),
+    to: relativeTime(entry.endedAt ?? entry.boundAt),
+  });
+  row.append(el("span", "s-state", range));
+  return row;
+}
+
+/**
+ * 一张单已经结束的绑定历史。没有就不画——一个空标题换不来任何信息。仍在进行中
+ * 的一段不该出现在这里：调用方（server.ts 的 itemDetail）只给已关闭的记录，这
+ * 里不重复判断 endedAt。
+ * @param {HistoryEntryLike[]} entries
+ */
+export function historySection(entries) {
+  if (!entries.length) return null;
+  const box = el("div", "item-history");
+  box.append(el("h3", "item-history-title", tr("items.history")));
+  for (const entry of entries) box.append(historyRow(entry));
+  return box;
 }
 
 /**
