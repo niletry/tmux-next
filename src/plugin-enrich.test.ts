@@ -335,6 +335,73 @@ test.each([["yes"], [1], [{}], [false]])("badge：%p 当没给", async (bad) => 
   expect(got["it-1"]![0]!.value).toBe("Epic");
 });
 
+// stage/light/sortKey 曾经被漏掉透传——插件给了，净化函数却只拷贝了
+// dim/value/tone/detail/icon/badge 这几个字段，statusLightRow 因此从未在
+// 任何页面画出过一个点，排序下拉的「按状态排」也一样悄悄失效。
+const withStage = (stage: unknown): PluginEnricher => async () => ({
+  "it-1": [{ dim: "jira.status", value: "Ready for release", stage } as Facet],
+});
+
+test("stage：合法的 {hue, filled} 原样带过去", async () => {
+  const got = await collectFacets(items, { p: withStage({ hue: "ok", filled: false }) });
+  expect(got["it-1"]![0]!.stage).toEqual({ hue: "ok", filled: false });
+});
+
+test.each([
+  [{ hue: "purple", filled: true }],
+  [{ hue: "ok" }],
+  [{ hue: "ok", filled: "yes" }],
+  ["ok"],
+  [null],
+])("stage：形状不对的 %p 当没给", async (bad) => {
+  const got = await collectFacets(items, { p: withStage(bad) });
+  expect(got["it-1"]![0]!.stage).toBeUndefined();
+});
+
+test("light：true 原样带过去", async () => {
+  const got = await collectFacets(items, {
+    p: async () => ({ "it-1": [{ dim: "jira.checks", value: "0/1", light: true } as Facet] }),
+  });
+  expect(got["it-1"]![0]!.light).toBe(true);
+});
+
+test.each([["yes"], [1], [false]])("light：%p 当没给", async (bad) => {
+  const got = await collectFacets(items, {
+    p: async () => ({ "it-1": [{ dim: "jira.checks", value: "0/1", light: bad } as unknown as Facet] }),
+  });
+  expect(got["it-1"]![0]!.light).toBeUndefined();
+});
+
+test("sortKey：{key, rank} 原样带过去", async () => {
+  const got = await collectFacets(items, {
+    p: async () => ({
+      "it-1": [{ dim: "jira.status", value: "Done", sortKey: { key: "stage", rank: 5 } } as Facet],
+    }),
+  });
+  expect(got["it-1"]![0]!.sortKey).toEqual({ key: "stage", rank: 5 });
+});
+
+test("sortKey：rank 缺席时只带 key", async () => {
+  const got = await collectFacets(items, {
+    p: async () => ({
+      "it-1": [{ dim: "jira.assignee", value: "Sam", sortKey: { key: "assignee" } } as Facet],
+    }),
+  });
+  expect(got["it-1"]![0]!.sortKey).toEqual({ key: "assignee" });
+});
+
+test.each([[{ rank: 1 }], [{ key: "", rank: 1 }], [{ key: "stage", rank: NaN }], [{ key: "stage", rank: "1" }]])(
+  "sortKey：形状不对的 %p 只丢坏的那部分或整体丢弃",
+  async (bad) => {
+    const got = await collectFacets(items, {
+      p: async () => ({ "it-1": [{ dim: "jira.status", value: "Done", sortKey: bad } as unknown as Facet] }),
+    });
+    const sortKey = got["it-1"]![0]!.sortKey;
+    if (sortKey) expect(sortKey.rank).toBeUndefined();
+    else expect(sortKey).toBeUndefined();
+  },
+);
+
 // group 跟 label/value 同一套不信任姿态：截断、缺席时不出现在结果里。
 test("明细行的 group 原样带过去，跟 label/value 一样限长", async () => {
   const got = await collectFacets([{ id: "a", source: null }], {
