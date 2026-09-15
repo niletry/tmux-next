@@ -655,6 +655,17 @@ export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
     return { created: 0, updated: 0, total: 0, truncated: false };
   }
 
+  // 增量分支不写 `cache`（见上面的注释），但取回的每一条 issue 本身仍然带着
+  // 完整字段，包括 assignee——`enrich()` 读的是 `issueCache`，不是 `cache`，
+  // 所以把它焐热在这里跟"不污染全量列表"完全不冲突。不这么做的后果是：增量
+  // 同步进来或更新的单子，assignee 明明问到了却被直接扔掉，页面上的「负责
+  // 人」一直空着，只有点过一次单条「刷新」（走 refreshIssue，见上面 issueCache
+  // 的注释）才会补上。全量分支已经在 issues() 里做了同样的事，这里不用重复。
+  if (!full) {
+    const at = Date.now();
+    for (const issue of result.issues) issueCache.set(issue.key, { at, issue });
+  }
+
   // 游标只在拉取成功之后才前移，失败绝不推进——推进了就等于承认"这段时间的
   // 改动我们已经看过了"，而实际上一条都没看到。
   await writeSyncState({ lastSyncAt: startedAt, jql: config.jql });
