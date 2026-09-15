@@ -1160,6 +1160,20 @@ button.status-dot {
    给 mountItemEntry 一个不会被 applyLang 重刷的落点。 */
 .term-item-slot { display: contents; }
 
+/* 工作目录：只显示最后一段，跟旁边可点的 .term-item 区分开——它不是入口，纯粹
+   是"这条会话在哪"这一件事，所以用 --text-2 而不是 accent，也没有底色。
+   会话没有 path（刚创建、tmux 还没上报）时留着 hidden，不占顶栏宽度。 */
+.term-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
 /* Tapping 改名 turns the title into this field, prefilled with the name. */
 .title-edit {
   min-width: 0;

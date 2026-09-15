@@ -27,6 +27,10 @@
       </svg>
     </a>
     <span class="title" id="title"></span>
+    <!-- 工作目录的最后一段，完整路径放在 title 属性里悬停查看——跟会话列表页
+         目录分组标题（list.js 的 groupHeader）同一个约定。查不到 path 时（刚
+         创建、tmux 还没来得及上报）就留空不显示，不占顶栏这条本来就很挤的行。 -->
+    <span class="term-path" id="path" hidden></span>
     <!-- 这条会话挂着的那张单。空着，由 item-panel.js 的 mountItemEntry 填——没挂
          单时它就一直是空的，不占宽度。 -->
     <span class="term-item-slot" id="item-slot"></span>

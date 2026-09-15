@@ -78,7 +78,33 @@ function applyBack() {
   el.setAttribute("aria-label", label);
 }
 
+/**
+ * 顶栏里那截工作目录：只显示最后一段，完整路径留给 title 悬停——跟会话列表页
+ * 目录分组标题（list.js 的 groupHeader/`byPath` 那两处）同一个截法，这里不值得
+ * 为一行正则单独抽个模块。
+ *
+ * 不跟着改名走一遍：目录是会话创建时定下的 cwd，改名只改名字，这里只用加载一次。
+ */
+async function applyPath() {
+  if (!target) return;
+  const el = document.getElementById("path");
+  if (!el) return;
+  let sessions;
+  try {
+    const res = await fetch("api/sessions", { headers: { accept: "application/json" } });
+    ({ sessions } = await res.json());
+  } catch {
+    return; // 查不到就留空，不占顶栏宽度——跟单子槽一个道理。
+  }
+  const path = sessions?.find((s) => s.name === target)?.path;
+  if (!path) return;
+  el.textContent = path.replace(/\/+$/, "").split("/").pop() || path;
+  el.title = path;
+  el.hidden = false;
+}
+
 applyBack();
+applyPath();
 initLang().then(() => {
   applyBack();
   // 这条会话挂在哪张单下——顶栏上的一枚入口，点开是那张单此刻的样子：状态、PR、
