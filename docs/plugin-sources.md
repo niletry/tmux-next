@@ -73,12 +73,12 @@ export type ItemSourceProvider = {
 // plugins/handlers.ts
 export type PluginServer = {
   handle?: PluginHandler;
-  start?(): void;
-  readSettings?(): Promise<Record<string, SettingValue>>;
-  writeSettings?(values: Record<string, string | boolean>): Promise<void>;
-  runAction?(key: string): Promise<boolean>;
   sources?: ItemSourceProvider[];
   enrich?: PluginEnricher;
+  start?: () => void;
+  readSettings?: () => Promise<Record<string, SettingValue>>;
+  writeSettings?: (values: Record<string, string | boolean>) => Promise<void>;
+  runAction?: (key: string) => Promise<boolean>;
 };
 ```
 
@@ -98,7 +98,7 @@ export type PluginServer = {
 | 排序下拉 | `sortKey: {key, rank?}` | 同 key 聚成一个选项 |
 | 分组 / 筛选 | 无需声明 | 从 chip 数据自动算 |
 | 状态机信号 | `role: "pr" \| "check"` | 只看 `role`，不看 `dim` |
-| 刷新按钮 | 来源实现了 `refreshItem` | 服务端在响应里告诉页面 `providers` |
+| 刷新按钮 | 来源认领了这个 provider（进得了 `claimedProviders()`） | 服务端在响应里告诉页面 `providers`；没实现 `refreshItem` 的来源按钮照画，点了就是那个 404 |
 | 模板字段 | `fields()`，清单里 `fieldKeys` 列名 | 新建会话页的占位符 |
 | 设置页 | 清单里 `settings` / `actions` | 表单和按钮 |
 | 单号链接 | `source.url`，来源在 `ensureItemForSource` 时写 | 单号徽标可点 |
@@ -170,7 +170,7 @@ role?: "pr" | "check";
 | 文件 | 是什么 |
 |---|---|
 | `src/items/sources.ts` | 契约本身、三个预算、全部封顶与净化、`sourceProviders` / `claimedProviders` / `collectFacets` / `collectFields` / `runSync` / `refreshFromSource` / `notifyLifecycleChange` |
-| `src/items/model.ts` | `WorkItem`、`readItems` / `writeItems` / `ensureItemForSource` |
+| `src/items/model.ts` | `WorkItem`；读用 `readItems` / `findBySource`，写用 `createItem` / `updateItem` / `ensureItemForSource`（没有一个叫 `writeItems` 的通用写入口——单的每一种写法都走各自的那个函数） |
 | `src/items/lifecycle.ts` | 状态机，按 `role` 读信号 |
 | `src/items/facets.ts` | 内核自己的 `item.*` 维度 |
 | `src/items/fields.ts` | 内核自己的 `item.*` 模板字段 |

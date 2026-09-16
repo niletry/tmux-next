@@ -291,12 +291,18 @@ export type Facet = {
 };
 
 /**
- * 问插件时给它看的单。
+ * 问 enrich 时给它看的单。
  *
- * 传**全部**单给每个插件，不按 `source.provider === 插件 id` 预筛——预筛会在内核里
- * 写死"provider 名就是插件 id"这个等式，而那正是要守的那条线。让插件自己看 source
- * 挑，成本可以忽略（几十条），还顺带允许一个不绑定任何来源的插件（比如读 git 分支
- * 的）也贡献维度。
+ * 收到哪些单取决于 enrich 声明在哪一层，两层都不按"插件 id"筛：
+ *
+ * - **来源级**（`ItemSourceProvider.enrich`）只收到 `source.provider` 跟这个来源
+ *   的 `provider` 相等的单。筛的依据是来源自己声明的那个字符串，不是插件 id——
+ *   这两者可以不同，一个插件也可以带好几个来源。
+ * - **插件级**（`PluginServer.enrich`）收到**全部**单，不管有没有来源、来源是谁。
+ *   这条路留给不绑定任何来源、却想按自己的口径贴 chip 的插件（比如读分支名的）。
+ *
+ * 要守住的那条线是"内核里不许写死 provider 名就是插件 id"。来源级的预筛没有碰它：
+ * 内核比的是 `source.provider === 来源自己声明的 provider`，一次都没看过插件 id。
  */
 export type ItemRef = { id: string; source: { provider: string; ref: string } | null };
 

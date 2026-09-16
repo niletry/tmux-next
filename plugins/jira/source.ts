@@ -239,13 +239,15 @@ export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
   let result: IssuesResult;
   if (full) {
     // 显式同步动作，绕开 60 秒的页面缓存——用户点了同步，或者游标不可用，就该
-    // 真的问一次全量。issues() 会把结果写进模块级缓存，工单页的列表跟着更新。
+    // 真的问一次全量。issues() 会把结果写进模块级缓存，首页卡片上的 chip
+    // 跟着更新——enrich() 读的就是那份缓存。
     result = await issues(true);
   } else {
     // 增量必须绕开 issues() 的模块级缓存，不能顺手调用它：那份缓存同时也是
-    // /api/jira 给工单页展示"全部工单列表"用的数据源。增量结果天然只有"这次
-    // 变了的那几条"，如果把它写进那份缓存，页面就会把"最近改过的几条"渲染成
-    // "这就是全部工单"，凭空丢掉一大片没变的单。所以这里直接调 fetchIssues，
+    // enrich() 给首页每张卡片贴 chip 时查的那一份。增量结果天然只有"这次变了
+    // 的那几条"，如果把它写进那份缓存，所有没变的单就从缓存里消失了——它们的
+    // 卡片会在下一次画首页时一条 chip 都没有，看起来像是同步把数据弄丢了。
+    // 所以这里直接调 fetchIssues，
     // 结果只喂给下面的 syncIssues/dev 刷新，从不碰 cache。
     result = await fetchIssues(config, fetch, incrementalJql(config.jql, incrementalWindowMinutes(state.lastSyncAt)));
   }
