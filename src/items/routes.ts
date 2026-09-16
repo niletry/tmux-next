@@ -7,7 +7,14 @@ import { historyForItem } from "../session-history";
 import { listSessions, sessionIdentities } from "../tmux/session-list";
 import { notifyLifecycle } from "../push";
 import { render, sanitiseName } from "../template";
-import { collectFacets, collectFields, runSync, refreshFromSource, notifyLifecycleChange } from "./sources";
+import {
+  collectFacets,
+  collectFields,
+  runSync,
+  refreshFromSource,
+  notifyLifecycleChange,
+  claimedProviders,
+} from "./sources";
 import type { Facet } from "../../plugins/types";
 
 /**
@@ -52,7 +59,13 @@ async function itemDetail(id: string): Promise<Response> {
     Infinity,
   );
   const history = await historyForItem(item.id);
-  return Response.json({ item, sessions, facets: [...kernel, ...(theirs[item.id] ?? [])], history });
+  return Response.json({
+    item,
+    sessions,
+    facets: [...kernel, ...(theirs[item.id] ?? [])],
+    history,
+    providers: claimedProviders(),
+  });
 }
 
 /**
@@ -111,7 +124,7 @@ export async function itemsRoutes(req: Request, url: URL): Promise<Response | nu
       for (const item of items) {
         facets[item.id] = [...(mine[item.id] ?? []), ...(theirs[item.id] ?? [])];
       }
-      return Response.json({ items, bindings, sessions: live, facets });
+      return Response.json({ items, bindings, sessions: live, facets, providers: claimedProviders() });
     }
 
     if (url.pathname === "/api/items" && req.method === "POST") {

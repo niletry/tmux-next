@@ -10,8 +10,8 @@
  *
  * 以画为主：归档、关联已有会话那些只有首页才有的动作留在 items.js 里。会跟着某
  * 一块画法走的动作是例外——会话行上的解绑（sessionRow 的 onUnbind）和「刷新这一
- * 个单」（refreshButton），后者两处入口都要，判断"什么时候能刷"的那点逻辑（
- * claimedProviders）写两遍就会漂。
+ * 个单」（refreshButton），后者两处入口都要，判断"什么时候能刷"的那点逻辑写两遍
+ * 就会漂。
  *
  * 页面文件不做类型检查（tsconfig 的 checkJs: false），这一层做——它是两处共用的
  * 那一层，src/item-card.test.ts 无头地渲染它。
@@ -20,7 +20,6 @@
 import { tr } from "./i18n-apply.js";
 import { url } from "./root.js";
 import { svgShell, icon } from "./icons.js";
-import { PLUGINS } from "../plugins/registry.js";
 
 /**
  * @typedef {object} DetailRow
@@ -705,37 +704,6 @@ export function itemHead(item, facets, sessionCount) {
 
 
 /**
- * 服务端到底认领了哪些 source.provider。
- *
- * `item.source` 单独一件事只说明这张单**有**来源，不说明**有谁能刷它**——
- * /api/plugins 只答启用的插件 id，从来不答它们的 provides，浏览器手上唯一能
- * 拼出"这个 provider 被谁认领了"这件事的数据，是同构的 registry.js（跟 nav.js
- * 画 tab 用的是同一份 import），拿它跟 /api/plugins 的启用 id 取交集。
- *
- * 问不到就当没人认领：画一个几乎必然 404 的按钮，比不画更糟——TMUX_NEXT_DISABLE_
- * PLUGINS 关掉一个插件时，它的刷新入口也该跟着它的 tab、它的 /api/<id> 一起消失，
- * 而不是留在页面上等着点了才报错。
- *
- * @returns {Promise<Set<string>>}
- */
-export async function claimedProviders() {
-  try {
-    const res = await fetch(url("api/plugins"));
-    if (!res.ok) throw new Error(String(res.status));
-    const ids = await res.json();
-    const enabled = new Set(Array.isArray(ids) ? ids : []);
-    const out = new Set();
-    for (const p of PLUGINS) {
-      if (!enabled.has(p.id)) continue;
-      for (const provider of p.provides ?? []) out.add(provider);
-    }
-    return out;
-  } catch {
-    return new Set();
-  }
-}
-
-/**
  * 去外部来源那边重新问一次这张单。
  *
  * 成功了让调用方整个重画，不在本地拼装变化后的状态——服务端才是真相，刷新可能
@@ -775,16 +743,20 @@ async function refreshItem(item, onChange) {
  * 任何东西，它只是把远端此刻的说法再问一遍，而"远端此刻怎么说"正是你干活这段
  * 时间里唯一会变的东西。
  *
- * 只在有来源、且真有启用的插件认领那个来源时才画（见 claimedProviders）：一个
- * 必然 404 的按钮比没有这个按钮更糟。
+ * 只在有来源、且真有 provider 认领那个来源时才画：providers 是服务端在
+ * /api/items 响应里报出的已认领来源——浏览器不再自己拼这份名单。一个必然
+ * 404 的按钮比没有这个按钮更糟。
  *
  * 请求期间禁用自己，而不是拦一个"正在刷"的标志位——按钮就是这个状态唯一的宿主，
  * 它自己灰掉既是防重复点击，也是唯一需要的反馈。
  *
  * @param {*} item
+ * @param {Iterable<string>} providers 服务端报出的已认领来源
  * @param {() => Promise<void>} onChange
+ * @returns {HTMLButtonElement | null}
  */
-export function refreshButton(item, onChange) {
+export function refreshButton(item, providers, onChange) {
+  if (!item.source || !new Set(providers).has(item.source.provider)) return null;
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "item-refresh";

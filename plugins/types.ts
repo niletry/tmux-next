@@ -22,7 +22,7 @@ export type Plugin = {
   /**
    * 这个插件的 `fields()` 会产出哪些键，例如 `["jira.summary", "jira.description"]`。
    *
-   * 设置页拿它列出"可用字段"给模板作者点选。跟 facetDims、titleKey、provides 同一步棋：
+   * 设置页拿它列出"可用字段"给模板作者点选。跟 facetDims、titleKey 同一步棋：
    * 凡是内核需要知道、又不该写死的东西，由插件在清单里声明。
    *
    * 跟 facetDims 有一点不同：这些**不是 i18n 键**，原样显示，不翻译——模板作者要打的
@@ -51,18 +51,9 @@ export type Plugin = {
    */
   page?: { mainId: string };
   /**
-   * 这个插件认领哪些 `WorkItem.source.provider`，例如 `["jira"]`。
-   *
-   * 内核据此知道"谁负责这个来源"，从而能在首页发起「刷新这一个单」而**不点名任何
-   * 插件**——它只做一次查表，而这张表是插件自己声明的数据，不是内核维护的名单。
-   * 跟 titleKey、legacyPaths、facetDims 同一步棋：凡是内核需要知道、又不该写死的
-   * 东西，都由清单声明。
-   */
-  provides?: string[];
-  /**
    * 这个插件的可配置项。内核照着画表单，但**不认识任何一项是什么意思**。
    *
-   * 跟 titleKey / facetDims / provides 同一步棋：内核需要知道、又不该写死的东西，
+   * 跟 titleKey / facetDims 同一步棋：内核需要知道、又不该写死的东西，
    * 由清单声明。有了它，接进来的下一个数据源自动就有配置界面，不必再动内核一行。
    *
    * 值不在这里——清单是同构的、要被浏览器 import，凭据绝不能进这个文件。存取归

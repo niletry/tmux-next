@@ -1,10 +1,5 @@
 import { test, expect } from "bun:test";
-import jira from "./plugin.js";
 import { devTargets } from "./server";
-
-test("清单声明认领 jira 这个来源", () => {
-  expect(jira.provides).toEqual(["jira"]);
-});
 
 /**
  * PR/检查只给**有活跃会话**的单拉。

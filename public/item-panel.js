@@ -11,7 +11,8 @@
  * 唯一会变的东西。浮层每次打开都重新取，本来就是为了不给你一份越看越旧的快照，
  * 但那份数据自己是五分钟一档的缓存——盯着一次 CI 时，没有这颗按钮就只剩"回首页
  * 找到那张单再点一次"，而你正在终端里。按钮本身就是首页卡片上那一颗
- * （item-card.js 的 refreshButton），不是照着又写一遍。
+ * （item-card.js 的 refreshButton，画不画看服务端在响应里报出的 providers），
+ * 不是照着又写一遍。
  *
  * 画法全部来自 item-card.js，跟首页卡片是同一份代码：两边各画一套 chip，迟早会对
  * 同一份数据给出两种说法。
@@ -29,7 +30,6 @@ import {
   chipVisible,
   sessionRow,
   historySection,
-  claimedProviders,
   refreshButton,
 } from "./item-card.js";
 
@@ -44,7 +44,7 @@ let current = /** @type {null | (() => void)} */ (null);
 
 /**
  * @param {PanelQuery} query
- * @returns {Promise<{item: any, sessions: any[], facets: any[], history?: any[]} | null>}
+ * @returns {Promise<{item: any, sessions: any[], facets: any[], history?: any[], providers?: string[]} | null>}
  */
 async function fetchDetail(query) {
   const path = query.id
@@ -74,9 +74,7 @@ export async function openItemPanel(query, opts = {}) {
   // 连点两下不叠第二层：把已经开着的那个先关掉，新的那次照常回调它的 onClose。
   if (current) current();
 
-  // 两次请求彼此独立，串起来只是白等一次往返；claimedProviders() 自己兜住失败、
-  // 从不抛，所以这里不需要 allSettled。
-  const [detail, claimed] = await Promise.all([fetchDetail(query), claimedProviders()]);
+  const detail = await fetchDetail(query);
 
   const backdrop = document.createElement("div");
   backdrop.className = "sheet-backdrop panel-backdrop";
@@ -111,7 +109,7 @@ export async function openItemPanel(query, opts = {}) {
    * 顺带调一次调用方的 onClose——终端页拿它放下 modalOpen，焦点会在刷新的一瞬间
    * 被抢回终端。
    *
-   * @param {{item: any, sessions: any[], facets: any[], history?: any[]} | null} data
+   * @param {{item: any, sessions: any[], facets: any[], history?: any[], providers?: string[]} | null} data
    */
   function fill(data) {
     sheet.textContent = "";
@@ -139,13 +137,15 @@ export async function openItemPanel(query, opts = {}) {
       const historyBox = historySection(history);
       if (historyBox) sheet.append(historyBox);
 
-      if (data.item.source && claimed.has(data.item.source.provider)) {
+      const providers = Array.isArray(data.providers) ? data.providers : [];
+      // 刷完按 id 再取一次，不按打开时那个 query：入口可能是会话名，而重画的
+      // 目标从来是这张单本身——按会话名再问一遍，中间要是刚解绑就变成 404。
+      const again = async () => fill(await fetchDetail({ id: data.item.id }));
+      const refresh = refreshButton(data.item, providers, again);
+      if (refresh) {
         const actions = document.createElement("div");
         actions.className = "item-actions";
-        // 刷完按 id 再取一次，不按打开时那个 query：入口可能是会话名，而重画的
-        // 目标从来是这张单本身——按会话名再问一遍，中间要是刚解绑就变成 404。
-        const again = async () => fill(await fetchDetail({ id: data.item.id }));
-        actions.append(refreshButton(data.item, again));
+        actions.append(refresh);
         sheet.append(actions);
       }
     } else {

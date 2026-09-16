@@ -415,3 +415,11 @@ test("仍是 open 的记录（endedAt 为 null）不该出现在历史区——�
   expect(row.className).toBe("item-history-row");
   expect(row.textContent).toContain("甲");
 });
+
+test("refreshButton：来源被认领才画，否则返回 null", async () => {
+  const { refreshButton } = await load();
+  const item = { id: "it-1", title: "x", source: { provider: "jira", ref: "A-1" } };
+  expect(refreshButton(item, ["jira"], async () => {})).toBeTruthy();
+  expect(refreshButton(item, [], async () => {})).toBeNull();
+  expect(refreshButton({ id: "it-2", title: "本地", source: null }, ["jira"], async () => {})).toBeNull();
+});
