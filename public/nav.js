@@ -63,13 +63,14 @@ export async function renderNav(header, current) {
   const tabs = [
     { page: "items", href: url("./"), key: "items.title", icon: ICON_PATHS.items },
     { page: "sessions", href: url("sessions.html"), key: "list.title", icon: ICON_PATHS.sessions },
-    ...PLUGINS.filter((p) => on.has(p.id)).map((p) => ({
+    ...PLUGINS.filter((p) => on.has(p.id) && p.titleKey).map((p) => ({
       page: p.id,
       href: url(`p/${p.id}/`),
-      key: p.titleKey,
+      // 到这里已经被上面的 filter 收窄成有值——没有 titleKey 的插件不出 tab。
+      key: /** @type {string} */ (p.titleKey),
       // 插件在清单里给的是路径，不是名字——它的图标不在内核的 icons.js 里，也
       // 不该在：内核不认识任何一个插件。所以这里直接套外壳。
-      icon: p.icon,
+      icon: /** @type {string} */ (p.icon),
     })),
   ];
 

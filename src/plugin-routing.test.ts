@@ -157,10 +157,6 @@ test("jira 插件挂在自己的前缀下，未配置时如实说未配置", asy
   // 所以这里检的是"没配置"这条路径，而不是去打真实的 Jira。
   const cfg = await (await fetch(`${base()}/api/jira/config`)).json();
   expect(cfg).toEqual({ configured: false });
-
-  const issues = await fetch(`${base()}/api/jira/issues`);
-  expect(issues.status).toBe(200);
-  expect(await issues.json()).toEqual({ ok: false, reason: "unconfigured" });
 });
 
 test("配置接口从不回显 token", async () => {
@@ -204,51 +200,17 @@ test("已配置时，配置接口也从不回显 token", async () => {
   }
 });
 
-test("查询串里的 jql 到不了 Jira——真正发出去的还是配置里那条", async () => {
-  // 这是安全边界本身的回归测试：/api/jira/issues 只认 config.json 里的 jql,
-  // 请求里的 jql 参数必须被当空气。没有代码显式拒绝它——是 fetchIssues() 压根
-  // 不看请求——而"没有代码去做某件事"正是最容易被后面一次重构悄悄破坏的那种
-  // 保证,所以得有测试钉住它,不能只靠自觉。
-  const dir = mkdtempSync(join(tmpdir(), "jira-jql-boundary-test-"));
-  const configuredJql = "assignee = currentUser() and project = EXAMPLE";
-  writeFileSync(
-    join(dir, "config.json"),
-    JSON.stringify({
-      url: "https://example.atlassian.net",
-      email: "dev@example.com",
-      token: "example-token-not-a-real-secret",
-      jql: configuredJql,
-    }),
-  );
-  const prevDir = process.env.TMUX_NEXT_JIRA_DIR;
-  process.env.TMUX_NEXT_JIRA_DIR = dir;
+test("没有页面的插件，/p/<id>/ 301 到首页", async () => {
+  // jira 退役了自己的页面：清单没有 page，目录里也没有 public/index.html。
+  const res = await fetch(`${base()}/p/jira/`, { redirect: "manual" });
+  expect(res.status).toBe(301);
+  expect(res.headers.get("location")).toBe("../../");
+  const idx = await fetch(`${base()}/p/jira/index.html`, { redirect: "manual" });
+  expect(idx.status).toBe(301);
+});
 
-  // 一次真实请求都不发:把全局 fetch 换成注入的假 fetcher,只用来接住服务端内部
-  // 打 Jira 的那一次调用。测试自己发往本地测试服务器的请求改用保存下来的原始
-  // fetch 引用——不经过 globalThis.fetch,所以不会被自己的替身接住。
-  const realFetch = globalThis.fetch;
-  let seenUrl: string | undefined;
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
-    seenUrl = typeof input === "string" ? input : input.toString();
-    return new Response(JSON.stringify({ issues: [] }), { status: 200 });
-  }) as typeof fetch;
-
-  try {
-    const res = await realFetch(
-      `${base()}/api/jira/issues?jql=${encodeURIComponent("project = SECRET-PROXY-ATTEMPT")}&refresh=1`,
-    );
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, issues: [], truncated: false });
-  } finally {
-    globalThis.fetch = realFetch;
-    process.env.TMUX_NEXT_JIRA_DIR = prevDir;
-    rmSync(dir, { recursive: true, force: true });
-  }
-
-  expect(seenUrl).toBeDefined();
-  const decoded = decodeURIComponent(seenUrl ?? "");
-  expect(decoded).toContain(configuredJql);
-  expect(decoded).not.toContain("SECRET-PROXY-ATTEMPT");
+test("没有页面的插件不在 /api/plugins 之外多出任何页面资源", async () => {
+  expect((await fetch(`${base()}/p/jira/jira.js`)).status).toBe(404);
 });
 
 test("插件不认识的子路径落到 404", async () => {

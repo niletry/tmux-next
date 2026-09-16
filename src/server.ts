@@ -839,10 +839,17 @@ export function startServer(
           const plugin = enabledPlugins().find((p) => p.id === id);
           if (plugin?.page) {
             const hasCss = await Bun.file(`${PLUGINS_DIR}${id}/public/style.css`).exists();
-            return new Response(pluginShell(plugin.id, plugin.titleKey, plugin.page.mainId, hasCss), {
-              headers: { "content-type": "text/html; charset=utf-8", "Cache-Control": "no-cache" },
-            });
+            return new Response(
+              pluginShell(plugin.id, plugin.titleKey ?? "", plugin.page.mainId, hasCss),
+              { headers: { "content-type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } },
+            );
           }
+        }
+        // 没有页面的插件（清单没有 page，目录里也没有 index.html）：/p/<id>/ 是
+        // 一个从前存在过的地址，手机上可能还有书签。答 301 到首页而不是 404——
+        // 通用规则，不点名任何插件。相对的 Location，子路径部署下同样成立。
+        if (file === "index.html") {
+          return new Response(null, { status: 301, headers: { Location: "../../" } });
         }
         return new Response("not found", { status: 404 });
       }

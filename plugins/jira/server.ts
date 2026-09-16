@@ -7,7 +7,7 @@ import { incrementalJql } from "./jql";
 import { readSyncState, writeSyncState } from "./sync-state";
 import { readItems, ensureItemForSource } from "../../src/items/model";
 import type { ItemStatus } from "../../src/items/lifecycle";
-import { bindSession, unbindSession, resolveBindings, type ResolvedBinding } from "../../src/items/binding";
+import { resolveBindings, type ResolvedBinding } from "../../src/items/binding";
 import { sessionIdentities } from "../../src/tmux/session-list";
 import type { Facet, ItemRef } from "../types";
 import type { ItemSourceProvider, SyncResult } from "../../src/items/sources";
@@ -143,42 +143,6 @@ export async function refreshIssue(key: string): Promise<Issue | null> {
     // 会让工单页显示出一条它自己的查询条件说不该出现的行。
   }
   return got.issue;
-}
-
-/**
- * 内核的绑定，翻译成 Jira 页认得的形状。
- *
- * 只挑 source 是 jira 的单——本地单与将来别家来源的单不属于这个视图。翻译放在
- * 插件这边而不是内核那边，是因为"itemId ↔ 单号"是 Jira 的语言，内核不认识它。
- */
-export async function jiraBindingsView(
-  live: Array<{ name: string; sessionId: string }>,
-): Promise<Array<{ session: string; key: string; live: boolean }>> {
-  const [items, bindings] = await Promise.all([readItems(), resolveBindings(live)]);
-  const keyOf = new Map(
-    items.filter((i) => i.source?.provider === "jira").map((i) => [i.id, i.source!.ref]),
-  );
-  const out: Array<{ session: string; key: string; live: boolean }> = [];
-  for (const b of bindings) {
-    const key = keyOf.get(b.itemId);
-    if (!key) continue;
-    out.push({ session: b.session, key, live: b.live });
-  }
-  return out;
-}
-
-/** 认领：这个单号还没有单就建一张，然后把会话绑上去。 */
-export async function claimIssue(session: string, key: string, sessionId: string): Promise<void> {
-  const item = await ensureItemForSource("jira", key, key);
-  await bindSession(session, item.id, sessionId);
-}
-
-/** 内核的会话列表，映射成绑定解析要的最小形状。 */
-async function liveFromKernel(): Promise<Array<{ name: string; sessionId: string }>> {
-  // sessionIdentities() 而非 listSessions()：这里只要 name/sessionId 对，
-  // listSessions() 会为每个会话多起一次 capture-pane 子进程——这台机器上曾经
-  // 是 37 个会话、37 次子进程起停，只为了取一对字段。
-  return sessionIdentities();
 }
 
 /**
@@ -716,7 +680,13 @@ export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
 
   // PR/检查是独立的一步：这一步失败不该把已经写好的工单同步结果变成失败。
   try {
-    const [afterItems, bindings] = await Promise.all([readItems(), resolveBindings(await liveFromKernel())]);
+    // sessionIdentities() 而非 listSessions()：这里只要 name/sessionId 对，
+    // listSessions() 会为每个会话多起一次 capture-pane 子进程——这台机器上曾经
+    // 是 37 个会话、37 次子进程起停，只为了取一对字段。
+    const [afterItems, bindings] = await Promise.all([
+      readItems(),
+      resolveBindings(await sessionIdentities()),
+    ]);
     const targets = devTargets(afterItems, bindings);
     if (targets.length) {
       // 增量结果里查不到的活跃绑定单（本身没变，但仍想刷一次 PR/CI），退回
@@ -852,78 +822,6 @@ export async function handle(req: Request, url: URL): Promise<Response | null> {
     return Response.json(
       config ? { configured: true, url: config.url, email: config.email } : { configured: false },
     );
-  }
-
-  if (url.pathname === "/api/jira/issues" && req.method === "GET") {
-    return Response.json(await issues(url.searchParams.get("refresh") === "1"));
-  }
-
-  // PR 与 CI。带 id 就是一个单——这是"只刷这一个"的入口；不带就是当前列表里的全部，
-  // 走缓存加并发上限，而不是让浏览器自己发五十个请求。
-  if (url.pathname === "/api/jira/dev" && req.method === "GET") {
-    const refresh = url.searchParams.get("refresh") === "1";
-    const one = url.searchParams.get("id");
-
-    // 单号从缓存的工单列表里查，不从请求里收：它决定哪些 PR 被留下，让浏览器指定
-    // 等于把过滤规则交给调用方。
-    const listed = await issues(false);
-    const keyById = new Map(listed.ok ? listed.issues.map((i) => [i.id, i.key]) : []);
-
-    if (one !== null) {
-      // id 只可能是 Jira 的内部数字 id，它会被拼进一个对外的 URL。
-      if (!/^\d{1,19}$/.test(one)) return new Response("bad id", { status: 400 });
-      const key = keyById.get(one) ?? "";
-
-      // 单条刷新连工单本身一起刷。
-      //
-      // 从前它只刷 PR 与构建，于是一个长在卡片上的刷新按钮只刷了卡片的一半：状态
-      // 还是几分钟前的样子。那不是 bug，但会被读成 bug——按钮在哪张卡上，就该把那
-      // 张卡刷新。
-      const fresh = refresh && key ? await refreshIssue(key) : null;
-
-      return Response.json({
-        dev: { [one]: await dev(one, key, refresh) },
-        ...(fresh ? { issue: fresh } : {}),
-      });
-    }
-
-    if (!listed.ok) return Response.json({ dev: {} });
-    const ids = listed.issues.map((i) => i.id).filter(Boolean);
-    const results = await mapLimited(ids, DEV_CONCURRENCY, (id) =>
-      dev(id, keyById.get(id) ?? "", refresh),
-    );
-    return Response.json({ dev: Object.fromEntries(ids.map((id, i) => [id, results[i]!])) });
-  }
-
-  if (url.pathname === "/api/jira/bindings" && req.method === "GET") {
-    return Response.json({ bindings: await jiraBindingsView(await liveFromKernel()) });
-  }
-
-  if (url.pathname === "/api/jira/bindings" && req.method === "POST") {
-    let body: { session?: unknown; key?: unknown };
-    try {
-      body = await req.json();
-    } catch {
-      return new Response("bad json", { status: 400 });
-    }
-    if (typeof body.session !== "string" || !body.session) {
-      return new Response("bad session", { status: 400 });
-    }
-    if (typeof body.key !== "string" || !/^[A-Z][A-Z0-9]*-\d+$/.test(body.key)) {
-      // 单号形状收窄：它会进文件名以外的地方展示，也会拼进 Jira 的 URL。
-      return new Response("bad key", { status: 400 });
-    }
-    const live = await liveFromKernel();
-    const found = live.find((s) => s.name === body.session);
-    await claimIssue(body.session, body.key, found?.sessionId ?? "");
-    return Response.json({ ok: true });
-  }
-
-  if (url.pathname === "/api/jira/bindings" && req.method === "DELETE") {
-    const session = url.searchParams.get("session") ?? "";
-    if (!session) return new Response("bad session", { status: 400 });
-    await unbindSession(session);
-    return Response.json({ ok: true });
   }
 
   return null;

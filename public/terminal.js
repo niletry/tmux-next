@@ -58,7 +58,13 @@ term.open(termEl);
  */
 const backPages = [
   { id: "sessions", path: "sessions.html", titleKey: "nav.backToSessions" },
-  ...PLUGINS.map((p) => ({ id: p.id, path: `p/${p.id}/`, titleKey: p.titleKey })),
+  // 没有页面的插件（titleKey 也就没有）不在这张表里——没有页面就没有"回那一页"
+  // 这回事，跟顶栏不给它出 tab 是同一个道理。
+  ...PLUGINS.filter((p) => p.titleKey).map((p) => ({
+    id: p.id,
+    path: `p/${p.id}/`,
+    titleKey: /** @type {string} */ (p.titleKey),
+  })),
 ];
 const back = backTarget(location.search, backPages);
 

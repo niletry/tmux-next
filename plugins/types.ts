@@ -5,10 +5,10 @@
 export type Plugin = {
   /** 同时决定 /api/<id>/*、/p/<id>/*、以及状态目录名。^[a-z][a-z0-9-]*$ */
   id: string;
-  /** 顶栏 title/aria-label 用的 i18n 键。 */
-  titleKey: string;
+  /** 顶栏 title/aria-label 用的 i18n 键。没有页面的插件不出 tab，可以不给。 */
+  titleKey?: string;
   /** 24×24 viewBox 里的 path 串，格式跟 nav.js 现有图标一致。 */
-  icon: string;
+  icon?: string;
   i18n: { zh: Record<string, string>; en: Record<string, string> };
   /**
    * 这个插件贴的 Facet.dim 会用到的 i18n 键，例如 `["jira.status", "jira.epic"]`。

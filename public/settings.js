@@ -314,7 +314,13 @@ function backLink() {
   const pages = [
     { id: "items", path: "index.html", titleKey: "items.title" },
     { id: "sessions", path: "sessions.html", titleKey: "list.title" },
-    ...PLUGINS.map((p) => ({ id: p.id, path: `p/${p.id}/`, titleKey: p.titleKey })),
+    // 没有页面的插件（titleKey 也就没有）不在这张表里——没有页面就没有"回那一页"
+    // 这回事，跟顶栏不给它出 tab 是同一个道理。
+    ...PLUGINS.filter((p) => p.titleKey).map((p) => ({
+      id: p.id,
+      path: `p/${p.id}/`,
+      titleKey: /** @type {string} */ (p.titleKey),
+    })),
   ];
   const target = backTarget(location.search, pages);
   const link = el("a", "settings-back", tr("nav.backTo", { name: tr(target.titleKey) }));
@@ -443,7 +449,11 @@ function pluginSection(plugin, values) {
   // 插件那一节没有"当前值"可言：一个数据源的配置是好几个字段，摘成一句话要么
   // 说不全，要么就得内核去猜哪个字段最重要——而这一页的原则是它不知道任何一个
   // 字段是什么意思。所以留空。
-  return section(plugin.id, tr(plugin.titleKey), () => "", build);
+  //
+  // 标题：有 titleKey 的插件（出 tab 的那种）翻译它——跟顶栏一致。没有 titleKey
+  // 的插件（比如退役了页面的 jira）没有翻译好的名字可用，原样显示它的 id：这一页
+  // 不知道任何一个插件的意思，猜一个显示名字反而比原样显示 id 更容易出错。
+  return section(plugin.id, plugin.titleKey ? tr(plugin.titleKey) : plugin.id, () => "", build);
 }
 
 /**
