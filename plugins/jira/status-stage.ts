@@ -17,7 +17,7 @@
 export type StatusStage = { hue: "dim" | "accent" | "ok"; filled: boolean };
 
 const RULES: [RegExp, StatusStage][] = [
-  [/\bdone\b|\bclosed\b|\breleased\b/, { hue: "ok", filled: true }],
+  [/\bdone\b|\bclosed\b|\breleased\b|\bdeployed\b/, { hue: "ok", filled: true }],
   [/ready\s+for\s+release/, { hue: "ok", filled: false }],
   [/\baccepted\b/, { hue: "accent", filled: true }],
   [/ready\s+for\s+acceptance/, { hue: "accent", filled: false }],
