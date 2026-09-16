@@ -1,7 +1,7 @@
 import { PLUGINS } from "./registry.js";
 import type { Facet, FacetDetail, ItemRef, Plugin, PluginEnricher, PluginFieldSource, PluginHandler, SettingValue } from "./types";
 import { FIELD_KEY_CHARS } from "../src/template";
-import type { ItemStatus } from "../src/item-lifecycle";
+import type { ItemStatus } from "../src/items/lifecycle";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
 import { handle as supervisor } from "./supervisor/server";
@@ -128,7 +128,7 @@ const MAX_SEND_TEXT = 500;
 /**
  * 合并后的**插件** facet，每张单最多留几条——只管这一份，不是一张卡片上全部
  * chips 的上限。内核自己的 facet（src/server.ts 拼进来的 item.* 系列、
- * src/item-facets.ts 按标签数逐条产出的那些）不经过这里，不受这个数封顶：
+ * src/items/facets.ts 按标签数逐条产出的那些）不经过这里，不受这个数封顶：
  * 标签是用户自己的数据，条数由用户决定，不是插件能刷爆的东西。这个上限只
  * 防插件——不管几个插件加起来往一张单上贴多少条，最后都会被这里砍到这个数。
  */

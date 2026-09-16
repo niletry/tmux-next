@@ -14,8 +14,8 @@ process.env.TMUX_NEXT_JIRA_DIR = join(tmpdir(), `items-test-jira-${stamp}`);
 process.env.TMUX_NEXT_SESSION_HISTORY_PATH = join(tmpdir(), `session-history-test-${stamp}.json`);
 
 import { rm } from "node:fs/promises";
-import { startServer } from "./server";
-import { bindSession, unbindSession } from "./session-binding";
+import { startServer } from "../server";
+import { bindSession, unbindSession } from "./binding";
 
 let server: { stop(): void; port: number };
 const at = (path: string) => `http://127.0.0.1:${server.port}${path}`;

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { advanceLifecycle, deriveSignal, nextStatus, sanitiseStatus, type ItemStatus } from "./item-lifecycle";
-import type { Facet } from "../plugins/types";
-import type { WorkItem } from "./items";
-import type { ResolvedBinding } from "./session-binding";
+import { advanceLifecycle, deriveSignal, nextStatus, sanitiseStatus, type ItemStatus } from "./lifecycle";
+import type { Facet } from "../../plugins/types";
+import type { WorkItem } from "./model";
+import type { ResolvedBinding } from "./binding";
 
 function item(status: ItemStatus): WorkItem {
   return {

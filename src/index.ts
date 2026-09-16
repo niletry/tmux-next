@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { HELP, MIN_TMUX, meetsMinimum, parseArgs, parseTmuxVersion } from "./cli";
 import { startServer } from "./server";
-import { migrateJiraBindings } from "./migrate-items";
+import { migrateJiraBindings } from "./items/migrate";
 import { startPlugins } from "../plugins/handlers";
 // Read from package.json so `--version` can never drift from the published one.
 import pkg from "../package.json" with { type: "json" };

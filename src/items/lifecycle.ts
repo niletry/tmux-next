@@ -1,6 +1,6 @@
-import type { Facet } from "../plugins/types";
-import type { WorkItem } from "./items";
-import type { ResolvedBinding } from "./session-binding";
+import type { Facet } from "../../plugins/types";
+import type { WorkItem } from "./model";
+import type { ResolvedBinding } from "./binding";
 
 /**
  * 单的进度状态机。见 docs/superpowers/specs/2026-09-04-item-lifecycle-writeback-design.md。

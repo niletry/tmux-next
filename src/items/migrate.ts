@@ -1,8 +1,8 @@
 import { join } from "node:path";
-import { readJson, writeJsonAtomic, serialized } from "./json-store";
-import { itemsPath, readItems, type WorkItem } from "./items";
-import { bindingsPath, readBindings, type Binding } from "./session-binding";
-import { pluginStateDir } from "../plugins/state";
+import { readJson, writeJsonAtomic, serialized } from "../json-store";
+import { itemsPath, readItems, type WorkItem } from "./model";
+import { bindingsPath, readBindings, type Binding } from "./binding";
+import { pluginStateDir } from "../../plugins/state";
 
 /**
  * 把 Jira 插件私有的那份绑定搬进内核。

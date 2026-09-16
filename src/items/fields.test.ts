@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
-import { kernelFields, KERNEL_FIELD_KEYS } from "./item-fields";
-import type { WorkItem } from "./items";
+import { kernelFields, KERNEL_FIELD_KEYS } from "./fields";
+import type { WorkItem } from "./model";
 
 const item = (extra: Partial<WorkItem> = {}): WorkItem => ({
   id: "it-1",

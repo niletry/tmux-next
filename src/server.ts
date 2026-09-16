@@ -20,7 +20,7 @@ import {
 import type { Facet } from "../plugins/types";
 import { readTemplates, writeTemplates } from "./templates";
 import { render, sanitiseName } from "./template";
-import { kernelFields, KERNEL_FIELD_KEYS } from "./item-fields";
+import { kernelFields, KERNEL_FIELD_KEYS } from "./items/fields";
 import { safeBasename } from "./safe-name";
 import { setPin } from "./pins";
 import { sendText } from "./tmux/send-text";
@@ -47,11 +47,11 @@ import {
   sessionNames,
 } from "./tmux/session-list";
 import { reapOrphanWebSessions } from "./tmux/session-manager";
-import { createItem, readItems, updateItem } from "./items";
-import { bindSession, readBindings, resolveBindings, unbindSession } from "./session-binding";
+import { createItem, readItems, updateItem } from "./items/model";
+import { bindSession, readBindings, resolveBindings, unbindSession } from "./items/binding";
 import { historyForItem } from "./session-history";
-import { kernelFacets } from "./item-facets";
-import { advanceLifecycle } from "./item-lifecycle";
+import { kernelFacets } from "./items/facets";
+import { advanceLifecycle } from "./items/lifecycle";
 import { notifyLifecycle } from "./push";
 import { setListeningPort } from "./listening-port";
 

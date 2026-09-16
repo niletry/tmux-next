@@ -2,8 +2,8 @@ import { test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readBindings, bindSession, unbindSession, resolveBindings } from "./session-binding";
-import { readHistory } from "./session-history";
+import { readBindings, bindSession, unbindSession, resolveBindings } from "./binding";
+import { readHistory } from "../session-history";
 
 /**
  * 按**会话**作键：一张单可以有多个会话（会话名唯一，单不唯一），反过来存则每次

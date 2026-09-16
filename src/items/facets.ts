@@ -1,7 +1,7 @@
-import type { Facet } from "../plugins/types";
-import type { WorkItem } from "./items";
-import type { SessionSummary } from "./tmux/session-list";
-import type { ResolvedBinding } from "./session-binding";
+import type { Facet } from "../../plugins/types";
+import type { WorkItem } from "./model";
+import type { SessionSummary } from "../tmux/session-list";
+import type { ResolvedBinding } from "./binding";
 
 /**
  * 内核自己的维度。

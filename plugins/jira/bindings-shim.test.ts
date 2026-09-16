@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { jiraBindingsView, claimIssue } from "./server";
-import { readItems } from "../../src/items";
-import { readBindings } from "../../src/session-binding";
+import { readItems } from "../../src/items/model";
+import { readBindings } from "../../src/items/binding";
 
 /**
  * 垫片只做翻译：内核存的是 itemId，Jira 页认的是单号。翻译发生在这里，是为了让
@@ -51,9 +51,9 @@ test("视图把 itemId 翻回单号", async () => {
 });
 
 test("没有 jira 来源的单不出现在这个视图里", async () => {
-  const { createItem } = await import("../../src/items");
+  const { createItem } = await import("../../src/items/model");
   const local = await createItem({ title: "本地的活" });
-  const { bindSession } = await import("../../src/session-binding");
+  const { bindSession } = await import("../../src/items/binding");
   await bindSession("随手开的", local.id, "$9");
   const view = await jiraBindingsView([{ name: "随手开的", sessionId: "$9" }]);
   expect(view).toEqual([]);

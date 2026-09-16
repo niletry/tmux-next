@@ -34,7 +34,7 @@ process.env.TMUX_NEXT_BINDINGS_PATH = bindingsPath;
 // env 必须在 import 之前就位——虽然这几条路径都是逐次现读（CLAUDE.md 的规矩），
 // 但提前设总是安全的，也跟仓库里其它同类测试的写法一致。
 const { refreshItem } = await import("./server");
-const { readItems } = await import("../../src/items");
+const { readItems } = await import("../../src/items/model");
 
 test("未配置 Jira 时，refreshItem 抛出而不是悄悄返回", async () => {
   await expect(refreshItem("EXAMPLE-404")).rejects.toThrow();
