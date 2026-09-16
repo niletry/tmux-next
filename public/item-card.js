@@ -21,6 +21,8 @@ import { tr } from "./i18n-apply.js";
 import { url } from "./root.js";
 import { svgShell, icon } from "./icons.js";
 import { parseMarkdown } from "./markdown.js";
+import { PLUGINS } from "../plugins/registry.js";
+import { applyTerminalLinkTarget } from "./pointer-mode.js";
 
 /**
  * @typedef {object} DetailRow
@@ -698,8 +700,9 @@ export function openAnswerSheet(sessionName, onSent) {
   cancel.addEventListener("click", close);
   const open = el("a", "btn", tr("items.open"));
   open.href = url(`terminal.html?target=${encodeURIComponent(sessionName)}`);
-  open.target = "_blank";
-  open.rel = "noopener noreferrer";
+  // 终端是自己在跑的另一个东西，原地跳走会把这个浮层所在的这一页一起带走——
+  // 只在有精确指针的设备上，见 pointer-mode.js。
+  applyTerminalLinkTarget(open);
   actions.append(cancel, open);
   sheet.append(actions);
 
@@ -744,9 +747,9 @@ export function openAnswerSheet(sessionName, onSent) {
 export function sessionRow(session, onUnbind, opts = {}) {
   const link = el("a", "item-session");
   link.href = url(`terminal.html?target=${encodeURIComponent(session.name)}`);
-  // 终端是自己在跑的另一个东西，原地跳走会把点开它之前那一页一起带走。
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
+  // 终端是自己在跑的另一个东西，原地跳走会把点开它之前那一页一起带走——只在
+  // 有精确指针的设备上，见 pointer-mode.js。
+  applyTerminalLinkTarget(link);
   link.append(el("span", "s-name", session.name));
   link.append(el("span", "s-state", sessionState(session)));
   link.append(el("span", "s-open", tr("items.open")));
