@@ -44,7 +44,7 @@ That `●` on the left means "it's waiting on you" — Claude Code prints `✻ C
 | **Colour themes** | Seven presets — four dark (Tokyo Night, Catppuccin Mocha, One Dark, Nord) and three light (Tokyo Night Day, Catppuccin Latte, One Light) — switched from Settings, applied without a reload |
 | **Voice input** | Speak instead of typing; takes pile up in an editable draft, then go over as one line plus Enter (optional, needs a recognition key) |
 | **Artifacts** | Anything dropped in `~/.tmux-next/gallery/` shows up in the UI — images and self-contained HTML render in place |
-| **Jira issues** | Optional plugin: see the issues assigned to you, start a session for one with a tap; its status, epic, PRs and checks show up as chips on the issue's work-item card (needs `~/.tmux-next/jira/config.json`) |
+| **Jira** | Optional plugin, and a data source rather than a tab of its own: it syncs the issues assigned to you onto the home page's work-item list, and paints each card with that issue's status, epic, PRs and CI checks. Configured on the settings page |
 | **CJK input** | Works around the xterm.js 5.5.0 guard that swallows CJK punctuation |
 
 ## Getting it running

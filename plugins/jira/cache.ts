@@ -149,7 +149,12 @@ export async function refreshIssue(key: string): Promise<Issue | null> {
 }
 
 /**
- * 仅供测试：把 `cache`/`issueCache` 拨回"进程刚启动"时的状态。
+ * 仅供测试：把这个文件持有的全部模块级状态拨回"进程刚启动"时的样子——`cache`、
+ * `issueCache`、`devCache`、`repoNameCache` 四份缓存清空，`browseBase` 回到空串。
+ *
+ * 说"这个文件持有的"是精确的，不是"Jira 插件的全部状态"：`source.ts` 里还有一份
+ * 描述正文的缓存（descCache），它不在这个模块里，这个函数够不着，也不该伸手过去。
+ * 要连它一起清零的测试得自己想办法。
  *
  * 拆出这个文件之前，`sync-e2e.test.ts` 靠带查询串的动态 import
  * （`import("./server" + "?tag")`）换一份全新的模块实例来保证冷缓存——那时
@@ -162,4 +167,7 @@ export async function refreshIssue(key: string): Promise<Issue | null> {
 export function __resetForTest(): void {
   cache = null;
   issueCache.clear();
+  devCache.clear();
+  repoNameCache.clear();
+  browseBase = "";
 }
