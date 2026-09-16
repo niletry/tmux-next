@@ -47,6 +47,8 @@ import { svgShell, icon } from "./icons.js";
  *   第 0..rank 颗是"已经走过"，颜色由内核决定（见 statusLightRow），插件不传色。
  * @property {boolean} [light] 这个 facet 的 tone 是不是 warn，决定同一批 facet
  *   里 stage 台阶灯当前那一步要不要改画成红色——不再单独出一颗点。
+ * @property {string} [url] 这颗 chip 本身指向哪。没有 detail 时 chip 画成
+ *   链接；有 detail 时进浮层标题旁。
  */
 /**
  * @typedef {object} SessionLike
@@ -263,13 +265,28 @@ function detailGroup(title, rows, groupUrl, sessionName) {
  * @param {DetailRow[]} rows
  * @param {string | null} [sessionName] 恰好绑了一个会话时的会话名,穿透给能
  *   发"发给会话"按钮的那些行；多会话或没会话时传 null/不传，按钮不出现。
+ * @param {string} [url] 这颗 chip 本身指向哪——有它就在标题旁画一个链接入口，
+ *   没有就不画。跟组标题那个 groupUrl 入口同一个道理，只是这次链的是 chip
+ *   本身而不是某一组明细行。
  */
-export function openDetailSheet(title, rows, sessionName) {
+export function openDetailSheet(title, rows, sessionName, url) {
   const back = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
   const close = () => back.remove();
 
-  sheet.append(el("h2", "sheet-title", title));
+  const head = el("div", "sheet-head");
+  head.append(el("h2", "sheet-title", title));
+  if (url) {
+    const link = document.createElement("a");
+    link.className = "sheet-link";
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.setAttribute("aria-label", tr("items.openOriginal"));
+    link.innerHTML = icon("link", 14);
+    head.append(link);
+  }
+  sheet.append(head);
   const list = el("div", "detail-list");
   // 连续几行 group 相同才算一组——插件给的行本来就该按组挨着排好，内核不重排、
   // 不去重，只负责把"group 连续相同的这几行"包成一个可折叠的组。没有 group 的
@@ -337,8 +354,16 @@ export function facetChip(facet, opts) {
   if (rows.length) {
     const btn = el("button", facet.tone ? `facet has-detail ${facet.tone}` : "facet has-detail");
     btn.type = "button";
-    btn.addEventListener("click", () => openDetailSheet(`${label}: ${value}`, rows, sessionName));
+    btn.addEventListener("click", () => openDetailSheet(`${label}: ${value}`, rows, sessionName, facet.url));
     chip = btn;
+  } else if (facet.url) {
+    // 只有链接、没有明细：chip 本身就是去处。新开标签，跟明细行里的链接一样——
+    // 这一页的分组和筛选不该被一次跳转带走。
+    const a = el("a", facet.tone ? `facet is-link ${facet.tone}` : "facet is-link");
+    a.href = facet.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    chip = a;
   } else {
     chip = el("span", facet.tone ? `facet ${facet.tone}` : "facet");
   }

@@ -494,3 +494,12 @@ test("PR 和检查两个 facet 带 role，给状态机认", () => {
   expect(facets.find((f) => f.dim === "jira.prs")?.role).toBe("pr");
   expect(facets.find((f) => f.dim === "jira.checks")?.role).toBe("check");
 });
+
+test("给了实例地址，史诗 chip 带链接；没给就没有", () => {
+  const withEpic = issue({ parent: { key: "EP-1", summary: "登录改版", hierarchy: 1 } });
+  const issues = new Map([["EXAMPLE-1", withEpic]]);
+  const linked = facetsFor(jiraItem, issues, new Map(), "https://example.atlassian.net");
+  expect(linked.find((f) => f.dim === "jira.epic")?.url).toBe("https://example.atlassian.net/browse/EP-1");
+  const bare = facetsFor(jiraItem, issues, new Map());
+  expect(bare.find((f) => f.dim === "jira.epic")?.url).toBeUndefined();
+});

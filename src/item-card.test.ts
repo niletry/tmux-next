@@ -423,3 +423,30 @@ test("refreshButton：来源被认领才画，否则返回 null", async () => {
   expect(refreshButton(item, [], async () => {})).toBeNull();
   expect(refreshButton({ id: "it-2", title: "本地", source: null }, ["jira"], async () => {})).toBeNull();
 });
+
+test("只有 url 的 chip 画成新开标签的链接", async () => {
+  const { facetChip } = await load();
+  const chip = facetChip({ dim: "jira.epic", value: "登录改版", url: "https://j/browse/EP-1" });
+  expect(chip.tagName).toBe("A");
+  expect(chip.getAttribute("href")).toBe("https://j/browse/EP-1");
+  expect(chip.getAttribute("target")).toBe("_blank");
+  expect(chip.getAttribute("rel")).toContain("noopener");
+  expect(chip.textContent).toContain("登录改版");
+});
+
+test("有明细的 chip 仍是按钮，url 进浮层标题旁", async () => {
+  const { facetChip } = await load();
+  const chip = facetChip({
+    dim: "jira.prs", value: "1", url: "https://j/browse/A-1",
+    detail: [{ label: "fix", value: "OPEN" }],
+  });
+  expect(chip.tagName).toBe("BUTTON");
+  chip.click();
+  const sheet = document.querySelector(".sheet");
+  expect(sheet?.querySelector("a.sheet-link")?.getAttribute("href")).toBe("https://j/browse/A-1");
+});
+
+test("没有 url 也没有明细的 chip 还是 span", async () => {
+  const { facetChip } = await load();
+  expect(facetChip({ dim: "jira.status", value: "Done" }).tagName).toBe("SPAN");
+});

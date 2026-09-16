@@ -914,6 +914,11 @@ button.status-dot {
 .facet.warn { color: var(--danger); }
 .facet.dim { color: var(--text-2); }
 
+/* 只有链接、没有明细的 chip：本身就是去处，颜色沿用 .facet 的，只是加个下划线
+   提示能点——不该看起来跟别的 chip 不是一类东西。 */
+a.facet.is-link { text-decoration: none; color: inherit; }
+a.facet.is-link:hover { text-decoration: underline; }
+
 .item-session {
   display: flex;
   align-items: center;
@@ -2028,10 +2033,34 @@ header .htitle { font-size: 17px; font-weight: 600; }
   padding: 16px 16px 20px;
 }
 
-.sheet-title {
+/* 标题跟"打开原始链接"并排，不是嵌套——跟下面 .detail-group-head 同一条
+   HTML 规则（<a> 不能嵌在 <button> 里，这里虽然不是按钮，但保持同一种排法）。 */
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 12px;
+}
+
+.sheet-title {
+  margin: 0;
   font-size: 15px;
   font-weight: 600;
+}
+
+.sheet-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--text-3);
+}
+.sheet-link:hover {
+  background: var(--surface-4);
+  color: var(--accent-text);
 }
 
 .detail-list {

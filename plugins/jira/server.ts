@@ -42,10 +42,18 @@ let cache: { at: number; result: IssuesResult } | null = null;
 export const ISSUE_CACHE_MS = 5 * 60_000;
 const issueCache = new Map<string, { at: number; issue: Issue }>();
 
+/**
+ * Jira 实例地址，无尾斜杠——`facetsFor` 用它拼史诗 chip 的链接。只在
+ * `readJiraConfig()` 成功之后才更新，未配置或读取失败时保留上一次的值
+ * （启动时是空串，`facetsFor` 空串就不给链接）。
+ */
+let browseBase = "";
+
 export async function issues(refresh: boolean): Promise<IssuesResult> {
   if (!refresh && cache && Date.now() - cache.at < CACHE_MS) return cache.result;
   const config = await readJiraConfig();
   if (!config) return { ok: false, reason: "unconfigured" };
+  browseBase = config.url.replace(/\/+$/, "");
   const result = await fetchIssues(config);
   // 只缓存成功：一次网络抖动不该让人盯着错误看满一分钟。
   if (result.ok) {
@@ -118,6 +126,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Prom
 export async function refreshIssue(key: string): Promise<Issue | null> {
   const config = await readJiraConfig();
   if (!config) return null;
+  browseBase = config.url.replace(/\/+$/, "");
   const got = await fetchIssue(config, key);
   if (!got.ok) return null;
 
@@ -304,6 +313,7 @@ export function facetsFor(
   item: ItemRef,
   issues: Map<string, Issue>,
   dev: Map<string, DevResult>,
+  browseBase = "",
 ): Facet[] {
   if (item.source?.provider !== "jira") return [];
   const issue = issues.get(item.source.ref);
@@ -344,7 +354,15 @@ export function facetsFor(
   // 史诗和子任务的父任务，`hierarchy >= 1` 才是史诗——跟 public/filter.js 的
   // epicKeyOf 和 public/jira.js 里卡片上的判断保持一致。
   const epic = epicSummaryOf(issue);
-  if (epic) facets.push({ dim: "jira.epic", value: epic });
+  if (epic) {
+    facets.push({
+      dim: "jira.epic",
+      value: epic,
+      // 史诗有自己的工单页，chip 直接链过去——从前只有工单页上那颗父级 chip
+      // 能点，首页的这颗只是文字。
+      ...(browseBase && issue.parent ? { url: `${browseBase}/browse/${encodeURIComponent(issue.parent.key)}` } : {}),
+    });
+  }
   // 未分配是 null，不产出维度——"没有负责人"和"负责人是某个空值"是两回事，
   // 混成一个维度会让卡片上出现一个读不出意思的 chip。
   if (issue.assignee) {
@@ -454,7 +472,7 @@ export async function enrich(items: ItemRef[]): Promise<Record<string, Facet[]>>
 
   const out: Record<string, Facet[]> = {};
   for (const item of items) {
-    const facets = facetsFor(item, issueMap, devMap);
+    const facets = facetsFor(item, issueMap, devMap, browseBase);
     if (facets.length) out[item.id] = facets;
   }
   return out;
@@ -622,6 +640,7 @@ function incrementalWindowMinutes(lastSyncAt: number): number {
 export async function sync(opts?: { full?: boolean }): Promise<SyncResult> {
   const config = await readJiraConfig();
   if (!config) return { created: 0, updated: 0, total: 0, truncated: false };
+  browseBase = config.url.replace(/\/+$/, "");
 
   const state = await readSyncState();
   const clockWentBackward = !!state && Date.now() < state.lastSyncAt;

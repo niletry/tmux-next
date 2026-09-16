@@ -722,3 +722,18 @@ test("按 MAX_FIELDS_PER_ITEM 封顶", async () => {
   const got = await collectFields(fieldItem, [fsrc(many)]);
   expect(Object.keys(got).length).toBe(MAX_FIELDS_PER_ITEM);
 });
+
+test("facet 的 url 只认 http/https", async () => {
+  const src: ItemSourceProvider = {
+    provider: "alpha",
+    enrich: async () => ({
+      "it-1": [
+        { dim: "a.epic", value: "x", url: "https://j/browse/E-1" },
+        { dim: "a.bad", value: "y", url: "javascript:alert(1)" },
+        { dim: "a.rel", value: "z", url: "browse/E-1" },
+      ],
+    }),
+  };
+  const got = await collectFacets(items, [src], []);
+  expect(got["it-1"]!.map((f) => f.url)).toEqual(["https://j/browse/E-1", undefined, undefined]);
+});

@@ -276,6 +276,12 @@ export type Facet = {
    * 一张单有多条同 role 的 facet 时状态机取第一条。
    */
   role?: "pr" | "check";
+  /**
+   * 这颗 chip 本身指向哪里。只认 http/https，内核在 collectFacets 里挡（safeHttpUrl）。
+   * 没有 detail 时 chip 画成链接；有 detail 时 chip 仍是开浮层的按钮，链接放进
+   * 浮层标题旁。Jira 用它让史诗 chip 链回工单页。
+   */
+  url?: string;
 };
 
 /**
