@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { advanceLifecycle, deriveSignal, nextStatus, sanitiseStatus, type ItemStatus } from "./item-lifecycle";
-import type { Facet } from "../plugins/types";
-import type { WorkItem } from "./items";
-import type { ResolvedBinding } from "./session-binding";
+import { advanceLifecycle, deriveSignal, nextStatus, sanitiseStatus, type ItemStatus } from "./lifecycle";
+import type { Facet } from "../../plugins/types";
+import type { WorkItem } from "./model";
+import type { ResolvedBinding } from "./binding";
 
 function item(status: ItemStatus): WorkItem {
   return {
@@ -16,23 +16,28 @@ function item(status: ItemStatus): WorkItem {
   };
 }
 
+// 维度名故意不叫 jira.*：状态机只认 role，不认维度名。这是"内核不再认识
+// Jira"的那条断言。
 const openPr: Facet = {
-  dim: "jira.prs",
+  dim: "tracker.pulls",
   value: "1",
-  detail: [{ label: "fix", value: "OPEN", tone: undefined }],
+  role: "pr",
+  detail: [{ label: "fix", value: "OPEN", tone: undefined, url: "https://example.org/pr/1" }],
 };
 const mergedPr: Facet = {
-  dim: "jira.prs",
+  dim: "tracker.pulls",
   value: "1",
-  detail: [{ label: "fix", value: "MERGED", tone: "dim" }],
+  role: "pr",
+  detail: [{ label: "fix", value: "MERGED", tone: "dim", url: "https://example.org/pr/1" }],
 };
 const declinedPr: Facet = {
-  dim: "jira.prs",
+  dim: "tracker.pulls",
   value: "1",
-  detail: [{ label: "fix", value: "DECLINED", tone: "warn" }],
+  role: "pr",
+  detail: [{ label: "fix", value: "DECLINED", tone: "warn", url: "https://example.org/pr/1" }],
 };
-const checksOk: Facet = { dim: "jira.checks", value: "0/2", tone: "ok" };
-const checksFailed: Facet = { dim: "jira.checks", value: "1/2", tone: "warn" };
+const checksOk: Facet = { dim: "tracker.ci", value: "0/2", tone: "ok", role: "check" };
+const checksFailed: Facet = { dim: "tracker.ci", value: "1/2", tone: "warn", role: "check" };
 
 describe("sanitiseStatus", () => {
   test("认识的值原样放行", () => {
@@ -80,6 +85,42 @@ describe("deriveSignal", () => {
   test("checks 全绿才是 checksAllOk", () => {
     expect(deriveSignal([openPr, checksOk], true).checksAllOk).toBe(true);
     expect(deriveSignal([openPr, checksFailed], true).checksAllOk).toBe(false);
+  });
+
+  test("detail 里不带 url 的行是注释，不算 PR", () => {
+    const onlyNote: Facet = {
+      dim: "tracker.pulls",
+      value: "0",
+      role: "pr",
+      detail: [{ label: "note", value: "", tone: "dim" }],
+    };
+    const s = deriveSignal([onlyNote], true);
+    expect(s.hasOpenPr).toBe(false);
+    expect(s.prMerged).toBe(false);
+  });
+
+  test("注释行既不添一个 PR、也不挡住真的合并", () => {
+    const mergedPlusNote: Facet = {
+      dim: "tracker.pulls",
+      value: "1",
+      role: "pr",
+      detail: [
+        { label: "fix", value: "MERGED", tone: "dim", url: "https://example.org/pr/1" },
+        { label: "另有 2 条 PR 未带本单号，已隐藏", value: "", tone: "dim" },
+      ],
+    };
+    const s = deriveSignal([mergedPlusNote], true);
+    expect(s.prMerged).toBe(true);
+    expect(s.hasOpenPr).toBe(false);
+  });
+
+  test("没有 role 的 facet 即使叫 jira.prs 也不算信号", () => {
+    const lookalike: Facet = {
+      dim: "jira.prs",
+      value: "1",
+      detail: [{ label: "fix", value: "OPEN", tone: undefined }],
+    };
+    expect(deriveSignal([lookalike], true).hasOpenPr).toBe(false);
   });
 });
 

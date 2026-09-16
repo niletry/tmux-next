@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { tmux } from "./tmux/run";
 import { listSessions } from "./tmux/session-list";
-import { bindSession, resolveBindings, readBindings } from "./session-binding";
-import { createItem } from "./items";
+import { bindSession, resolveBindings, readBindings } from "./items/binding";
+import { createItem } from "./items/model";
 
 // 只清理这里面的名字。绝不 kill-server，绝不按前缀杀。
 const created: string[] = [];

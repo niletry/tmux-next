@@ -314,7 +314,13 @@ function backLink() {
   const pages = [
     { id: "items", path: "index.html", titleKey: "items.title" },
     { id: "sessions", path: "sessions.html", titleKey: "list.title" },
-    ...PLUGINS.map((p) => ({ id: p.id, path: `p/${p.id}/`, titleKey: p.titleKey })),
+    // 没有页面的插件（没有 icon 也就没有 tab）不在这张表里——没有页面就没有
+    // "回那一页"这回事，跟顶栏不给它出 tab 是同一个信号。
+    ...PLUGINS.filter((p) => p.icon && p.titleKey).map((p) => ({
+      id: p.id,
+      path: `p/${p.id}/`,
+      titleKey: /** @type {string} */ (p.titleKey),
+    })),
   ];
   const target = backTarget(location.search, pages);
   const link = el("a", "settings-back", tr("nav.backTo", { name: tr(target.titleKey) }));
@@ -328,7 +334,7 @@ function backLink() {
  * 这一页**不知道任何一个字段是什么意思**——只认 type（怎么画、密钥要不要藏）和
  * labelKey（叫什么）。所以接进来的下一个数据源自动就有配置界面，这一页一行不改。
  *
- * @param {{ id: string, titleKey: string, settings: any[] }} plugin
+ * @param {{ id: string, titleKey?: string, settings: any[] }} plugin
  * @param {Record<string, unknown>} values 服务端读回来的当前值
  */
 function pluginSection(plugin, values) {
@@ -443,7 +449,12 @@ function pluginSection(plugin, values) {
   // 插件那一节没有"当前值"可言：一个数据源的配置是好几个字段，摘成一句话要么
   // 说不全，要么就得内核去猜哪个字段最重要——而这一页的原则是它不知道任何一个
   // 字段是什么意思。所以留空。
-  return section(plugin.id, tr(plugin.titleKey), () => "", build);
+  //
+  // 标题：有 titleKey 就翻译它——titleKey 是插件的显示名，跟它出不出 tab 无关
+  // （jira 退役了页面，titleKey 还在，只是现在只喂给这一节）。真没有 titleKey
+  // 的插件才退回原样显示它的 id：这一页不知道任何一个插件的意思，猜一个显示
+  // 名字反而比原样显示 id 更容易出错。
+  return section(plugin.id, plugin.titleKey ? tr(plugin.titleKey) : plugin.id, () => "", build);
 }
 
 /**

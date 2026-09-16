@@ -1,21 +1,16 @@
 import { PLUGINS } from "./registry.js";
-import type { Facet, FacetDetail, ItemRef, Plugin, PluginEnricher, PluginFieldSource, PluginHandler, SettingValue } from "./types";
-import { FIELD_KEY_CHARS } from "../src/template";
-import type { ItemStatus } from "../src/item-lifecycle";
+import type { Plugin, PluginEnricher, PluginHandler, SettingValue } from "./types";
+import { SOURCE_TIMEOUT_MS, type ItemSourceProvider } from "../src/items/sources";
 import { handle as gallery } from "./gallery/server";
 import { handle as notifications } from "./notifications/server";
 import { handle as supervisor } from "./supervisor/server";
 import {
   handle as jira,
-  enrich as jiraEnrich,
-  fields as jiraFields,
   start as jiraStart,
-  sync as jiraSync,
-  refreshItem as jiraRefreshItem,
-  onLifecycleChange as jiraOnLifecycleChange,
   readSettings as jiraReadSettings,
   writeSettings as jiraWriteSettings,
   runAction as jiraRunAction,
+  source as jiraSource,
 } from "./jira/server";
 
 /**
@@ -33,22 +28,19 @@ import {
  */
 export type PluginServer = {
   handle?: PluginHandler;
+  /**
+   * 这个插件交出的数据源，零个或多个。一个来源认领一个 `WorkItem.source.provider`，
+   * 同步/刷新/贴 chip/喂字段/状态写回五件事都挂在它身上——内核按 provider 字符串
+   * 查这张表，从不知道插件 id。契约和全部分派在 src/items/sources.ts。
+   */
+  sources?: ItemSourceProvider[];
+  /**
+   * 插件级的 enrich：**收到全部单**，不管它们有没有来源、来源是谁。给那些想按
+   * 自己的口径给每张单贴 chip 的插件用（比如按 git 分支）。绑定到某一个来源的
+   * enrich 不写在这里，写在那个来源的 `ItemSourceProvider.enrich` 上——那一个
+   * 只会收到 provider 匹配的单。两条路的预算和净化完全相同（ENRICH_TIMEOUT_MS）。
+   */
   enrich?: PluginEnricher;
-  /**
-   * 一张单喂给模板的字段。用户按下按钮才走，允许一次真实的网络往返（见 FIELD_TIMEOUT_MS）。
-   */
-  fields?: PluginFieldSource;
-  /** 把这个插件认领的所有来源同步一遍（新建/更新单）。显式动作，会发网络请求。 */
-  sync?: () => Promise<SyncResult>;
-  /** 只刷新一个单，`ref` 是 `source.ref`（比如 Jira 的 issue key）。 */
-  refreshItem?: (ref: string) => Promise<void>;
-  /**
-   * ItemLifecycle 状态机迁移之后的一次尽力而为通知，`ref` 同上。要不要写回
-   * 这个来源（转 Jira 状态、评论 PR……）完全是插件自己的判断——内核只知道
-   * "迁移发生了"，不知道、也不该知道写回具体做了什么。抛出即失败，调用方
-   * 只会记日志，绝不因为这里失败而撤销已经落盘的状态。
-   */
-  onLifecycleChange?: (ref: string, from: ItemStatus, to: ItemStatus) => Promise<void>;
   /**
    * 进程启动时给这个插件一次机会。同步、不返回值——内核不等它。想做异步的事
    * （比如开机同步一次来源），插件自己在里面 fire-and-forget，不能指望内核帮它 await。
@@ -78,15 +70,11 @@ export const SERVERS: Record<string, PluginServer> = {
   supervisor: { handle: supervisor },
   jira: {
     handle: jira,
-    enrich: jiraEnrich,
-    fields: jiraFields,
     start: jiraStart,
-    sync: jiraSync,
-    refreshItem: jiraRefreshItem,
-    onLifecycleChange: jiraOnLifecycleChange,
     readSettings: jiraReadSettings,
     writeSettings: jiraWriteSettings,
     runAction: jiraRunAction,
+    sources: [jiraSource],
   },
 };
 
@@ -103,341 +91,6 @@ export function enabledPlugins(): Plugin[] {
   );
   return PLUGINS.filter((p) => !off.has(p.id));
 }
-
-/** 声明了维度能力的插件。从上面那张表推导，不再单独维护一份。 */
-export const ENRICHERS: Record<string, PluginEnricher> = Object.fromEntries(
-  Object.entries(SERVERS)
-    .filter(([, s]) => s.enrich)
-    .map(([id, s]) => [id, s.enrich!]),
-);
-
-/** 一个插件最多能占用列表构建的多少时间。 */
-export const ENRICH_TIMEOUT_MS = 300;
-
-/** 一条 facet 文本的上限，够放一个状态或一个史诗名，不够撑破一张卡片。 */
-const MAX_TEXT = 120;
-
-/**
- * 一行明细"发给会话"的文本上限。这不是给人看的一格标签，是要塞进
- * `send-keys` 的一整句话（比如带上 PR 地址和检查名），所以给得比 MAX_TEXT 宽——
- * 但仍然远小于 sendText 自己的 2000 上限（src/tmux/send-text.ts 的 MAX_TEXT），
- * 留出余量不至于插件这边刚好顶格就被下游再截一次。
- */
-const MAX_SEND_TEXT = 500;
-
-/**
- * 合并后的**插件** facet，每张单最多留几条——只管这一份，不是一张卡片上全部
- * chips 的上限。内核自己的 facet（src/server.ts 拼进来的 item.* 系列、
- * src/item-facets.ts 按标签数逐条产出的那些）不经过这里，不受这个数封顶：
- * 标签是用户自己的数据，条数由用户决定，不是插件能刷爆的东西。这个上限只
- * 防插件——不管几个插件加起来往一张单上贴多少条，最后都会被这里砍到这个数。
- */
-export const MAX_FACETS_PER_ITEM = 6;
-
-/** 一个维度底下最多能展开几行明细。一个坏插件不能靠 detail 撑爆浮层。 */
-export const MAX_DETAIL_ROWS = 20;
-
-/** 一个 chip 图标的路径长度上限。够画一个图元组合，不够塞进一整幅图。 */
-const MAX_ICON = 2000;
-
-/**
- * chip 图标只放行几何图元。
- *
- * 这段字符串最终会进 innerHTML。本仓库的插件是编译期常量（没有运行时加载，见
- * CLAUDE.md），所以这不是在防一个能往里塞代码的攻击者——顶栏的 `plugin.icon`
- * 一直就是这么渲染的，威胁模型没变。它防的是另一件事：collectFacets 这个函数
- * 对插件给的**每一个**字段都做了净化（文本限长、tone 白名单、url 只认 http），
- * 唯独放一个字段直通 innerHTML，会让下一个读这段代码的人搞不清这里到底管不管。
- * 一条正则把边界说死，比一句"插件是可信的"注释可靠。
- *
- * 整串必须由自闭合的图元标签组成，**元素名和属性名都是白名单**，属性值里不许出现
- * 尖括号或引号。第一版只白名单了元素名、属性名放任意 `[a-zA-Z-]+`，结果
- * `<path d="M0 0" onload="alert(1)"/>` 语法完全合法地通过了——是 src/plugin-enrich
- * .test.ts 那条用例把它逼出来的。所以属性也得逐个列，列的都是几何和描边属性，
- * 没有任何一个能执行代码。
- */
-/**
- * 灯带台阶：走到第几步 / 一共几步，两个都必须是非负整数，且 rank 不能越过
- * total——插件不传颜色，颜色（走过的绿、没走到的灰、卡住的红）完全是内核在
- * statusLightRow 里决定的，这里只验形状，不验语义之外的东西。
- */
-function safeStage(value: unknown): Facet["stage"] {
-  const s = value as Record<string, unknown> | undefined;
-  if (!s || typeof s !== "object") return undefined;
-  const { rank, total } = s;
-  if (typeof rank !== "number" || !Number.isInteger(rank) || rank < 0) return undefined;
-  if (typeof total !== "number" || !Number.isInteger(total) || total <= 0) return undefined;
-  if (rank >= total) return undefined;
-  return { rank, total };
-}
-
-/**
- * 排序键：一个不透明的分组名 + 可选的数字序。跟 dim/value 一样限长，rank 必须
- * 是有限数——不然一个 NaN/Infinity 混进比较函数会把整个排序结果搅乱。
- */
-function safeSortKey(value: unknown): Facet["sortKey"] {
-  const s = value as Record<string, unknown> | undefined;
-  if (!s || typeof s !== "object") return undefined;
-  const key = trim(s.key, MAX_TEXT);
-  if (!key) return undefined;
-  const rank = typeof s.rank === "number" && Number.isFinite(s.rank) ? s.rank : undefined;
-  return { key, ...(rank !== undefined ? { rank } : {}) };
-}
-
-const ICON_SHAPES = new RegExp(
-  "^(?:<(?:path|circle|rect|line|polyline|polygon|ellipse)" +
-    '(?:\\s+(?:d|cx|cy|r|rx|ry|x|y|x1|y1|x2|y2|width|height|points|transform|' +
-    'fill|fill-rule|clip-rule|stroke|stroke-width|stroke-linecap|stroke-linejoin|opacity)' +
-    '="[^"<>]*")*\\s*/>)+$',
-);
-
-/** 通过就原样返回，否则当作没给图标。 */
-function safeIconPaths(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const compact = value.trim();
-  if (!compact || compact.length > MAX_ICON) return undefined;
-  return ICON_SHAPES.test(compact) ? compact : undefined;
-}
-
-function trim(value: unknown, max: number): string {
-  return typeof value === "string" ? value.slice(0, max) : "";
-}
-
-/**
- * 明细行的链接只认 http/https，别的一律当没给。
- *
- * 插件给的字符串会变成页面上的 href，`javascript:` 就是一条注入路径；相对地址则会
- * 按当前页解析，插件根本不知道自己被挂在哪个路径下。两种都不是"链接坏了"那么轻，
- * 所以这里要的是绝对地址加协议白名单，而不是清洗。拿不准就丢掉——那一行还在，
- * 只是不可点，跟 facet 那条"拿不到就当没有"是同一种降级。
- */
-function safeHttpUrl(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.length > 2048) return undefined;
-  try {
-    const u = new URL(value);
-    return u.protocol === "http:" || u.protocol === "https:" ? u.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * 向每个声明了维度能力的插件要一次 facet，合并成 item id → facet 数组。
- *
- * 失败语义只有一种：**拿不到就当没有**。插件抛了、超时了、返回了不是对象的东西，
- * 都只是这个插件这一轮没有维度，首页照常渲染。内核的页面不能因为一个插件而出不
- * 来——这是开这个口子的唯一安全阀，也是它可以被接受的原因。
- *
- * 不按插件分层返回：首页要画的是一行 chips，谁贴的不重要。分层只会让调用方再拍平
- * 一次，还得决定插件之间的顺序。
- *
- * enrichers 是参数而不是直接用 ENRICHERS，好让内核侧的测试能塞进一个会抛、一个会
- * 卡住的假插件——注册表是编译期写死的，没有这个参数就没法测这条安全阀。
- *
- * cap 默认是 MAX_FACETS_PER_ITEM——首页卡片和批量的生命周期推进都要这个"一张卡最多
- * 几个"的护栏。单张单的详情面板（`itemDetail`）不是卡片，没有那个空间限制，问的又
- * 只有一张单，传 `Infinity` 跳过截断——否则一张 Jira 单只要维度凑够 7 个（type /
- * created / status / epic / assignee / prs / checks），最后一个（往往正是用户点开
- * 详情最想看的 checks）就会被这条为首页设计的护栏悄悄吃掉。
- */
-export async function collectFacets(
-  items: ItemRef[],
-  enrichers: Record<string, PluginEnricher> = ENRICHERS,
-  cap: number = MAX_FACETS_PER_ITEM,
-): Promise<Record<string, Facet[]>> {
-  const enabled = new Set(enabledPlugins().map((p) => p.id));
-  // 真实插件按启用状态过滤；测试注进来的假插件不在注册表里，一律放行。
-  const entries = Object.entries(enrichers).filter(([id]) => isConsidered(id, enabled));
-  const asked = new Set(items.map((i) => i.id));
-
-  const results = await Promise.all(
-    entries.map(async ([, enrich]) => {
-      try {
-        const timeout = new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), ENRICH_TIMEOUT_MS),
-        );
-        const got = await Promise.race([enrich(items), timeout]);
-        if (!got || typeof got !== "object" || Array.isArray(got)) return null;
-        const clean: Record<string, Facet[]> = {};
-        for (const [id, raw] of Object.entries(got)) {
-          if (!asked.has(id)) continue; // 插件只能标注被问到的单
-          if (!Array.isArray(raw)) continue;
-          const facets: Facet[] = [];
-          for (const one of raw) {
-            const f = one as Record<string, unknown>;
-            const dim = trim(f?.dim, MAX_TEXT);
-            const value = trim(f?.value, MAX_TEXT);
-            if (!dim || !value) continue;
-            // `item.*` 是内核自己的命名空间（item.agent 等）——一个坏插件冒充
-            // item.agent 就能在页面上再画一个 Agent chip、把卡片重新分到别的
-            // 组，让页面替内核的事实撒谎。插件的维度名是开放集合，唯独这个
-            // 前缀不让它碰。
-            if (dim.startsWith("item.")) continue;
-            const tone =
-              f?.tone === "ok" || f?.tone === "warn" || f?.tone === "dim" ? f.tone : undefined;
-            // 明细跟 facet 本身同一套不信任姿态：截断、封顶、tone 只认三个值。
-            // 内核不看这些行是什么意思，只保证它们不会撑破页面。
-            const detail: FacetDetail[] = [];
-            if (Array.isArray(f?.detail)) {
-              for (const rawRow of f.detail.slice(0, MAX_DETAIL_ROWS)) {
-                const r = rawRow as Record<string, unknown>;
-                const label = trim(r?.label, MAX_TEXT);
-                const rowValue = trim(r?.value, MAX_TEXT);
-                if (!label) continue;
-                const rowTone =
-                  r?.tone === "ok" || r?.tone === "warn" || r?.tone === "dim" ? r.tone : undefined;
-                const rowUrl = safeHttpUrl(r?.url);
-                const rowGroup = trim(r?.group, MAX_TEXT);
-                const rowGroupUrl = safeHttpUrl(r?.groupUrl);
-                const rowSend = trim(r?.send, MAX_SEND_TEXT);
-                detail.push({
-                  label,
-                  value: rowValue,
-                  ...(rowTone ? { tone: rowTone } : {}),
-                  ...(rowUrl ? { url: rowUrl } : {}),
-                  ...(rowGroup ? { group: rowGroup } : {}),
-                  ...(rowGroupUrl ? { groupUrl: rowGroupUrl } : {}),
-                  ...(rowSend ? { send: rowSend } : {}),
-                });
-              }
-            }
-            const iconPaths = safeIconPaths(f?.icon);
-            const stage = safeStage(f?.stage);
-            const sortKey = safeSortKey(f?.sortKey);
-            facets.push({
-              dim,
-              value,
-              ...(tone ? { tone } : {}),
-              ...(detail.length ? { detail } : {}),
-              ...(iconPaths ? { icon: iconPaths } : {}),
-              // 布尔就一个用途：这条画成单号前的徽标而不是一格 chip。它不能
-              // 让插件多说任何话——徽标里画的还是同一个 value 和同一个图标，
-              // 两者都已经过上面的限长与净化。
-              ...(f?.badge === true ? { badge: true } : {}),
-              // stage 挂在灯带上，light 让一个已有 tone 的 facet 额外在灯带里
-              // 出一个点——两个字段本来就在 Facet 类型里声明了，之前只是漏了
-              // 在净化时透传，灯带因此从未在任何页面画出过一个点。
-              ...(stage ? { stage } : {}),
-              ...(f?.light === true ? { light: true } : {}),
-              ...(sortKey ? { sortKey } : {}),
-            });
-          }
-          if (facets.length) clean[id] = facets;
-        }
-        return clean;
-      } catch {
-        return null;
-      }
-    }),
-  );
-
-  // 合并各插件，再按单封顶——上限是"一张卡片上最多几个"，不是"每个插件最多几个"。
-  const merged: Record<string, Facet[]> = {};
-  for (const one of results) {
-    if (!one) continue;
-    for (const [id, facets] of Object.entries(one)) {
-      (merged[id] ??= []).push(...facets);
-    }
-  }
-  for (const id of Object.keys(merged)) merged[id] = merged[id]!.slice(0, cap);
-  return merged;
-}
-
-/** 声明了字段能力的插件。跟 ENRICHERS 一样从 SERVERS 推导，不另立一张表。 */
-export const FIELD_SOURCES: Record<string, PluginFieldSource> = Object.fromEntries(
-  Object.entries(SERVERS)
-    .filter(([, s]) => s.fields)
-    .map(([id, s]) => [id, s.fields!]),
-);
-
-/**
- * 一个插件回答"这张单有哪些字段"能占多少时间。
- *
- * 既不复用 ENRICH_TIMEOUT_MS（300ms）也不复用 SOURCE_TIMEOUT_MS（30s）。300ms 是为
- * "每次页面加载都跑"设的，短到逼插件读缓存；而 fields 是用户按下按钮才走的一次显式
- * 动作，本来就该允许一次真实的往返。30s 是整批同步的预算，而这里有个人正盯着一个还
- * 没填上的输入框。
- */
-export const FIELD_TIMEOUT_MS = 5_000;
-
-/** 一个字段的长度上限。描述正文可以很长，但没有哪一段该到 4KB。 */
-export const MAX_FIELD_LEN = 4000;
-
-/** 合并**所有**插件之后，一张单最多留几个字段。不是每个插件的配额。 */
-export const MAX_FIELDS_PER_ITEM = 12;
-
-/**
- * 占位符语法认得的键名形状，字符集从 src/template.ts 的 FIELD_KEY_CHARS 导入而不是
- * 自己重写一条正则——两处必须相等：PLACEHOLDER 放宽了却没跟着改这里，会让语法上合法
- * 的插件字段被这里悄悄丢掉，哪里都不报错。
- */
-const FIELD_KEY = new RegExp(`^[${FIELD_KEY_CHARS}]+$`);
-
-/**
- * 向每个声明了字段能力的插件要一次字段，合并成一张平表。
- *
- * 失败语义只有一种：**拿不到就当没有**。插件抛了、超时了、返回了不是对象的东西，都只是
- * 这一轮没有字段，模板照常渲染，那几个占位符变成空——跟 collectFacets 完全同一条安全阀。
- *
- * sources 是参数而不是直接用 FIELD_SOURCES，理由跟 collectFacets 一模一样：注册表是
- * 编译期常量，不注入假插件就没有任何办法证明超时和 try/catch 真的会兜住。
- *
- * timeoutMs 单独开成可注入的尾参数（默认 FIELD_TIMEOUT_MS）：真实预算是 5 秒，但测试
- * "卡住的插件不会吊死调用方"这件事跟等多久无关，注入一个很小的值就能在毫秒级证明同一条
- * 性质，不用真的等 5 秒。
- */
-export async function collectFields(
-  item: ItemRef,
-  sources: Record<string, PluginFieldSource> = FIELD_SOURCES,
-  timeoutMs: number = FIELD_TIMEOUT_MS,
-): Promise<Record<string, string>> {
-  const enabled = new Set(enabledPlugins().map((p) => p.id));
-  const entries = Object.entries(sources).filter(([id]) => isConsidered(id, enabled));
-
-  const results = await Promise.all(
-    entries.map(async ([, fields]) => {
-      try {
-        const timeout = new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), timeoutMs),
-        );
-        const got = await Promise.race([fields(item), timeout]);
-        if (!got || typeof got !== "object" || Array.isArray(got)) return null;
-        const clean: Record<string, string> = {};
-        for (const [key, value] of Object.entries(got)) {
-          if (typeof value !== "string" || !value) continue;
-          // 占位符写不出来的键，收下也没人能引用它。
-          if (!FIELD_KEY.test(key)) continue;
-          // item.* 是内核自己的命名空间——让插件写进来等于让它伪造这张单的标题和
-          // 单号，而模板渲染分不出是谁写的。
-          if (key.startsWith("item.")) continue;
-          clean[key] = value.slice(0, MAX_FIELD_LEN);
-        }
-        return clean;
-      } catch {
-        return null;
-      }
-    }),
-  );
-
-  const merged: Record<string, string> = {};
-  for (const one of results) {
-    if (one) Object.assign(merged, one);
-  }
-  // 合并之后才封顶：上限是"一张单上最多几个"，不是"每个插件最多几个"。
-  return Object.fromEntries(Object.entries(merged).slice(0, MAX_FIELDS_PER_ITEM));
-}
-
-/** 一次同步的结果。多个来源的结果相加，truncated 只要有一个为真就是真。 */
-export type SyncResult = { created: number; updated: number; total: number; truncated: boolean };
-
-/**
- * 来源操作的硬超时。
- *
- * 不能沿用 enrich 的 300ms——那条预算是为"每次页面加载都跑"设的。sync 和
- * refreshItem 是显式动作，会真的发网络请求，30 秒是"慢得可以接受"和"卡住了"之间
- * 的线。
- */
-export const SOURCE_TIMEOUT_MS = 30_000;
 
 /**
  * 单个配置值的长度上限。JQL 可以很长，token 也不短，但没有哪一项该到 4KB——
@@ -458,118 +111,16 @@ async function withTimeout<T>(work: Promise<T>, fallback: T, timeoutMs: number):
  * 一个插件是否该被这一轮考虑：不在真注册表里的（测试注进来的假插件）一律放行，
  * 在真注册表里的看 `enabledPlugins()`。
  *
- * `collectFacets`、`runSync`、`refreshFromSource` 三处都要这条判断，抽出来是因为
- * 三份各写一次迟早会飘——尤其是 `TMUX_NEXT_DISABLE_PLUGINS` 关掉一个插件本该让它
- * 的 tab、API、页面一起消失（CLAUDE.md 的原话），`refreshFromSource` 直接调
- * `refreshItem`、不经过 `/api/<id>` 的 404 闸门，这条过滤就是它唯一的闸门。
+ * `startPlugins` 和三个设置/动作函数都要这条判断：`TMUX_NEXT_DISABLE_PLUGINS`
+ * 关掉一个插件本该让它的 tab、API、页面一起消失（CLAUDE.md 的原话）。
+ *
+ * src/items/sources.ts 里有一份同样的判断，故意不共用：那边守的是"来源"这条
+ * 完全独立的路（它直接调 `refreshItem`，不经过 `/api/<id>` 的 404 闸门），而
+ * 这两个文件互相 import 已经是一个 ESM 环，再从环的另一头取一个函数只会把
+ * 环收得更紧——一个五行的谓词，两份比一个跨环依赖便宜。
  */
 function isConsidered(id: string, enabled: Set<string>): boolean {
   return !PLUGINS.some((real) => real.id === id) || enabled.has(id);
-}
-
-/**
- * 让所有声明了 `sync` 的插件各同步一遍自己的来源，把结果相加。
- *
- * servers/plugins 作为参数、真表做默认值——理由跟 collectFacets 一样：注册表是
- * 编译期常量，没有这个参数就没法塞进"会抛的假插件"和"永远卡住的假插件"，那两条
- * 测试是这个安全阀真的会兜住的唯一证据。
- *
- * timeoutMs 单独开成可注入的尾参数（默认 SOURCE_TIMEOUT_MS）：真实预算是 30 秒，
- * 但测试"卡住的插件不会吊死调用方"这件事跟等多久无关，注入一个很小的值就能在
- * 毫秒级证明同一条性质，不用真的等 30 秒。
- */
-export async function runSync(
-  servers: Record<string, PluginServer> = SERVERS,
-  plugins: Plugin[] = PLUGINS,
-  timeoutMs: number = SOURCE_TIMEOUT_MS,
-): Promise<SyncResult> {
-  const enabled = new Set(enabledPlugins().map((p) => p.id));
-  const ids = plugins
-    .filter((p) => isConsidered(p.id, enabled))
-    .map((p) => p.id)
-    .filter((id) => servers[id]?.sync);
-
-  const results = await Promise.all(
-    ids.map(async (id) => {
-      try {
-        return await withTimeout(servers[id]!.sync!(), null, timeoutMs);
-      } catch {
-        return null;
-      }
-    }),
-  );
-
-  const total: SyncResult = { created: 0, updated: 0, total: 0, truncated: false };
-  for (const r of results) {
-    if (!r) continue;
-    total.created += r.created;
-    total.updated += r.updated;
-    total.total += r.total;
-    total.truncated = total.truncated || r.truncated;
-  }
-  return total;
-}
-
-/**
- * 按 `source.provider` 找到声明了 `provides` 里含它的插件，请它刷新这一个单。
- *
- * 内核只知道 provider 字符串，从不知道插件 id——这一步查表用的是插件自己声明的
- * `provides`，不是内核维护的 provider→插件 名单。没人认领、认领了但没实现
- * `refreshItem`、调用抛了、或者超时，都算失败，一律返回 false：调用方（首页的
- * 刷新按钮）不需要区分这几种情况，只需要知道"刷没刷成"。
- */
-export async function refreshFromSource(
-  provider: string,
-  ref: string,
-  servers: Record<string, PluginServer> = SERVERS,
-  plugins: Plugin[] = PLUGINS,
-  timeoutMs: number = SOURCE_TIMEOUT_MS,
-): Promise<boolean> {
-  const enabled = new Set(enabledPlugins().map((p) => p.id));
-  const owner = plugins.find(
-    (p) => p.provides?.includes(provider) && isConsidered(p.id, enabled),
-  );
-  const refreshItem = owner ? servers[owner.id]?.refreshItem : undefined;
-  if (!refreshItem) return false;
-
-  try {
-    return await withTimeout(
-      refreshItem(ref).then(() => true),
-      false,
-      timeoutMs,
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 状态机迁移之后，通知认领这个 provider 的插件一声——跟 `refreshFromSource`
- * 同一种分派：内核只知道 provider 字符串，从不知道插件 id。没人认领、认领了
- * 但没实现 `onLifecycleChange`、调用抛了、或者超时，全部静默吞掉——写回是
- * 旁路，状态机本身已经落盘的迁移不因为这里失败而有任何变化，调用方也不需要
- * 知道失败与否。
- */
-export async function notifyLifecycleChange(
-  provider: string,
-  ref: string,
-  from: ItemStatus,
-  to: ItemStatus,
-  servers: Record<string, PluginServer> = SERVERS,
-  plugins: Plugin[] = PLUGINS,
-  timeoutMs: number = SOURCE_TIMEOUT_MS,
-): Promise<void> {
-  const enabled = new Set(enabledPlugins().map((p) => p.id));
-  const owner = plugins.find(
-    (p) => p.provides?.includes(provider) && isConsidered(p.id, enabled),
-  );
-  const onLifecycleChange = owner ? servers[owner.id]?.onLifecycleChange : undefined;
-  if (!onLifecycleChange) return;
-  try {
-    await withTimeout(onLifecycleChange(ref, from, to), undefined, timeoutMs);
-  } catch {
-    // 尽力而为：内核不关心写回成不成功。
-  }
 }
 
 /**
@@ -580,8 +131,8 @@ export async function notifyLifecycleChange(
  * 别处一样：一个插件的 start 抛了，等于它这次没有启动动作，不连累别的插件、
  * 更不能挡住服务器起来，所以逐个包 try/catch 而不是包在外层一次。
  *
- * servers/plugins 作为参数、真表做默认值：理由跟 runSync 一样，注册表是编译期
- * 常量，不注入就没法证明"一个插件抛了不挡别的插件"这条安全阀真的会兜住。
+ * servers/plugins 作为参数、真表做默认值：注册表是编译期常量，不注入就没法
+ * 证明"一个插件抛了不挡别的插件"这条安全阀真的会兜住。
  */
 export function startPlugins(
   servers: Record<string, PluginServer> = SERVERS,

@@ -19,12 +19,12 @@ let asked: string[] = [];
 
 /** 下一次请求的应答。测试各自改它。 */
 let reply: { status: number; body: unknown } = { status: 200, body: {} };
-/** /api/plugins 答哪些插件是启用的。默认一个都没有——刷新按钮就不画。 */
-let enabled: string[] = [];
+/** 服务端在 /api/items/:id 响应里报出的已认领来源。默认一个都没有——刷新按钮就不画。 */
+let providers: string[] = [];
 
 beforeEach(async () => {
   asked = [];
-  enabled = [];
+  providers = [];
   const win = new Window({ url: "http://127.0.0.1:7682/terminal.html" });
   patched = true;
   for (const key of PATCHED) {
@@ -36,12 +36,9 @@ beforeEach(async () => {
   set("document", win.document);
   set("fetch", async (u: unknown, init?: { method?: string }) => {
     asked.push(`${init?.method ?? "GET"} ${u}`);
-    // 启用了哪些插件是另一条路：它决定「刷新」画不画，跟这张单的明细
-    // 用同一个 reply 会让每个测试都得记得把它也摆对。
-    if (String(u).includes("api/plugins")) return new Response(JSON.stringify(enabled));
     if (String(u).includes("/refresh")) return new Response("{}");
     if (reply.status !== 200) return new Response("no", { status: reply.status });
-    return new Response(JSON.stringify(reply.body));
+    return new Response(JSON.stringify({ ...(reply.body as object), providers }));
   });
   // 语言钉死在 en：i18n-apply.js 的当前语言是模块级状态，同一个进程里别的页面
   // 测试会把它设成 zh，而 import 缓存让那份状态跨文件活着。不显式设一次，这里
@@ -146,7 +143,7 @@ test("已经开着一个时不叠第二个", async () => {
 
 test("有插件认领这个来源时才画刷新", async () => {
   reply = { status: 200, body: detail() };
-  enabled = ["jira"];
+  providers = ["jira"];
   const { openItemPanel } = await load();
   const panel = await openItemPanel({ id: "it-1" });
   expect(panel.querySelector(".item-refresh")).toBeTruthy();
@@ -156,7 +153,7 @@ test("有插件认领这个来源时才画刷新", async () => {
 // Jira 之后，它的刷新入口该跟着它的 tab 一起消失。
 test("没有插件认领就不画刷新", async () => {
   reply = { status: 200, body: detail() };
-  enabled = [];
+  providers = [];
   const { openItemPanel } = await load();
   const panel = await openItemPanel({ id: "it-1" });
   expect(panel.querySelector(".item-refresh")).toBeNull();
@@ -165,7 +162,7 @@ test("没有插件认领就不画刷新", async () => {
 // 本地单没有来源，没有谁能替它去问。
 test("本地单不画刷新", async () => {
   reply = { status: 200, body: detail({ item: { id: "it-2", title: "本地的活", source: null } }) };
-  enabled = ["jira"];
+  providers = ["jira"];
   const { openItemPanel } = await load();
   const panel = await openItemPanel({ id: "it-2" });
   expect(panel.querySelector(".item-refresh")).toBeNull();
@@ -175,7 +172,7 @@ test("本地单不画刷新", async () => {
 // 放下 modalOpen，焦点会在刷新的一瞬间被抢回终端。
 test("点刷新：POST 那条路由，按单号重取，浮层不关", async () => {
   reply = { status: 200, body: detail() };
-  enabled = ["jira"];
+  providers = ["jira"];
   const { openItemPanel } = await load();
   let closed = 0;
   const panel = await openItemPanel({ session: "web-1-a" }, { onClose: () => { closed++; } });

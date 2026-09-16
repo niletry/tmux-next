@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { fields, DESC_CACHE_MS } from "./server";
+import { fields, DESC_CACHE_MS } from "./source";
 import type { ItemRef } from "../types";
 
 /**

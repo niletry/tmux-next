@@ -1,6 +1,6 @@
-import type { Facet } from "../plugins/types";
-import type { WorkItem } from "./items";
-import type { ResolvedBinding } from "./session-binding";
+import type { Facet } from "../../plugins/types";
+import type { WorkItem } from "./model";
+import type { ResolvedBinding } from "./binding";
 
 /**
  * 单的进度状态机。见 docs/superpowers/specs/2026-09-04-item-lifecycle-writeback-design.md。
@@ -47,19 +47,20 @@ export type LifecycleSignal = {
 /**
  * 从一张单的 facet 里挤出状态机信号。
  *
- * 只认 `jira.prs`/`jira.checks` 两个维度，读的是 `plugins/jira/server.ts` 里
- * `facetsFor` 已经定好的 tone 语义（`prFacetTone`/`checkFacetTone`）：PR 的
- * tone 是 undefined=OPEN／"dim"=MERGED／"warn"=DECLINED，checks 的顶层 tone 是
- * "ok"=全过／"warn"=有失败，且这个维度只在"问到过检查、且至少有一条"时才会
- * 出现——缺席本身就是"没查到"，跟"过了"是两回事。这是目前唯一贴 PR/检查信息
- * 的插件形状，但读的是 `Facet`/`FacetDetail` 这个通用契约，不是 Jira 插件私有
- * 的数据结构，明天换一个来源贴同样的维度，这个函数不用改一行。
+ * 只认 `role === "pr"` 和 `role === "check"` 两条 facet，不认维度名——哪个来源
+ * 贴的、维度叫什么，内核一概不问。tone 的语义写在 plugins/types.ts 的 `role`
+ * 注释里，是契约的一部分。
+ *
+ * `role: "pr"` 的 detail 里**只有带 `url` 的行算一个 PR**；没有 `url` 的行是注释
+ * （Jira 就往里塞了一行「另有 N 条 PR 未带本单号，已隐藏」），状态机不看。不这样
+ * 分，那行注释的 `tone: "dim"` 会被读成"有一个 PR 合并了"，把一张连 PR 都没有的
+ * 单一路推到 done，并且真的去改远端工单——一条展示用的说明不该有这种力量。
  */
 export function deriveSignal(facets: Facet[], hasLiveBinding: boolean): LifecycleSignal {
-  const prs = facets.find((f) => f.dim === "jira.prs");
-  const checks = facets.find((f) => f.dim === "jira.checks");
+  const prs = facets.find((f) => f.role === "pr");
+  const checks = facets.find((f) => f.role === "check");
 
-  const prDetails = prs?.detail ?? [];
+  const prDetails = (prs?.detail ?? []).filter((d) => d.url);
   const openPrs = prDetails.filter((d) => d.tone === undefined);
   const mergedPrs = prDetails.filter((d) => d.tone === "dim");
   const hasOpenPr = openPrs.length > 0;

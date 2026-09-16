@@ -14,8 +14,8 @@ process.env.TMUX_NEXT_JIRA_DIR = join(tmpdir(), `items-test-jira-${stamp}`);
 process.env.TMUX_NEXT_SESSION_HISTORY_PATH = join(tmpdir(), `session-history-test-${stamp}.json`);
 
 import { rm } from "node:fs/promises";
-import { startServer } from "./server";
-import { bindSession, unbindSession } from "./session-binding";
+import { startServer } from "../server";
+import { bindSession, unbindSession } from "./binding";
 
 let server: { stop(): void; port: number };
 const at = (path: string) => `http://127.0.0.1:${server.port}${path}`;
@@ -58,7 +58,7 @@ test("空的时候给空表", async () => {
   // 会话的 capture-pane 内容（spinner 之类）在两次异步调用之间就可能变化，深
   // 比较必然偶发失败。断言的重点是"响应恰好是这几个键、不多不少"——用键集合
   // 加逐字段校验来兑现，而不是假装这台机器没有会话。
-  expect(Object.keys(body).sort()).toEqual(["bindings", "facets", "items", "sessions"]);
+  expect(Object.keys(body).sort()).toEqual(["bindings", "facets", "items", "providers", "sessions"]);
   expect(body.items).toEqual([]);
   expect(body.bindings).toEqual([]);
   expect(body.facets).toEqual({});
@@ -215,7 +215,7 @@ test("GET /api/items/:id 给出这张单、它的 facets 与它的会话", async
   const res = await fetch(at(`/api/items/${created.id}`));
   expect(res.status).toBe(200);
   const body = (await res.json()) as Record<string, any>;
-  expect(Object.keys(body).sort()).toEqual(["facets", "history", "item", "sessions"]);
+  expect(Object.keys(body).sort()).toEqual(["facets", "history", "item", "providers", "sessions"]);
   expect(body.item.id).toBe(created.id);
   expect(body.item.title).toBe("看一眼这张单");
   // facets 是这一张单的那一列，不是首页那种 { itemId: Facet[] } 的表。
@@ -279,4 +279,26 @@ test("绑定指向不存在的单也给 404", async () => {
   );
   const res = await fetch(at("/api/items/by-session?session=web-1-ghost"));
   expect(res.status).toBe(404);
+});
+
+test("列表、详情、by-session 三个响应都带 providers", async () => {
+  const item = await makeItem("有来源", { source: { provider: "jira", ref: "EXAMPLE-1" } });
+  const list = await (await fetch(at("/api/items"))).json();
+  expect(Array.isArray(list.providers)).toBe(true);
+  // jira 插件默认启用，它认领 "jira"。
+  expect(list.providers).toContain("jira");
+  const detail = await (await fetch(at(`/api/items/${item.id}`))).json();
+  expect(detail.providers).toEqual(list.providers);
+});
+
+test("禁用 jira 之后 providers 里就没有它", async () => {
+  const prev = process.env.TMUX_NEXT_DISABLE_PLUGINS;
+  process.env.TMUX_NEXT_DISABLE_PLUGINS = "jira";
+  try {
+    const list = await (await fetch(at("/api/items"))).json();
+    expect(list.providers).not.toContain("jira");
+  } finally {
+    if (prev === undefined) delete process.env.TMUX_NEXT_DISABLE_PLUGINS;
+    else process.env.TMUX_NEXT_DISABLE_PLUGINS = prev;
+  }
 });

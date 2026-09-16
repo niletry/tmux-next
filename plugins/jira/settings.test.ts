@@ -7,7 +7,7 @@ const dir = mkdtempSync(join(tmpdir(), "jira-settings-"));
 process.env.TMUX_NEXT_JIRA_DIR = dir;
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-const { readSettings, writeSettings } = await import("./server");
+const { readSettings, writeSettings } = await import("./settings");
 const { readJiraConfig, writeJiraConfig, DEFAULT_JQL } = await import("./config");
 
 /**

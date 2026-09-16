@@ -25,7 +25,7 @@ const prevBindingsPath = process.env.TMUX_NEXT_BINDINGS_PATH;
 process.env.TMUX_NEXT_ITEMS_PATH = itemsPath;
 process.env.TMUX_NEXT_BINDINGS_PATH = bindingsPath;
 
-const { sync } = await import("./server");
+const { sync } = await import("./source");
 
 /** 桩掉 console.error，接住调用而不真的往 stderr 写，跑完照原样还回去。 */
 function stubConsoleError() {

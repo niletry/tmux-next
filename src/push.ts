@@ -11,7 +11,7 @@ import {
 import { recordNotification } from "./notifications";
 import { t } from "../public/i18n.js";
 import { readLanguage, DEFAULT_LANG } from "./language";
-import type { ItemStatus } from "./item-lifecycle";
+import type { ItemStatus } from "./items/lifecycle";
 
 /**
  * Push notifications for Claude events: stores the VAPID identity and the

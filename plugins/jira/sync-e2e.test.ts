@@ -27,7 +27,7 @@ const prevBindingsPath = process.env.TMUX_NEXT_BINDINGS_PATH;
 process.env.TMUX_NEXT_ITEMS_PATH = itemsPath;
 process.env.TMUX_NEXT_BINDINGS_PATH = bindingsPath;
 
-const { sync } = await import("./server");
+const { sync } = await import("./source");
 
 const CONFIG_JQL = "assignee = currentUser()";
 
@@ -198,18 +198,15 @@ test("时钟往回跳（游标记的时间比现在还晚）时退回全量，�
  * 不能靠"这是文件里第一条测试"来制造冷缓存——`sync-e2e.test.ts` 是不是第一个
  * 被跑到的文件，跟这份模块实例是不是刚创建、`cache` 有没有被别的用例焐热，是
  * 两件独立的事（同一个 bun 进程里,不同测试文件对同一个源文件仍可能各自拿到
- * 独立的模块实例，顺序也不由这个文件决定）。带查询串的动态 import 能绕开这层
- * 不确定性，直接换一份全新的模块实例，`cache`/`issueCache` 保证是刚初始化的
- * `null`/空 Map——这才是"进程刚启动"的真实写照。
+ * 独立的模块实例，顺序也不由这个文件决定）。`cache` 现在单独存在 `cache.ts`
+ * 里，`source.ts` 对它只是一个静态的相对路径 import——带查询串的动态 import
+ * 只能换出调用方自己顶层作用域的全新实例，换不出它 import 进来的这份缓存
+ * 单例（这条路径不带查询串，解析结果跟查询串无关），所以改用 `cache.ts` 自己
+ * 导出的 `__resetForTest()` 显式清零，效果跟"进程刚重启"完全一样。
  */
-let coldModule: Pick<typeof import("./server"), "sync">;
-
-test("准备一份全新的模块实例，模拟进程刚重启——它的 cache 保证是冷的", async () => {
-  // 拼接出来的说明符（而非字符串字面量）是故意的：tsc 对字面量 import() 会
-  // 按路径解析模块声明，"./server?query" 不是一个真实文件，会被当成找不到的
-  // 模块报错；拼接绕开静态解析，让 tsc 把这次 import() 当 `any` 处理，同时
-  // Bun 在运行时仍然把它当一个跟 "./server" 不同的说明符，换来一份全新实例。
-  coldModule = await import("./server" + "?cold-cache-regression-test");
+test("把 cache 拨回冷的，模拟进程刚重启", async () => {
+  const { __resetForTest } = await import("./cache");
+  __resetForTest();
 });
 
 test("冷缓存回归：磁盘游标有效，但进程内 cache 是冷的——sync() 仍必须强制走全量", async () => {
@@ -219,7 +216,7 @@ test("冷缓存回归：磁盘游标有效，但进程内 cache 是冷的——s
     const seen: { jql?: string }[] = [];
     globalThis.fetch = fakeSearch(seen);
 
-    await coldModule.sync();
+    await sync();
 
     // 若这里退回了增量（旧行为），请求会带 `updated >=` 子句而不是裸 jql——
     // 这条断言在修复前会失败，正是要抓的回归。
@@ -229,7 +226,7 @@ test("冷缓存回归：磁盘游标有效，但进程内 cache 是冷的——s
   });
 });
 
-test("同一份模块实例：上一条全量把 cache 焐热、游标也已前移之后，下一次 sync() 恢复走增量", async () => {
+test("上一条全量把 cache 焐热、游标也已前移之后，下一次 sync() 恢复走增量", async () => {
   await withJiraDir(async (jiraDir) => {
     writeConfig(jiraDir);
     // 同样加 500ms 偏移量避开整分钟边界，理由见上面"游标存在且 jql 匹配"那条
@@ -239,7 +236,7 @@ test("同一份模块实例：上一条全量把 cache 焐热、游标也已前�
     const seen: { jql?: string }[] = [];
     globalThis.fetch = fakeSearch(seen);
 
-    await coldModule.sync();
+    await sync();
 
     // 证明修复没有把增量整条路都关掉：缓存一旦被上一条测试的全量焐热，
     // 这个模块实例里后续的 sync() 该走增量还是走增量。

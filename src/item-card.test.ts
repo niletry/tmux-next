@@ -415,3 +415,148 @@ test("仍是 open 的记录（endedAt 为 null）不该出现在历史区——�
   expect(row.className).toBe("item-history-row");
   expect(row.textContent).toContain("甲");
 });
+
+test("refreshButton：来源被认领才画，否则返回 null", async () => {
+  const { refreshButton } = await load();
+  const item = { id: "it-1", title: "x", source: { provider: "jira", ref: "A-1" } };
+  expect(refreshButton(item, ["jira"], async () => {})).toBeTruthy();
+  expect(refreshButton(item, [], async () => {})).toBeNull();
+  expect(refreshButton({ id: "it-2", title: "本地", source: null }, ["jira"], async () => {})).toBeNull();
+});
+
+test("只有 url 的 chip 画成新开标签的链接", async () => {
+  const { facetChip } = await load();
+  const chip = facetChip({ dim: "jira.epic", value: "登录改版", url: "https://j/browse/EP-1" });
+  expect(chip.tagName).toBe("A");
+  expect(chip.getAttribute("href")).toBe("https://j/browse/EP-1");
+  expect(chip.getAttribute("target")).toBe("_blank");
+  expect(chip.getAttribute("rel")).toContain("noopener");
+  expect(chip.textContent).toContain("登录改版");
+});
+
+test("有明细的 chip 仍是按钮，url 进浮层标题旁", async () => {
+  const { facetChip } = await load();
+  const chip = facetChip({
+    dim: "jira.prs", value: "1", url: "https://j/browse/A-1",
+    detail: [{ label: "fix", value: "OPEN" }],
+  });
+  expect(chip.tagName).toBe("BUTTON");
+  chip.click();
+  const sheet = document.querySelector(".sheet");
+  expect(sheet?.querySelector("a.sheet-link")?.getAttribute("href")).toBe("https://j/browse/A-1");
+});
+
+test("没有 url 也没有明细的 chip 还是 span", async () => {
+  const { facetChip } = await load();
+  expect(facetChip({ dim: "jira.status", value: "Done" }).tagName).toBe("SPAN");
+});
+
+async function withFetch(fake: (u: string, init?: RequestInit) => Promise<Response>, run: () => Promise<void>) {
+  const real = globalThis.fetch;
+  Object.defineProperty(globalThis, "fetch", { value: fake, writable: true, configurable: true });
+  try {
+    await run();
+  } finally {
+    Object.defineProperty(globalThis, "fetch", { value: real, writable: true, configurable: true });
+  }
+}
+
+test("等你的会话行有「回答」按钮，在跑的没有", async () => {
+  const { sessionRow } = await load();
+  const waiting = sessionRow(session({ turn: "waiting" }), null);
+  expect(waiting.querySelector(".item-answer")?.textContent).toBe(tr("items.answer"));
+  const working = sessionRow(session({ turn: "working" }), null);
+  expect(working.querySelector(".item-answer")).toBeNull();
+});
+
+test("回答浮层显示会话最后说的话，发送 POST 到 keys 端点并回调", async () => {
+  const { openAnswerSheet } = await load();
+  const asked: string[] = [];
+  let sent = 0;
+  await withFetch(async (u, init) => {
+    asked.push(`${init?.method ?? "GET"} ${u}`);
+    if (String(u).endsWith("/message")) return new Response(JSON.stringify({ text: "要**合并**吗？" }));
+    return new Response(null, { status: 204 });
+  }, async () => {
+    const back: HTMLElement = openAnswerSheet("甲", async () => { sent += 1; });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(back.querySelector(".answer-body strong")?.textContent).toBe("合并");
+    const input = back.querySelector(".answer-input") as HTMLInputElement;
+    input.value = "合并吧";
+    (back.querySelector(".answer-form") as HTMLFormElement).dispatchEvent(new window.Event("submit", { cancelable: true }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(asked.some((a) => a.startsWith("POST") && a.includes("api/sessions/%E7%94%B2/keys"))).toBe(true);
+    expect(sent).toBe(1);
+    expect(document.querySelector(".answer-form")).toBeNull(); // 发成功就关
+  });
+});
+
+test("发送失败留在浮层里，输入不清", async () => {
+  const { openAnswerSheet } = await load();
+  await withFetch(async (u) => {
+    if (String(u).endsWith("/message")) return new Response(JSON.stringify({ text: "?" }));
+    return new Response("gone", { status: 404 });
+  }, async () => {
+    const back: HTMLElement = openAnswerSheet("甲", async () => {});
+    await new Promise((r) => setTimeout(r, 20));
+    const input = back.querySelector(".answer-input") as HTMLInputElement;
+    input.value = "回一句";
+    (back.querySelector(".answer-form") as HTMLFormElement).dispatchEvent(new window.Event("submit", { cancelable: true }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(back.isConnected).toBe(true);
+    expect(input.value).toBe("回一句");
+    expect(back.querySelector(".answer-note")?.textContent).toBe(tr("items.sendFailed"));
+  });
+});
+
+test("读不到最后一句时说明读不到", async () => {
+  const { openAnswerSheet } = await load();
+  await withFetch(async () => new Response(JSON.stringify({ text: null })), async () => {
+    const back = openAnswerSheet("甲", async () => {});
+    await new Promise((r) => setTimeout(r, 20));
+    expect(back.querySelector(".answer-body")?.textContent).toBe(tr("items.answerNone"));
+  });
+});
+
+/**
+ * Esc 是这两张浮层自己的。
+ *
+ * 它们可能开在单浮层（item-panel.js）之上，而那一层的 Esc 监听挂在**捕获期**：
+ * 不在这里也用捕获期把 Esc 截下来，一次 Esc 会先关掉底下那层，把这张表单孤零零
+ * 留在页面上，终端页顺手放下 modalOpen、焦点被抢回会话。所以断言两件事——这一层
+ * 自己关掉了，以及事件没有继续往下传。
+ */
+function escapeClosesSheet(back: HTMLElement) {
+  let bubbled = 0;
+  const spy = () => {
+    bubbled += 1;
+  };
+  document.addEventListener("keydown", spy);
+  try {
+    document.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+  } finally {
+    document.removeEventListener("keydown", spy);
+  }
+  expect(back.isConnected).toBe(false);
+  expect(document.querySelector(".sheet-backdrop")).toBeNull();
+  expect(bubbled).toBe(0);
+}
+
+test("Esc 关掉回答浮层，且不再往下传", async () => {
+  const { openAnswerSheet } = await load();
+  await withFetch(async () => new Response(JSON.stringify({ text: "?" })), async () => {
+    const back: HTMLElement = openAnswerSheet("甲", async () => {});
+    await new Promise((r) => setTimeout(r, 20));
+    escapeClosesSheet(back);
+  });
+});
+
+test("Esc 关掉明细浮层，且不再往下传", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [{ label: "ci/test", value: "SUCCESSFUL", tone: "ok" }]);
+  const back = document.querySelector(".sheet-backdrop") as HTMLElement;
+  expect(back).not.toBeNull();
+  escapeClosesSheet(back);
+});

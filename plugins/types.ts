@@ -5,10 +5,16 @@
 export type Plugin = {
   /** 同时决定 /api/<id>/*、/p/<id>/*、以及状态目录名。^[a-z][a-z0-9-]*$ */
   id: string;
-  /** 顶栏 title/aria-label 用的 i18n 键。 */
-  titleKey: string;
-  /** 24×24 viewBox 里的 path 串，格式跟 nav.js 现有图标一致。 */
-  icon: string;
+  /**
+   * 插件的显示名——设置页那一节用它，有 tab 的插件顶栏也用它。没有页面的插件
+   * 仍然可以有一个：这是名字，不是"有没有 tab"的信号。
+   */
+  titleKey?: string;
+  /**
+   * 24×24 viewBox 里的 path 串，格式跟 nav.js 现有图标一致。
+   * icon 是给插件一个 tab 的东西：没有 icon，就没有 tab。
+   */
+  icon?: string;
   i18n: { zh: Record<string, string>; en: Record<string, string> };
   /**
    * 这个插件贴的 Facet.dim 会用到的 i18n 键，例如 `["jira.status", "jira.epic"]`。
@@ -22,7 +28,7 @@ export type Plugin = {
   /**
    * 这个插件的 `fields()` 会产出哪些键，例如 `["jira.summary", "jira.description"]`。
    *
-   * 设置页拿它列出"可用字段"给模板作者点选。跟 facetDims、titleKey、provides 同一步棋：
+   * 设置页拿它列出"可用字段"给模板作者点选。跟 facetDims、titleKey 同一步棋：
    * 凡是内核需要知道、又不该写死的东西，由插件在清单里声明。
    *
    * 跟 facetDims 有一点不同：这些**不是 i18n 键**，原样显示，不翻译——模板作者要打的
@@ -51,18 +57,9 @@ export type Plugin = {
    */
   page?: { mainId: string };
   /**
-   * 这个插件认领哪些 `WorkItem.source.provider`，例如 `["jira"]`。
-   *
-   * 内核据此知道"谁负责这个来源"，从而能在首页发起「刷新这一个单」而**不点名任何
-   * 插件**——它只做一次查表，而这张表是插件自己声明的数据，不是内核维护的名单。
-   * 跟 titleKey、legacyPaths、facetDims 同一步棋：凡是内核需要知道、又不该写死的
-   * 东西，都由清单声明。
-   */
-  provides?: string[];
-  /**
    * 这个插件的可配置项。内核照着画表单，但**不认识任何一项是什么意思**。
    *
-   * 跟 titleKey / facetDims / provides 同一步棋：内核需要知道、又不该写死的东西，
+   * 跟 titleKey / facetDims 同一步棋：内核需要知道、又不该写死的东西，
    * 由清单声明。有了它，接进来的下一个数据源自动就有配置界面，不必再动内核一行。
    *
    * 值不在这里——清单是同构的、要被浏览器 import，凭据绝不能进这个文件。存取归
@@ -274,15 +271,39 @@ export type Facet = {
    * （人名）两种情况，不用内核认识具体是哪一种。
    */
   sortKey?: { key: string; rank?: number };
+  /**
+   * 这条 facet 在单的进度状态机里扮演什么角色。内核只认这一个字段，不看 dim。
+   *
+   * "pr"：value 是 PR 数，detail 每行一个 PR，行的 tone 是 undefined=open、
+   *       "dim"=merged、"warn"=declined。`pr` 的 detail 里只有带 `url` 的行算一个
+   *       PR；没有 `url` 的行是注释（比如「另有 N 条被隐藏」），状态机不看。
+   * "check"：顶层 tone 是 "ok"=全过、"warn"=有失败；这条 facet 只在真的问到过
+   *          检查时才出现——缺席就是"没查到"，不是"过了"。
+   *
+   * 一张单有多条同 role 的 facet 时状态机取第一条。
+   */
+  role?: "pr" | "check";
+  /**
+   * 这颗 chip 本身指向哪里。只认 http/https，内核在 collectFacets 里挡（safeHttpUrl）。
+   * 没有 detail 时 chip 画成链接；有 detail 时 chip 仍是开浮层的按钮，链接放进
+   * 浮层标题旁。Jira 用它让史诗 chip 链回工单页。
+   */
+  url?: string;
 };
 
 /**
- * 问插件时给它看的单。
+ * 问 enrich 时给它看的单。
  *
- * 传**全部**单给每个插件，不按 `source.provider === 插件 id` 预筛——预筛会在内核里
- * 写死"provider 名就是插件 id"这个等式，而那正是要守的那条线。让插件自己看 source
- * 挑，成本可以忽略（几十条），还顺带允许一个不绑定任何来源的插件（比如读 git 分支
- * 的）也贡献维度。
+ * 收到哪些单取决于 enrich 声明在哪一层，两层都不按"插件 id"筛：
+ *
+ * - **来源级**（`ItemSourceProvider.enrich`）只收到 `source.provider` 跟这个来源
+ *   的 `provider` 相等的单。筛的依据是来源自己声明的那个字符串，不是插件 id——
+ *   这两者可以不同，一个插件也可以带好几个来源。
+ * - **插件级**（`PluginServer.enrich`）收到**全部**单，不管有没有来源、来源是谁。
+ *   这条路留给不绑定任何来源、却想按自己的口径贴 chip 的插件（比如读分支名的）。
+ *
+ * 要守住的那条线是"内核里不许写死 provider 名就是插件 id"。来源级的预筛没有碰它：
+ * 内核比的是 `source.provider === 来源自己声明的 provider`，一次都没看过插件 id。
  */
 export type ItemRef = { id: string; source: { provider: string; ref: string } | null };
 

@@ -22,10 +22,15 @@ test("每个 id 合法、唯一，且不撞内核路由", () => {
 
 test("每个清单字段齐全", () => {
   for (const p of PLUGINS) {
-    expect(typeof p.titleKey).toBe("string");
-    expect(p.titleKey.length).toBeGreaterThan(0);
-    expect(typeof p.icon).toBe("string");
+    if (p.icon === undefined) {
+      // 没有 icon 就没有 tab，也就没有页面可去——page 字段不该出现。
+      expect(p.page).toBeUndefined();
+      continue;
+    }
     expect(p.icon.length).toBeGreaterThan(0);
+    expect(typeof p.titleKey).toBe("string");
+    expect(p.titleKey!.length).toBeGreaterThan(0);
+    expect(p.i18n.en[p.titleKey!]).toBeDefined();
   }
 });
 
@@ -42,7 +47,11 @@ test("每个插件的两本字典键集一致", () => {
 });
 
 test("清单里的标题键在它自己的字典里", () => {
-  for (const p of PLUGINS) expect(p.i18n.en[p.titleKey]).toBeDefined();
+  for (const p of PLUGINS) {
+    // titleKey 跟出不出 tab 无关——有就查，不管这个插件有没有 icon。
+    if (p.titleKey === undefined) continue;
+    expect(p.i18n.en[p.titleKey]).toBeDefined();
+  }
 });
 
 test("没有插件字典键悄悄盖掉内核的键", () => {

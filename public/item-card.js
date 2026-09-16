@@ -10,8 +10,8 @@
  *
  * 以画为主：归档、关联已有会话那些只有首页才有的动作留在 items.js 里。会跟着某
  * 一块画法走的动作是例外——会话行上的解绑（sessionRow 的 onUnbind）和「刷新这一
- * 个单」（refreshButton），后者两处入口都要，判断"什么时候能刷"的那点逻辑（
- * claimedProviders）写两遍就会漂。
+ * 个单」（refreshButton），后者两处入口都要，判断"什么时候能刷"的那点逻辑写两遍
+ * 就会漂。
  *
  * 页面文件不做类型检查（tsconfig 的 checkJs: false），这一层做——它是两处共用的
  * 那一层，src/item-card.test.ts 无头地渲染它。
@@ -20,7 +20,7 @@
 import { tr } from "./i18n-apply.js";
 import { url } from "./root.js";
 import { svgShell, icon } from "./icons.js";
-import { PLUGINS } from "../plugins/registry.js";
+import { parseMarkdown } from "./markdown.js";
 
 /**
  * @typedef {object} DetailRow
@@ -48,6 +48,8 @@ import { PLUGINS } from "../plugins/registry.js";
  *   第 0..rank 颗是"已经走过"，颜色由内核决定（见 statusLightRow），插件不传色。
  * @property {boolean} [light] 这个 facet 的 tone 是不是 warn，决定同一批 facet
  *   里 stage 台阶灯当前那一步要不要改画成红色——不再单独出一颗点。
+ * @property {string} [url] 这颗 chip 本身指向哪。没有 detail 时 chip 画成
+ *   链接；有 detail 时进浮层标题旁。
  */
 /**
  * @typedef {object} SessionLike
@@ -86,7 +88,7 @@ function el(tag, className, text) {
 /**
  * 一条会话此刻的状态词。
  *
- * 跟 src/item-facets.ts 的 stateOf 同一套判断：turn 优先（它读的是 transcript 的
+ * 跟 src/items/facets.ts 的 stateOf 同一套判断：turn 优先（它读的是 transcript 的
  * stop_reason，是记录格式的一部分），读不到才退回屏幕推出来的 idle。两边说法必须
  * 一致——同一个会话在卡片上和在维度里给出不同状态，比没有状态更糟。
  */
@@ -143,8 +145,8 @@ export const ITEM_DIM_LABEL = {
  */
 /**
  * 把一行明细的 `send` 文本发给一个正在跑的会话。走已经存在的那条通路——回复
- * 正在跑的会话用的就是这个端点（见 plugins/jira/public/jira.js 的 openQuestion）,
- * 这里不是新开一条,是同一个动作换了一个入口。
+ * 正在跑的会话用的就是这个端点（会话页的回复入口走的也是它）,这里不是新开一条,
+ * 是同一个动作换了一个入口。
  *
  * 成功后按钮短暂切成勾选态再恢复，不关掉浮层——旁边可能还有别的失败检查也
  * 想发。失败复用 push.actionFailed，那是站里唯一一个已有的"操作失败"通用键。
@@ -186,7 +188,7 @@ async function sendToSession(sessionName, text, btn) {
 function detailRowLine(row, sessionName) {
   const line = el("div", "detail-row");
   if (row.url) {
-    // 内核只放行 http/https（plugins/handlers.ts 的 safeHttpUrl），到这里已经是
+    // 内核只放行 http/https（src/items/sources.ts 的 safeHttpUrl），到这里已经是
     // 绝对地址。noopener 是因为 target=_blank 会把 window.opener 交给对面。
     const a = document.createElement("a");
     a.className = "detail-label";
@@ -260,17 +262,62 @@ function detailGroup(title, rows, groupUrl, sessionName) {
 }
 
 /**
+ * 一张浮层的关闭函数，外加它自己那份 Esc。
+ *
+ * 浮层可能开在单浮层（item-panel.js）之上，而那一层的 Esc 监听是**捕获期**的：
+ * 不在这里以同样的捕获期把 Esc 截下来，一次 Esc 会先关掉底下那层浮层，把这张
+ * 表单孤零零留在页面上，终端页还顺手把 modalOpen 放下、焦点抢回会话。
+ * stopPropagation 同时挡住终端页整页的键盘接管，否则关浮层还附送一个 Esc 进会话。
+ *
+ * @param {HTMLElement} back 背板
+ * @returns {() => void} 关闭（重复调用无副作用）
+ */
+function sheetCloser(back) {
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", onKey, true);
+    back.remove();
+  };
+  /** @param {KeyboardEvent} e */
+  function onKey(e) {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  }
+  document.addEventListener("keydown", onKey, true);
+  return close;
+}
+
+/**
  * @param {string} title
  * @param {DetailRow[]} rows
  * @param {string | null} [sessionName] 恰好绑了一个会话时的会话名,穿透给能
  *   发"发给会话"按钮的那些行；多会话或没会话时传 null/不传，按钮不出现。
+ * @param {string} [url] 这颗 chip 本身指向哪——有它就在标题旁画一个链接入口，
+ *   没有就不画。跟组标题那个 groupUrl 入口同一个道理，只是这次链的是 chip
+ *   本身而不是某一组明细行。
  */
-export function openDetailSheet(title, rows, sessionName) {
+export function openDetailSheet(title, rows, sessionName, url) {
   const back = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
-  const close = () => back.remove();
+  const close = sheetCloser(back);
 
-  sheet.append(el("h2", "sheet-title", title));
+  const head = el("div", "sheet-head");
+  head.append(el("h2", "sheet-title", title));
+  if (url) {
+    const link = document.createElement("a");
+    link.className = "sheet-link";
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.setAttribute("aria-label", tr("items.openOriginal"));
+    link.innerHTML = icon("link", 14);
+    head.append(link);
+  }
+  sheet.append(head);
   const list = el("div", "detail-list");
   // 连续几行 group 相同才算一组——插件给的行本来就该按组挨着排好，内核不重排、
   // 不去重，只负责把"group 连续相同的这几行"包成一个可折叠的组。没有 group 的
@@ -338,15 +385,23 @@ export function facetChip(facet, opts) {
   if (rows.length) {
     const btn = el("button", facet.tone ? `facet has-detail ${facet.tone}` : "facet has-detail");
     btn.type = "button";
-    btn.addEventListener("click", () => openDetailSheet(`${label}: ${value}`, rows, sessionName));
+    btn.addEventListener("click", () => openDetailSheet(`${label}: ${value}`, rows, sessionName, facet.url));
     chip = btn;
+  } else if (facet.url) {
+    // 只有链接、没有明细：chip 本身就是去处。新开标签，跟明细行里的链接一样——
+    // 这一页的分组和筛选不该被一次跳转带走。
+    const a = el("a", facet.tone ? `facet is-link ${facet.tone}` : "facet is-link");
+    a.href = facet.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    chip = a;
   } else {
     chip = el("span", facet.tone ? `facet ${facet.tone}` : "facet");
   }
   // 插件可以给这个 chip 一个形状。内核不问它是什么意思——史诗和缺陷的区别是
   // Jira 的概念，内核一旦认识 epic 就等于认识了一个插件。它只负责套上跟全站
-  // 一致的外壳，形状本身已经在服务端被限过长、过滤过标签（见 handlers.ts 的
-  // safeIconPaths）。
+  // 一致的外壳，形状本身已经在服务端被限过长、过滤过标签（见 src/items/sources.ts
+  // 的 safeIconPaths）。
   if (facet.icon) {
     const mark = el("span", "f-icon");
     mark.innerHTML = svgShell(facet.icon, 13);
@@ -484,6 +539,191 @@ function confirmUnbind(name, onConfirm) {
 }
 
 /**
+ * 把行内片段建成节点。
+ *
+ * 文字一律走 `textContent`——解析器交出来的是数据，这里也不把它拼回字符串，
+ * 于是「会话内容变成标记」这条路从形状上就不存在。
+ *
+ * 从工单页搬进内核（见 openAnswerSheet）：那边的两个函数原样复制，插件页删掉
+ * 之前先用它自己那份，重复是暂时的。
+ *
+ * @param {HTMLElement} parent
+ * @param {import("./markdown.js").Span[]} spans
+ */
+function renderSpans(parent, spans) {
+  for (const span of spans) {
+    if (span.type === "link") {
+      const a = el("a", "md-link", span.value);
+      a.href = span.href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      parent.append(a);
+    } else if (span.type === "code") {
+      parent.append(el("code", "md-code", span.value));
+    } else if (span.type === "strong") {
+      parent.append(el("strong", undefined, span.value));
+    } else if (span.type === "em") {
+      parent.append(el("em", undefined, span.value));
+    } else {
+      parent.append(document.createTextNode(span.value));
+    }
+  }
+  return parent;
+}
+
+/**
+ * 一棵解析结果 → 一串节点。这一层很薄，判断都在 markdown.js 里，那边可以无头地测。
+ * @param {string} text
+ */
+function renderMarkdown(text) {
+  return parseMarkdown(text).map((block) => {
+    if (block.type === "code") {
+      const pre = el("pre", "md-pre");
+      pre.append(el("code", undefined, block.value));
+      return pre;
+    }
+    if (block.type === "hr") return el("hr", "md-hr");
+    if (block.type === "table") {
+      // 表格套在自己的滚动容器里：宽内容横向滚动，绝不让它把浮层撑破——这是这个
+      // 仓库里对宽内容的一贯做法（代码块也是这么处理的）。
+      const wrap = el("div", "md-tablewrap");
+      const table = el("table", "md-table");
+
+      const thead = el("thead");
+      const hr = el("tr");
+      block.head.forEach((cell, n) => {
+        const th = renderSpans(el("th"), cell);
+        th.style.textAlign = block.align[n] ?? "left";
+        hr.append(th);
+      });
+      thead.append(hr);
+      table.append(thead);
+
+      const tbody = el("tbody");
+      for (const row of block.rows) {
+        const tr = el("tr");
+        row.forEach((cell, n) => {
+          const td = renderSpans(el("td"), cell);
+          td.style.textAlign = block.align[n] ?? "left";
+          tr.append(td);
+        });
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      wrap.append(table);
+      return wrap;
+    }
+    if (block.type === "list") {
+      const list = el(block.ordered ? "ol" : "ul", "md-list");
+      for (const item of block.items) list.append(renderSpans(el("li"), item));
+      return list;
+    }
+    if (block.type === "h") {
+      // 标题级别压到 h4/h5：浮层里再大就压过它自己的标题了。
+      return renderSpans(el(block.level <= 2 ? "h4" : "h5", "md-h"), block.spans);
+    }
+    if (block.type === "quote") return renderSpans(el("blockquote", "md-quote"), block.spans);
+    return renderSpans(el("p", "md-p"), block.spans);
+  });
+}
+
+/**
+ * 会话停在"等你回答"时，就地看它问了什么、回一句。
+ *
+ * 从工单页搬进内核：它读的是会话的最后一条消息（GET /api/sessions/:name/message）、
+ * 发的是 send-keys（POST /api/sessions/:name/keys），两条路由早就在内核里，跟
+ * 哪个来源没有关系。为这一两句话先进终端、等 xterm 起来、再找输入框，正是
+ * 这个浮层要省掉的那段路。
+ *
+ * 发成功就关，然后 onSent 让调用方重画——会话从"等你"变成"在跑"。失败留在
+ * 浮层里、输入不清：最不该做的事是把人刚打的字扔掉。
+ *
+ * @param {string} sessionName
+ * @param {() => Promise<void>} onSent
+ * @returns {HTMLElement} 背板
+ */
+export function openAnswerSheet(sessionName, onSent) {
+  const back = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet");
+  const close = sheetCloser(back);
+
+  sheet.append(el("h2", "sheet-title", tr("items.answerTitle")));
+  sheet.append(el("p", "sheet-name", sessionName));
+
+  const body = el("div", "answer-body", tr("items.answerLoading"));
+  sheet.append(body);
+
+  const form = el("form", "answer-form");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "answer-input";
+  input.placeholder = tr("items.answerPlaceholder");
+  input.setAttribute("aria-label", tr("items.answerPlaceholder"));
+  input.enterKeyHint = "send";
+  input.autocapitalize = "off";
+  input.setAttribute("autocorrect", "off");
+  input.spellcheck = false;
+  const send = el("button", "btn primary answer-send", tr("items.send"));
+  send.type = "submit";
+  const note = el("p", "answer-note");
+  form.append(input, send);
+  sheet.append(form, note);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    send.disabled = true;
+    input.disabled = true;
+    note.textContent = tr("items.sending");
+    try {
+      const res = await fetch(url(`api/sessions/${encodeURIComponent(sessionName)}/keys`), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      close();
+      await onSent();
+    } catch {
+      note.textContent = tr("items.sendFailed");
+      send.disabled = false;
+      input.disabled = false;
+    }
+  });
+
+  const actions = el("div", "sheet-actions");
+  const cancel = el("button", "btn", tr("items.close"));
+  cancel.type = "button";
+  cancel.addEventListener("click", close);
+  const open = el("a", "btn", tr("items.open"));
+  open.href = url(`terminal.html?target=${encodeURIComponent(sessionName)}`);
+  open.target = "_blank";
+  open.rel = "noopener noreferrer";
+  actions.append(cancel, open);
+  sheet.append(actions);
+
+  back.addEventListener("click", (e) => {
+    if (e.target === back) close();
+  });
+  back.append(sheet);
+  document.body.append(back);
+  setTimeout(() => input.focus(), 50);
+
+  fetch(url(`api/sessions/${encodeURIComponent(sessionName)}/message`))
+    .then((r) => r.json())
+    .then((got) => {
+      if (got && typeof got.text === "string" && got.text) body.replaceChildren(...renderMarkdown(got.text));
+      else body.textContent = tr("items.answerNone");
+    })
+    .catch(() => {
+      body.textContent = tr("items.answerNone");
+    });
+
+  return back;
+}
+
+/**
  * 一张单下的一行会话：它现在什么状态，点进去，以及（给了 onUnbind 时）把它从
  * 这张单上解下来。别的动作仍然在会话页上。
  *
@@ -499,8 +739,9 @@ function confirmUnbind(name, onConfirm) {
 /**
  * @param {SessionLike} session
  * @param {(() => Promise<void>) | null} [onUnbind]
+ * @param {{onSent?: () => Promise<void>}} [opts]
  */
-export function sessionRow(session, onUnbind) {
+export function sessionRow(session, onUnbind, opts = {}) {
   const link = el("a", "item-session");
   link.href = url(`terminal.html?target=${encodeURIComponent(session.name)}`);
   // 终端是自己在跑的另一个东西，原地跳走会把点开它之前那一页一起带走。
@@ -509,32 +750,44 @@ export function sessionRow(session, onUnbind) {
   link.append(el("span", "s-name", session.name));
   link.append(el("span", "s-state", sessionState(session)));
   link.append(el("span", "s-open", tr("items.open")));
-  if (!onUnbind) return link;
 
-  // 挂错了要能就地解开。外面套一层，而不是把按钮塞进 <a> 里——button 嵌在
-  // anchor 里既不合法，点它也会顺带触发导航。`.item-session` 仍然是那条链接
-  // 本身，所以样式和既有断言都不用跟着改。
+  const waiting = stateOf(session) === "waiting";
+  if (!onUnbind && !waiting) return link;
+
+  // 挂错了要能就地解开、等你回答要能就地回一句。外面套一层，而不是把按钮塞进
+  // <a> 里——button 嵌在 anchor 里既不合法，点它也会顺带触发导航。
+  // `.item-session` 仍然是那条链接本身，所以样式和既有断言都不用跟着改。
   const row = el("div", "item-session-row");
   row.append(link);
-  const unbind = el("button", "item-unbind", "\u00d7");
-  unbind.type = "button";
-  unbind.title = tr("items.unlink");
-  unbind.setAttribute("aria-label", tr("items.unlink"));
-  unbind.addEventListener("click", () => {
-    confirmUnbind(session.name, async () => {
-      const res = await fetch(
-        url(`api/items/bind?session=${encodeURIComponent(session.name)}`),
-        { method: "DELETE" },
-      );
-      if (!res.ok) {
-        // 这一步没改成任何东西，所以不重画——重画只会原地抖一下又回到原样。
-        alert(tr("push.actionFailed"));
-        throw new Error(String(res.status));
-      }
-      await onUnbind();
+  if (waiting) {
+    // 它在等你：一个"回答"入口，不用进终端。放在链接外面——button 不能嵌在
+    // <a> 里。
+    const answer = el("button", "item-answer", tr("items.answer"));
+    answer.type = "button";
+    answer.addEventListener("click", () => openAnswerSheet(session.name, opts.onSent ?? (async () => {})));
+    row.append(answer);
+  }
+  if (onUnbind) {
+    const unbind = el("button", "item-unbind", "\u00d7");
+    unbind.type = "button";
+    unbind.title = tr("items.unlink");
+    unbind.setAttribute("aria-label", tr("items.unlink"));
+    unbind.addEventListener("click", () => {
+      confirmUnbind(session.name, async () => {
+        const res = await fetch(
+          url(`api/items/bind?session=${encodeURIComponent(session.name)}`),
+          { method: "DELETE" },
+        );
+        if (!res.ok) {
+          // 这一步没改成任何东西，所以不重画——重画只会原地抖一下又回到原样。
+          alert(tr("push.actionFailed"));
+          throw new Error(String(res.status));
+        }
+        await onUnbind();
+      });
     });
-  });
-  row.append(unbind);
+    row.append(unbind);
+  }
   return row;
 }
 
@@ -705,37 +958,6 @@ export function itemHead(item, facets, sessionCount) {
 
 
 /**
- * 服务端到底认领了哪些 source.provider。
- *
- * `item.source` 单独一件事只说明这张单**有**来源，不说明**有谁能刷它**——
- * /api/plugins 只答启用的插件 id，从来不答它们的 provides，浏览器手上唯一能
- * 拼出"这个 provider 被谁认领了"这件事的数据，是同构的 registry.js（跟 nav.js
- * 画 tab 用的是同一份 import），拿它跟 /api/plugins 的启用 id 取交集。
- *
- * 问不到就当没人认领：画一个几乎必然 404 的按钮，比不画更糟——TMUX_NEXT_DISABLE_
- * PLUGINS 关掉一个插件时，它的刷新入口也该跟着它的 tab、它的 /api/<id> 一起消失，
- * 而不是留在页面上等着点了才报错。
- *
- * @returns {Promise<Set<string>>}
- */
-export async function claimedProviders() {
-  try {
-    const res = await fetch(url("api/plugins"));
-    if (!res.ok) throw new Error(String(res.status));
-    const ids = await res.json();
-    const enabled = new Set(Array.isArray(ids) ? ids : []);
-    const out = new Set();
-    for (const p of PLUGINS) {
-      if (!enabled.has(p.id)) continue;
-      for (const provider of p.provides ?? []) out.add(provider);
-    }
-    return out;
-  } catch {
-    return new Set();
-  }
-}
-
-/**
  * 去外部来源那边重新问一次这张单。
  *
  * 成功了让调用方整个重画，不在本地拼装变化后的状态——服务端才是真相，刷新可能
@@ -775,16 +997,20 @@ async function refreshItem(item, onChange) {
  * 任何东西，它只是把远端此刻的说法再问一遍，而"远端此刻怎么说"正是你干活这段
  * 时间里唯一会变的东西。
  *
- * 只在有来源、且真有启用的插件认领那个来源时才画（见 claimedProviders）：一个
- * 必然 404 的按钮比没有这个按钮更糟。
+ * 只在有来源、且真有 provider 认领那个来源时才画：providers 是服务端在
+ * /api/items 响应里报出的已认领来源——浏览器不再自己拼这份名单。一个必然
+ * 404 的按钮比没有这个按钮更糟。
  *
  * 请求期间禁用自己，而不是拦一个"正在刷"的标志位——按钮就是这个状态唯一的宿主，
  * 它自己灰掉既是防重复点击，也是唯一需要的反馈。
  *
  * @param {*} item
+ * @param {Iterable<string>} providers 服务端报出的已认领来源
  * @param {() => Promise<void>} onChange
+ * @returns {HTMLButtonElement | null}
  */
-export function refreshButton(item, onChange) {
+export function refreshButton(item, providers, onChange) {
+  if (!item.source || !new Set(providers).has(item.source.provider)) return null;
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "item-refresh";

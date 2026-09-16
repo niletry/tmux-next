@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { parseMarkdown, parseInline } from "../plugins/jira/public/markdown.js";
+import { parseMarkdown, parseInline } from "../public/markdown.js";
 
 /**
  * Markdown 解析。

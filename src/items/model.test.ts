@@ -8,7 +8,7 @@ import {
   updateItem,
   findBySource,
   ensureItemForSource,
-} from "./items";
+} from "./model";
 
 /**
  * 单是内核概念，Jira 只是来源之一：一张单可以完全没有 source，也可以挂一个。

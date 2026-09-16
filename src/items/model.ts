@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readJson, writeJsonAtomic, serialized } from "./json-store";
-import { DEFAULT_ITEM_STATUS, sanitiseStatus, type ItemStatus } from "./item-lifecycle";
+import { readJson, writeJsonAtomic, serialized } from "../json-store";
+import { DEFAULT_ITEM_STATUS, sanitiseStatus, type ItemStatus } from "./lifecycle";
 
 /**
  * 一张单：工作的单位。会话是它底下的手段。

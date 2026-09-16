@@ -1,8 +1,8 @@
 import { test, expect } from "bun:test";
-import { kernelFacets } from "./item-facets";
-import type { WorkItem } from "./items";
-import type { SessionSummary } from "./tmux/session-list";
-import type { ResolvedBinding } from "./session-binding";
+import { kernelFacets } from "./facets";
+import type { WorkItem } from "./model";
+import type { SessionSummary } from "../tmux/session-list";
+import type { ResolvedBinding } from "./binding";
 
 /**
  * 内核的 facet 跟插件的走同一条路、同一种形状，于是视图层不需要知道一个维度是谁

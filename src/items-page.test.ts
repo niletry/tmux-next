@@ -115,13 +115,13 @@ function patch(shims: Record<string, unknown>) {
 }
 
 /**
- * `enabledIds` 是 /api/plugins 该答出来的启用插件 id 列表——默认 `["jira"]`，
+ * `providers` 是 /api/items 响应里服务端报出的已认领来源——默认 `["jira"]`，
  * 跟真实部署的默认状态一致（jira 插件默认是启用的）。刷新按钮该不该画，现在
- * 要看这份列表跟每个插件清单自己声明的 `provides` 的交集，不再只看
+ * 要看这份列表里有没有 `item.source.provider`，不再只看
  * `item.source` 存不存在，所以大多数测试不用管这个参数；只有故意测
  * "没人认领这个来源"的那条会传空数组。
  */
-async function mount(body: unknown, store: Record<string, string> = {}, enabledIds: string[] = ["jira"]) {
+async function mount(body: unknown, store: Record<string, string> = {}, providers: string[] = ["jira"]) {
   posted = [];
   nextBody = null;
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
@@ -146,8 +146,10 @@ async function mount(body: unknown, store: Record<string, string> = {}, enabledI
         if (href.includes("api/items/sync")) return new Response(JSON.stringify(syncReply));
         return new Response(JSON.stringify({}));
       }
-      if (href.includes("api/items")) return new Response(JSON.stringify(nextBody ?? body));
-      if (href.includes("api/plugins")) return new Response(JSON.stringify(enabledIds));
+      if (href.includes("api/items")) {
+        const b = (nextBody ?? body) as Record<string, unknown>;
+        return new Response(JSON.stringify({ ...b, providers }));
+      }
       if (href.includes("api/language")) return new Response(JSON.stringify({ lang: "en" }));
       return new Response("{}");
     }) as typeof fetch,
@@ -174,7 +176,6 @@ async function mountFailing() {
     fetch: (async (u: unknown) => {
       const href = String(u);
       if (href.includes("api/items")) throw new Error("offline");
-      if (href.includes("api/plugins")) return new Response(JSON.stringify([]));
       if (href.includes("api/language")) return new Response(JSON.stringify({ lang: "en" }));
       return new Response("{}");
     }) as typeof fetch,
@@ -825,10 +826,9 @@ test("没有来源的本地单不画刷新按钮", async () => {
   expect(root.querySelector(".item-refresh")).toBeNull();
 });
 
-// 有来源，但没有任何启用的插件声明 provides 里含这个 provider——TMUX_NEXT_
-// DISABLE_PLUGINS=jira 就是这个状况：/api/plugins 答不出 "jira"，点了就是一次
-// 必然 404 的请求。这是这条 review 里的 Important 1：按钮不该画出来，而不是
-// 画出来再让点击去发现打不通。
+// 有来源，但服务端 providers 为空——TMUX_NEXT_DISABLE_PLUGINS=jira 就是这个
+// 状况：/api/items 答不出 "jira"，点了就是一次必然 404 的请求。这是这条
+// review 里的 Important 1：按钮不该画出来，而不是画出来再让点击去发现打不通。
 test("有来源，但没有启用的插件认领这个 provider 时不画刷新按钮", async () => {
   const root = await mount(payload({ items: [withSource()] }), {}, []);
   expect(root.querySelector(".item-refresh")).toBeNull();

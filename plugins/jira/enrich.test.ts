@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { facetsFor } from "./server";
+import { facetsFor } from "./facets";
 import type { Issue } from "./client";
 import type { DevResult } from "./dev";
 import type { ItemRef } from "../types";
@@ -10,8 +10,8 @@ import { classifyStatusStage, stageRank, STAGE_COUNT } from "./status-stage";
  * 缓存没命中就少给几个维度，那是正确的降级。这份测试因此把缓存作为参数喂进来。
  *
  * 史诗字段：Issue 上没有 `epicName`，史诗是通过 `parent` 字段表达的——对普通工单，
- * `parent.hierarchy >= 1` 就是它的史诗（见 client.ts 的注释和 public/filter.js 的
- * `epicKeyOf`）。所以这里用 `issue.parent`，不是往 Issue 上加字段。
+ * `parent.hierarchy >= 1` 就是它的史诗（见 client.ts 的注释和 server.ts 的
+ * `epicSummaryOf`）。所以这里用 `issue.parent`，不是往 Issue 上加字段。
  */
 
 const jiraItem: ItemRef = { id: "it-1", source: { provider: "jira", ref: "EXAMPLE-1" } };
@@ -314,6 +314,20 @@ test("问不到检查的 PR 仍然列在 PR 明细里", () => {
   expect(dims(got)["jira.checks"]).toBeUndefined();
 });
 
+test("被过滤掉的 PR 数在明细末尾多一行 dim 提示", () => {
+  const dev = new Map<string, DevResult>([
+    ["10001", { ok: true, hidden: 2, prs: [{ id: "1", title: "fix", branch: "b", destinationBranch: "", repo: "", updated: 0, url: "https://bitbucket.org/ws/repo/pull-requests/1", status: "OPEN", checks: [], checksKnown: false }] }],
+  ]);
+  const facets = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), dev);
+  const rows = facets.find((f) => f.dim === "jira.prs")?.detail ?? [];
+  expect(rows.at(-1)).toEqual({ label: "另有 2 条 PR 未带本单号，已隐藏", value: "", tone: "dim" });
+  // 提示行不带 url，别的每行都带——状态机就是靠 url 把注释跟真的 PR 分开的
+  // （见 src/items/lifecycle.ts 的 deriveSignal）。少了这条，这行 dim 会被读成
+  // 一个已合并的 PR，把单推到 done 并回写远端工单。
+  expect(rows.at(-1)!.url).toBeUndefined();
+  expect(rows.slice(0, -1).every((r) => typeof r.url === "string" && r.url.length > 0)).toBe(true);
+});
+
 /**
  * 工单类型这一维。
  *
@@ -464,4 +478,42 @@ test("jira.checks 也标 light，跟已有的聚合 tone 一起进灯带", () =>
   };
   const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
   expect(got.find((f) => f.dim === "jira.checks")!.light).toBe(true);
+});
+
+test("PR 和检查两个 facet 带 role，给状态机认", () => {
+  const dev = new Map<string, DevResult>([
+    [
+      "10001",
+      {
+        ok: true,
+        hidden: 0,
+        prs: [
+          {
+            id: "1",
+            title: "fix",
+            branch: "b",
+            destinationBranch: "",
+            repo: "",
+            updated: 0,
+            url: "https://bitbucket.org/example/repo/pull-requests/1",
+            status: "OPEN",
+            checks: [{ name: "ci", state: "SUCCESSFUL", url: "u" }],
+            checksKnown: true,
+          },
+        ],
+      },
+    ],
+  ]);
+  const facets = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), dev);
+  expect(facets.find((f) => f.dim === "jira.prs")?.role).toBe("pr");
+  expect(facets.find((f) => f.dim === "jira.checks")?.role).toBe("check");
+});
+
+test("给了实例地址，史诗 chip 带链接；没给就没有", () => {
+  const withEpic = issue({ parent: { key: "EP-1", summary: "登录改版", hierarchy: 1 } });
+  const issues = new Map([["EXAMPLE-1", withEpic]]);
+  const linked = facetsFor(jiraItem, issues, new Map(), "https://example.atlassian.net");
+  expect(linked.find((f) => f.dim === "jira.epic")?.url).toBe("https://example.atlassian.net/browse/EP-1");
+  const bare = facetsFor(jiraItem, issues, new Map());
+  expect(bare.find((f) => f.dim === "jira.epic")?.url).toBeUndefined();
 });

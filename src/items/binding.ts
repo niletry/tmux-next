@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readJson, writeJsonAtomic, serialized } from "./json-store";
-import { recordBind, recordUnbind, recordDead } from "./session-history";
+import { readJson, writeJsonAtomic, serialized } from "../json-store";
+import { recordBind, recordUnbind, recordDead } from "../session-history";
 
 /**
  * 会话属于哪张单。

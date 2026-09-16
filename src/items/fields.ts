@@ -1,4 +1,4 @@
-import type { WorkItem } from "./items";
+import type { WorkItem } from "./model";
 
 /**
  * 一张单的内核字段，喂给模板渲染。

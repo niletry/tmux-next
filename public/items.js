@@ -14,7 +14,6 @@ import {
   chipVisible,
   sessionRow,
   itemHead,
-  claimedProviders,
   refreshButton,
 } from "./item-card.js";
 import { tableColumns, facetsIn } from "./item-table.js";
@@ -291,7 +290,7 @@ function openItemActions(item, onChange, link) {
  *
  * 「新会话」永远在，不是「打开」——一张单多个会话是常态，不是边角情况。
  */
-function itemCard(item, sessions, facets, claimed, onChange, link) {
+function itemCard(item, sessions, facets, providers, onChange, link) {
   const card = el("article", "item-card");
 
   const head = itemHead(item, facets, sessions.length);
@@ -311,15 +310,14 @@ function itemCard(item, sessions, facets, claimed, onChange, link) {
     card.append(row);
   }
 
-  for (const session of sessions) card.append(sessionRow(session, onChange));
+  for (const session of sessions) card.append(sessionRow(session, onChange, { onSent: onChange }));
 
   // 行里留常用的两个：开会话和刷新。关联已有会话、归档进了右上角的 ⋯——四个
   // 按钮并排时谁都不显眼，而那两个是偶尔才用一次的。
   const actions = el("div", "item-actions");
   actions.append(newSessionLink(item, sessions.length));
-  if (item.source && claimed.has(item.source.provider)) {
-    actions.append(refreshButton(item, onChange));
-  }
+  const refresh = refreshButton(item, providers, onChange);
+  if (refresh) actions.append(refresh);
   card.append(actions);
   return card;
 }
@@ -1050,7 +1048,7 @@ function buildToolbar(dims, facets, groupBy, selected, showArchived, onChange) {
  * @param {string} groupBy
  * @param {string[]} cols facet 列的维度（沿用"筛选区已经加过的字段"这条判断，见 item-table.js）
  */
-function itemList(groups, groupBy, cols, mine, facets, claimed, onChange, link) {
+function itemList(groups, groupBy, cols, mine, facets, providers, onChange, link) {
   const wrap = el("div", "item-list");
   for (const group of groups) {
     let parent = wrap;
@@ -1061,14 +1059,14 @@ function itemList(groups, groupBy, cols, mine, facets, claimed, onChange, link) 
       parent = section;
     }
     for (const item of group.items) {
-      parent.append(itemListRow(item, mine.get(item.id) ?? [], facets[item.id], cols, claimed, onChange, link));
+      parent.append(itemListRow(item, mine.get(item.id) ?? [], facets[item.id], cols, providers, onChange, link));
     }
   }
   return wrap;
 }
 
 /** 列表里的一张单。构件全部来自卡片那一套，见 itemList 顶上的注释。 */
-function itemListRow(item, sessions, facets, cols, claimed, onChange, link) {
+function itemListRow(item, sessions, facets, cols, providers, onChange, link) {
   const row = el("div", "item-list-row");
 
   // 状态一侧：标题+徽标、agent/facet chip、会话，全部没有固定宽度，挤不下就换行。
@@ -1092,7 +1090,7 @@ function itemListRow(item, sessions, facets, cols, claimed, onChange, link) {
 
   // 会话仍然是链接本身，不是一个数字：下一步动作永远是"点进去看某一个"。
   // onChange 传下去，所以这里的解绑 × 跟卡片上是同一颗，不是只读的复制品。
-  for (const session of sessions) status.append(sessionRow(session, onChange));
+  for (const session of sessions) status.append(sessionRow(session, onChange, { onSent: onChange }));
 
   row.append(status);
 
@@ -1100,9 +1098,8 @@ function itemListRow(item, sessions, facets, cols, claimed, onChange, link) {
   // 绝对定位在右上角，那是卡片的角；这里没有角，跟另外两个按钮一起排进这一侧。
   const actions = el("div", "item-actions");
   actions.append(newSessionLink(item, sessions.length));
-  if (item.source && claimed.has(item.source.provider)) {
-    actions.append(refreshButton(item, onChange));
-  }
+  const refresh = refreshButton(item, providers, onChange);
+  if (refresh) actions.append(refresh);
   actions.append(itemMore(item, onChange, link));
   row.append(actions);
   return row;
@@ -1143,14 +1140,10 @@ function setTabWaiting(count) {
 async function render(fromSync = false) {
   if (!fromSync) syncMessage = "";
   let body;
-  let claimed;
   try {
     const res = await fetch(url("api/items"));
     if (!res.ok) throw new Error(String(res.status));
     body = await res.json();
-    // claimedProviders() 自己兜住失败、从不抛，跟 fetch("api/items") 并发问没有
-    // 意义——两次请求彼此独立，串起来只是白等一次往返。
-    claimed = await claimedProviders();
   } catch {
     renderEmpty(tr("items.offline"));
     return;
@@ -1163,6 +1156,8 @@ async function render(fromSync = false) {
   // { itemId: Facet[] }，老后端没有这个字段就当空——跟 items/sessions/bindings
   // 同一套半新半旧兜底。
   const facets = body?.facets && typeof body.facets === "object" ? body.facets : {};
+  // providers 是服务端在这份响应里报出的已认领来源——浏览器不再自己拼这份名单。
+  const providers = Array.isArray(body?.providers) ? body.providers : [];
 
   const byName = new Map(sessions.map((s) => [s.name, s]));
   const mine = new Map();
@@ -1294,7 +1289,7 @@ async function render(fromSync = false) {
           tableColumns(dims, loadFields()),
           mine,
           visibleFacets,
-          claimed,
+          providers,
           render,
           link,
         ),
@@ -1304,13 +1299,13 @@ async function render(fromSync = false) {
         const section = el("section");
         section.append(el("h2", "group-name", groupLabel(groupBy, group.value)));
         for (const item of group.items) {
-          section.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], claimed, render, link));
+          section.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], providers, render, link));
         }
         root.append(section);
       }
     } else {
       for (const item of filtered) {
-        root.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], claimed, render, link));
+        root.append(itemCard(item, mine.get(item.id) ?? [], visibleFacets[item.id], providers, render, link));
       }
     }
 

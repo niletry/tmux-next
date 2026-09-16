@@ -39,7 +39,8 @@ process.env.TMUX_NEXT_JIRA_DIR = jiraDir;
 process.env.TMUX_NEXT_ITEMS_PATH = itemsPath;
 process.env.TMUX_NEXT_BINDINGS_PATH = bindingsPath;
 
-const { issues, refreshIssue, enrich } = await import("./server");
+const { issues, refreshIssue } = await import("./cache");
+const { enrich } = await import("./source");
 
 function issueRow(key: string, id: string, summary: string, status = "In Progress") {
   return {
