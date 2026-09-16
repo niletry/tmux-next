@@ -35,6 +35,10 @@ test("大小写不敏感", () => {
   expect(classifyStatusStage("DONE")).toEqual({ hue: "ok", filled: true });
 });
 
+test("deployed 归为绿色实心，跟 done 同一档", () => {
+  expect(classifyStatusStage("Deployed")).toEqual({ hue: "ok", filled: true });
+});
+
 test("认不出的状态名兜底为灰色空心，不抛错", () => {
   expect(classifyStatusStage("某种自定义状态")).toEqual({ hue: "dim", filled: false });
 });
