@@ -10,8 +10,8 @@ import { classifyStatusStage, stageRank, STAGE_COUNT } from "./status-stage";
  * 缓存没命中就少给几个维度，那是正确的降级。这份测试因此把缓存作为参数喂进来。
  *
  * 史诗字段：Issue 上没有 `epicName`，史诗是通过 `parent` 字段表达的——对普通工单，
- * `parent.hierarchy >= 1` 就是它的史诗（见 client.ts 的注释和 public/filter.js 的
- * `epicKeyOf`）。所以这里用 `issue.parent`，不是往 Issue 上加字段。
+ * `parent.hierarchy >= 1` 就是它的史诗（见 client.ts 的注释和 server.ts 的
+ * `epicSummaryOf`）。所以这里用 `issue.parent`，不是往 Issue 上加字段。
  */
 
 const jiraItem: ItemRef = { id: "it-1", source: { provider: "jira", ref: "EXAMPLE-1" } };

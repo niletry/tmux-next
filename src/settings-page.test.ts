@@ -317,7 +317,7 @@ test("声明了配置的插件各画一节", async () => {
     "终端配色",
     "界面配色",
     "虚拟按键",
-    "jira",
+    "Jira",
     "会话模板",
   ]);
 });
@@ -325,7 +325,7 @@ test("声明了配置的插件各画一节", async () => {
 test("密钥画成 password，且输入框是空的", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
-  expand(root, "jira");
+  expand(root, "Jira");
   const secrets = [...root.querySelectorAll('input[type="password"]')] as unknown as HTMLInputElement[];
   expect(secrets.length).toBe(2);
   // 值绝不回填：回填一串掩码迟早会被当成真值存回去。
@@ -338,7 +338,7 @@ test("密钥画成 password，且输入框是空的", async () => {
 test("非密钥字段回填当前值", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
-  expand(root, "jira");
+  expand(root, "Jira");
   const urlInput = root.querySelector('input[type="url"]') as unknown as HTMLInputElement;
   expect(urlInput.value).toBe("https://example.atlassian.net");
 });
@@ -346,7 +346,7 @@ test("非密钥字段回填当前值", async () => {
 test("保存把整份表单 PUT 上去", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
-  expand(root, "jira");
+  expand(root, "Jira");
   click([...root.querySelectorAll(".settings-actions .btn")][0]);
   await new Promise((r) => setTimeout(r, 60));
 
@@ -363,7 +363,7 @@ test("保存把整份表单 PUT 上去", async () => {
 test("保存后给一句回执", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
-  expand(root, "jira");
+  expand(root, "Jira");
   click([...root.querySelectorAll(".settings-actions .btn")][0]);
   await new Promise((r) => setTimeout(r, 60));
   const note = root.querySelector(".settings-result") as unknown as HTMLElement;
@@ -376,7 +376,7 @@ test("保存后给一句回执", async () => {
 test("清单声明的动作按钮跟 Save 画在一起", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
-  const body = expand(root, "jira");
+  const body = expand(root, "Jira");
   const buttons = [...body.querySelectorAll(".settings-actions .btn")];
   expect(buttons.length).toBe(2);
   expect(buttons[0].textContent).toBe("保存");
@@ -390,7 +390,7 @@ test("清单声明的动作按钮跟 Save 画在一起", async () => {
 test("点动作按钮 POST 到对应端点，显示清单里那句回执", async () => {
   const root = await mount();
   await new Promise((r) => setTimeout(r, 80));
-  const body = expand(root, "jira");
+  const body = expand(root, "Jira");
   const actionBtn = [...body.querySelectorAll(".settings-actions .btn")][1];
   click(actionBtn);
   await new Promise((r) => setTimeout(r, 60));

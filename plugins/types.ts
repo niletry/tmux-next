@@ -5,9 +5,15 @@
 export type Plugin = {
   /** 同时决定 /api/<id>/*、/p/<id>/*、以及状态目录名。^[a-z][a-z0-9-]*$ */
   id: string;
-  /** 顶栏 title/aria-label 用的 i18n 键。没有页面的插件不出 tab，可以不给。 */
+  /**
+   * 插件的显示名——设置页那一节用它，有 tab 的插件顶栏也用它。没有页面的插件
+   * 仍然可以有一个：这是名字，不是"有没有 tab"的信号。
+   */
   titleKey?: string;
-  /** 24×24 viewBox 里的 path 串，格式跟 nav.js 现有图标一致。 */
+  /**
+   * 24×24 viewBox 里的 path 串，格式跟 nav.js 现有图标一致。
+   * icon 是给插件一个 tab 的东西：没有 icon，就没有 tab。
+   */
   icon?: string;
   i18n: { zh: Record<string, string>; en: Record<string, string> };
   /**

@@ -154,8 +154,7 @@ export async function refreshIssue(key: string): Promise<Issue | null> {
 /**
  * 一个检查状态对应的色调。
  *
- * 跟工单页 jira.js 的 checkTone 是同一套判断，只是那边产 CSS 类名、这边产 facet
- * 的 tone——两处都只认 Bitbucket 的原始状态词，改判断要一起改。
+ * 首页卡片是唯一渲染它的地方了（工单页已经退役）——只认 Bitbucket 的原始状态词。
  */
 /**
  * PR 状态的色调。MERGED 是"这条已经不用管了"所以压暗，DECLINED 才是要看一眼的。
@@ -211,10 +210,9 @@ function prGroupLabel(pr: PullRequest): string {
  * 内核不认识 epic，也不该认识：类型是 Jira 的概念，而且是开放集合（每个实例都能
  * 自己造类型）。所以形状由插件给，内核只套外壳——跟顶栏标签的 `plugin.icon` 同源。
  *
- * 形状跟工单页 public/jira.js 的 typeIcon() 一致：同一个东西在两个页面上不该长得
- * 不一样。那边额外用了填充实心的画法（史诗的闪电、缺陷的圆点），这里一律走描边，
- * 因为内核的外壳是统一的 fill="none"——把填充也做成可配置，等于让每个插件都能改
- * 内核的图标语言，那正是这个外壳存在的理由的反面。
+ * 首页卡片是唯一渲染它的地方了（工单页已经退役，那份 typeIcon() 跟着一起没了）。
+ * 这里一律走描边，因为内核的外壳是统一的 fill="none"——把填充也做成可配置，等于
+ * 让每个插件都能改内核的图标语言，那正是这个外壳存在的理由的反面。
  */
 /** 两条分支加一个合流点：到处都是这个形状，看见就知道是 PR。 */
 const PR_ICON =
@@ -315,8 +313,8 @@ export function facetsFor(
   // created 是 0 表示解析不出来（老实例、字段缺失），给一个空维度不如不给。
   if (issue.created) facets.splice(1, 0, { dim: "jira.created", value: isoDate(issue.created) });
   // 史诗名走 `parent`，不是一个独立的 epicName 字段：`parent` 同时装着普通工单的
-  // 史诗和子任务的父任务，`hierarchy >= 1` 才是史诗——跟 public/filter.js 的
-  // epicKeyOf 和 public/jira.js 里卡片上的判断保持一致。
+  // 史诗和子任务的父任务，`hierarchy >= 1` 才是史诗——跟本文件 epicSummaryOf 是
+  // 同一条规则，首页卡片是唯一渲染它的地方了。
   const epic = epicSummaryOf(issue);
   if (epic) {
     facets.push({

@@ -9,7 +9,9 @@
 /** @type {import("../types").Plugin} */
 export default {
   id: "jira",
-  // 这个插件没有页面：单在首页，它只是首页的一个数据源。
+  // 这个插件没有 icon，也就没有 tab、没有页面：单在首页，它只是首页的一个数据源。
+  // titleKey 还在——它现在只给设置页那一节起名字，不再决定顶栏画不画标签。
+  titleKey: "jira.title",
   // 单卡片上的维度 chips：内核没有"哪个插件有哪些维度"的表，dim 就是 i18n 键，
   // 跟着数据一起来。src/i18n.test.ts 单独认这个数组字面量，只把这几个键当成
   // 有真实使用点（跟 titleKey 一样，它也不长成 t()/tr()/data-i18n 的样子）。
@@ -76,6 +78,7 @@ export default {
   actions: [{ key: "full-sync", labelKey: "jira.fullSync", doneKey: "jira.fullSyncDone" }],
   i18n: {
     zh: {
+      "jira.title": "Jira",
       "jira.cfg.url": "Jira 地址",
       "jira.cfg.urlHint": "例如 https://example.atlassian.net",
       "jira.cfg.email": "邮箱",
@@ -104,6 +107,7 @@ export default {
       "jira.assignee": "负责人",
     },
     en: {
+      "jira.title": "Jira",
       "jira.cfg.url": "Jira URL",
       "jira.cfg.urlHint": "e.g. https://example.atlassian.net",
       "jira.cfg.email": "E-mail",
