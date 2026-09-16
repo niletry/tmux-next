@@ -356,6 +356,7 @@ export function facetsFor(
   if (got?.ok) {
     facets.push({
       dim: "jira.prs",
+      role: "pr",
       value: String(got.prs.length),
       // 值是个光秃秃的数字，卡片上不带维度名就读不出意思。给个图标比给"PR"两个字
       // 省地方，也跟这一行别的 chip 一样只占一个字的宽度。
@@ -383,6 +384,7 @@ export function facetsFor(
       const failed = all.filter((c) => c.state === "FAILED").length;
       facets.push({
         dim: "jira.checks",
+        role: "check",
         value: `${failed}/${all.length}`,
         tone: failed ? "warn" : "ok",
         icon: CHECK_ICON,

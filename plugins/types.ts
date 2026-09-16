@@ -265,6 +265,17 @@ export type Facet = {
    * （人名）两种情况，不用内核认识具体是哪一种。
    */
   sortKey?: { key: string; rank?: number };
+  /**
+   * 这条 facet 在单的进度状态机里扮演什么角色。内核只认这一个字段，不看 dim。
+   *
+   * "pr"：value 是 PR 数，detail 每行一个 PR，行的 tone 是 undefined=open、
+   *       "dim"=merged、"warn"=declined。
+   * "check"：顶层 tone 是 "ok"=全过、"warn"=有失败；这条 facet 只在真的问到过
+   *          检查时才出现——缺席就是"没查到"，不是"过了"。
+   *
+   * 一张单有多条同 role 的 facet 时状态机取第一条。
+   */
+  role?: "pr" | "check";
 };
 
 /**

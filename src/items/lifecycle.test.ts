@@ -16,23 +16,28 @@ function item(status: ItemStatus): WorkItem {
   };
 }
 
+// 维度名故意不叫 jira.*：状态机只认 role，不认维度名。这是"内核不再认识
+// Jira"的那条断言。
 const openPr: Facet = {
-  dim: "jira.prs",
+  dim: "tracker.pulls",
   value: "1",
+  role: "pr",
   detail: [{ label: "fix", value: "OPEN", tone: undefined }],
 };
 const mergedPr: Facet = {
-  dim: "jira.prs",
+  dim: "tracker.pulls",
   value: "1",
+  role: "pr",
   detail: [{ label: "fix", value: "MERGED", tone: "dim" }],
 };
 const declinedPr: Facet = {
-  dim: "jira.prs",
+  dim: "tracker.pulls",
   value: "1",
+  role: "pr",
   detail: [{ label: "fix", value: "DECLINED", tone: "warn" }],
 };
-const checksOk: Facet = { dim: "jira.checks", value: "0/2", tone: "ok" };
-const checksFailed: Facet = { dim: "jira.checks", value: "1/2", tone: "warn" };
+const checksOk: Facet = { dim: "tracker.ci", value: "0/2", tone: "ok", role: "check" };
+const checksFailed: Facet = { dim: "tracker.ci", value: "1/2", tone: "warn", role: "check" };
 
 describe("sanitiseStatus", () => {
   test("认识的值原样放行", () => {
@@ -80,6 +85,15 @@ describe("deriveSignal", () => {
   test("checks 全绿才是 checksAllOk", () => {
     expect(deriveSignal([openPr, checksOk], true).checksAllOk).toBe(true);
     expect(deriveSignal([openPr, checksFailed], true).checksAllOk).toBe(false);
+  });
+
+  test("没有 role 的 facet 即使叫 jira.prs 也不算信号", () => {
+    const lookalike: Facet = {
+      dim: "jira.prs",
+      value: "1",
+      detail: [{ label: "fix", value: "OPEN", tone: undefined }],
+    };
+    expect(deriveSignal([lookalike], true).hasOpenPr).toBe(false);
   });
 });
 

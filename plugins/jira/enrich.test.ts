@@ -465,3 +465,32 @@ test("jira.checks 也标 light，跟已有的聚合 tone 一起进灯带", () =>
   const got = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), new Map([["10001", dev]]));
   expect(got.find((f) => f.dim === "jira.checks")!.light).toBe(true);
 });
+
+test("PR 和检查两个 facet 带 role，给状态机认", () => {
+  const dev = new Map<string, DevResult>([
+    [
+      "10001",
+      {
+        ok: true,
+        hidden: 0,
+        prs: [
+          {
+            id: "1",
+            title: "fix",
+            branch: "b",
+            destinationBranch: "",
+            repo: "",
+            updated: 0,
+            url: "https://bitbucket.org/example/repo/pull-requests/1",
+            status: "OPEN",
+            checks: [{ name: "ci", state: "SUCCESSFUL", url: "u" }],
+            checksKnown: true,
+          },
+        ],
+      },
+    ],
+  ]);
+  const facets = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), dev);
+  expect(facets.find((f) => f.dim === "jira.prs")?.role).toBe("pr");
+  expect(facets.find((f) => f.dim === "jira.checks")?.role).toBe("check");
+});

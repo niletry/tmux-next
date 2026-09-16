@@ -248,6 +248,21 @@ test("没被问到的 item id 被丢掉", async () => {
   expect(await collectFacets(items, [src(sneaky)], [])).toEqual({ "it-1": [{ dim: "a", value: "1" }] });
 });
 
+test("role 只认 pr / check，别的当没给", async () => {
+  const src: ItemSourceProvider = {
+    provider: "alpha",
+    enrich: async () => ({
+      "it-1": [
+        { dim: "a.prs", value: "1", role: "pr" },
+        { dim: "a.checks", value: "0/1", role: "check" },
+        { dim: "a.other", value: "x", role: "bogus" } as unknown as Facet,
+      ],
+    }),
+  };
+  const got = await collectFacets(items, [src], []);
+  expect(got["it-1"]!.map((f) => f.role)).toEqual(["pr", "check", undefined]);
+});
+
 test("value 截断到 120 字符", async () => {
   const long: PluginEnricher = async () => ({ "it-1": [{ dim: "a", value: "x".repeat(500) }] });
   const got = await collectFacets(items, [src(long)], []);
