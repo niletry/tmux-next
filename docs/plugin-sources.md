@@ -119,7 +119,7 @@ role?: "pr" | "check";
 
 单的进度状态机（`src/items/lifecycle.ts` 的 `deriveSignal`）要知道"这张单有没有 PR、检查过没过"，但它**不看 `dim`**——以前它按字面量找 `jira.prs` / `jira.checks`，那等于把状态机写死在一个来源的维度名上。现在它找的是 `role`：
 
-- **`"pr"`**：`value` 是 PR 数，`detail` 每行一个 PR，**行的 `tone`** 是 `undefined` = open、`"dim"` = merged、`"warn"` = declined。
+- **`"pr"`**：`value` 是 PR 数，`detail` 每行一个 PR，**行的 `tone`** 是 `undefined` = open、`"dim"` = merged、`"warn"` = declined。`pr` 的 detail 里**只有带 `url` 的行算一个 PR**；没有 `url` 的行是注释（比如 Jira 的「另有 N 条 PR 未带本单号，已隐藏」），状态机不看——否则那行的 `tone: "dim"` 会被读成一个已合并的 PR。
 - **`"check"`**：**顶层 `tone`** 是 `"ok"` = 全过、`"warn"` = 有失败。这条 facet **只在真的问到过检查时才出现**——缺席就是"没查到"，不是"过了"。两者是不同的事实，合并会让页面往"看起来整洁"的方向撒谎。
 
 一张单上有多条同 `role` 的 facet（两个来源都贴了）时取第一条。这是今天的行为，写下来是为了不让它变成暗规则。

@@ -45,8 +45,10 @@ The plugin only ever runs the JQL from `config.json`. It does not accept a
 query from the browser, and it must not be changed to — that would turn the
 service into an open query proxy against your instance.
 
-Turn the whole thing off with `TMUX_NEXT_DISABLE_PLUGINS=jira`; the tab, the
-API and the pages disappear together.
+Turn the whole thing off with `TMUX_NEXT_DISABLE_PLUGINS=jira`. Disabling a
+plugin removes its tab (if it has one), its API and its pages together; Jira
+today has neither tab nor pages, so what disappears is its settings section,
+its data source, and `/api/jira/config`.
 
 ### And, if you enable the PR view, a Bitbucket one
 

@@ -517,3 +517,46 @@ test("读不到最后一句时说明读不到", async () => {
     expect(back.querySelector(".answer-body")?.textContent).toBe(tr("items.answerNone"));
   });
 });
+
+/**
+ * Esc 是这两张浮层自己的。
+ *
+ * 它们可能开在单浮层（item-panel.js）之上，而那一层的 Esc 监听挂在**捕获期**：
+ * 不在这里也用捕获期把 Esc 截下来，一次 Esc 会先关掉底下那层，把这张表单孤零零
+ * 留在页面上，终端页顺手放下 modalOpen、焦点被抢回会话。所以断言两件事——这一层
+ * 自己关掉了，以及事件没有继续往下传。
+ */
+function escapeClosesSheet(back: HTMLElement) {
+  let bubbled = 0;
+  const spy = () => {
+    bubbled += 1;
+  };
+  document.addEventListener("keydown", spy);
+  try {
+    document.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+  } finally {
+    document.removeEventListener("keydown", spy);
+  }
+  expect(back.isConnected).toBe(false);
+  expect(document.querySelector(".sheet-backdrop")).toBeNull();
+  expect(bubbled).toBe(0);
+}
+
+test("Esc 关掉回答浮层，且不再往下传", async () => {
+  const { openAnswerSheet } = await load();
+  await withFetch(async () => new Response(JSON.stringify({ text: "?" })), async () => {
+    const back: HTMLElement = openAnswerSheet("甲", async () => {});
+    await new Promise((r) => setTimeout(r, 20));
+    escapeClosesSheet(back);
+  });
+});
+
+test("Esc 关掉明细浮层，且不再往下传", async () => {
+  const { openDetailSheet } = await load();
+  openDetailSheet("检查: 1/1", [{ label: "ci/test", value: "SUCCESSFUL", tone: "ok" }]);
+  const back = document.querySelector(".sheet-backdrop") as HTMLElement;
+  expect(back).not.toBeNull();
+  escapeClosesSheet(back);
+});

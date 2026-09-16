@@ -31,10 +31,10 @@
 - [ ] **Step 1: 跑一次完整测试，保存失败清单**
 
 ```bash
-cd /Users/lau/projects/tmux-next/.claude/worktrees/items-module-source-contract
-bun run test 2>&1 | tee /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline.txt | tail -20
-grep -E "^\(fail\)|^\(error\)" /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline.txt | sort > /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
-wc -l /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+cd <worktree>
+bun run test 2>&1 | tee <scratchpad>/baseline.txt | tail -20
+grep -E "^\(fail\)|^\(error\)" <scratchpad>/baseline.txt | sort > <scratchpad>/baseline-fails.txt
+wc -l <scratchpad>/baseline-fails.txt
 ```
 
 Expected: typecheck 通过；失败条目只来自 CLAUDE.md 描述的 tmux 工作目录尾巴（`pwd` 失败那类）。后面每个任务结束时用同一条 grep 比对，新增的失败才算这一任务的失败。
@@ -119,7 +119,7 @@ grep -rlE "from \"(\./|\.\./|\.\./\.\./src/)(items|session-binding|item-lifecycl
 - [ ] **Step 5: typecheck 与全量测试**
 
 ```bash
-bun run typecheck && bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun run typecheck && bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 ```
 
 Expected: typecheck 无错；diff 为空（没有新增失败）。
@@ -207,7 +207,7 @@ export async function itemsRoutes(req: Request, url: URL): Promise<Response | nu
 
 ```bash
 bun run typecheck && bun test src/items/routes.test.ts src/templates-api.test.ts src/items-page.test.ts 2>&1 | tail -5
-bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 ```
 
 Expected: 三个文件全绿；diff 为空。
@@ -820,7 +820,7 @@ export const source: ItemSourceProvider = {
 
 ```bash
 bun run typecheck && bun test src/items/ src/plugin-start.test.ts plugins/ 2>&1 | tail -5
-bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 ```
 
 Expected: 全绿；diff 为空。`plugins/jira/refresh-item.test.ts` 若 import 了 `refreshFromSource`，改成从 `../../src/items/sources` 引。
@@ -995,7 +995,7 @@ export function refreshButton(item, providers, onChange) {
 
 ```bash
 bun run typecheck && bun test src/items-page.test.ts src/item-panel.test.ts src/item-card.test.ts src/public-parses.test.ts src/list-page.test.ts 2>&1 | tail -5
-bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 ```
 
 Expected: 全绿；diff 为空。`grep -rn "registry.js" public/` 只剩 `nav.js` 和 `i18n.js`。
@@ -1157,7 +1157,7 @@ test("PR 和检查两个 facet 带 role，给状态机认", () => {
 
 ```bash
 bun run typecheck && bun test src/items/ plugins/jira/enrich.test.ts 2>&1 | tail -3
-bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 ```
 
 - [ ] **Step 7: 提交**
@@ -1330,7 +1330,7 @@ test("给了实例地址，史诗 chip 带链接；没给就没有", () => {
 
 ```bash
 bun run typecheck && bun test src/item-card.test.ts src/items/sources.test.ts plugins/jira/enrich.test.ts src/items-page.test.ts src/themes.test.ts 2>&1 | tail -3
-bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 ```
 
 - [ ] **Step 6: 提交**
@@ -1690,7 +1690,7 @@ JSDoc 加 `@param {{onSent?: () => Promise<void>}} [opts]`。
 
 ```bash
 bun run typecheck && bun test src/item-card.test.ts src/items-page.test.ts src/item-panel.test.ts src/i18n.test.ts src/public-parses.test.ts src/markdown.test.ts src/themes.test.ts 2>&1 | tail -3
-bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 ```
 
 - [ ] **Step 7: 提交**
@@ -1808,7 +1808,7 @@ git rm src/jira-filter.test.ts src/jira-refresh-state.test.ts plugins/jira/sessi
 
 ```bash
 bun run typecheck && bun test src/i18n.test.ts plugins/registry.test.ts src/plugin-routing.test.ts src/public-parses.test.ts src/responsive.test.ts src/themes.test.ts src/back-target.test.ts src/list-page.test.ts 2>&1 | tail -3
-bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 ```
 
 `src/i18n.test.ts` 会指出任何漏删或漏加的键，按它的输出补。
@@ -1894,7 +1894,7 @@ export async function handle(req: Request, url: URL): Promise<Response | null> {
 
 ```bash
 bun run typecheck && bun test plugins/jira 2>&1 | tail -3
-bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 wc -l plugins/jira/server.ts plugins/jira/cache.ts plugins/jira/facets.ts plugins/jira/source.ts plugins/jira/settings.ts
 ```
 
@@ -1961,7 +1961,7 @@ bun run src/index.ts
 - [ ] **Step 2: 最终全量**
 
 ```bash
-bun run test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - /private/tmp/claude-501/-Users-lau-projects-tmux-next/24607655-e39d-4fea-9bf1-36b37f527f9b/scratchpad/baseline-fails.txt
+bun run test 2>&1 | grep -E "^\(fail\)|^\(error\)" | sort | diff - <scratchpad>/baseline-fails.txt
 grep -rn "jira" src/ --include=*.ts | grep -vE "test\.ts|//|\* " || true
 ```
 

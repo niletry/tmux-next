@@ -50,12 +50,17 @@ export type LifecycleSignal = {
  * 只认 `role === "pr"` 和 `role === "check"` 两条 facet，不认维度名——哪个来源
  * 贴的、维度叫什么，内核一概不问。tone 的语义写在 plugins/types.ts 的 `role`
  * 注释里，是契约的一部分。
+ *
+ * `role: "pr"` 的 detail 里**只有带 `url` 的行算一个 PR**；没有 `url` 的行是注释
+ * （Jira 就往里塞了一行「另有 N 条 PR 未带本单号，已隐藏」），状态机不看。不这样
+ * 分，那行注释的 `tone: "dim"` 会被读成"有一个 PR 合并了"，把一张连 PR 都没有的
+ * 单一路推到 done，并且真的去改远端工单——一条展示用的说明不该有这种力量。
  */
 export function deriveSignal(facets: Facet[], hasLiveBinding: boolean): LifecycleSignal {
   const prs = facets.find((f) => f.role === "pr");
   const checks = facets.find((f) => f.role === "check");
 
-  const prDetails = prs?.detail ?? [];
+  const prDetails = (prs?.detail ?? []).filter((d) => d.url);
   const openPrs = prDetails.filter((d) => d.tone === undefined);
   const mergedPrs = prDetails.filter((d) => d.tone === "dim");
   const hasOpenPr = openPrs.length > 0;

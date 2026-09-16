@@ -321,6 +321,11 @@ test("被过滤掉的 PR 数在明细末尾多一行 dim 提示", () => {
   const facets = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), dev);
   const rows = facets.find((f) => f.dim === "jira.prs")?.detail ?? [];
   expect(rows.at(-1)).toEqual({ label: "另有 2 条 PR 未带本单号，已隐藏", value: "", tone: "dim" });
+  // 提示行不带 url，别的每行都带——状态机就是靠 url 把注释跟真的 PR 分开的
+  // （见 src/items/lifecycle.ts 的 deriveSignal）。少了这条，这行 dim 会被读成
+  // 一个已合并的 PR，把单推到 done 并回写远端工单。
+  expect(rows.at(-1)!.url).toBeUndefined();
+  expect(rows.slice(0, -1).every((r) => typeof r.url === "string" && r.url.length > 0)).toBe(true);
 });
 
 /**

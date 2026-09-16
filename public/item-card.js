@@ -88,7 +88,7 @@ function el(tag, className, text) {
 /**
  * 一条会话此刻的状态词。
  *
- * 跟 src/item-facets.ts 的 stateOf 同一套判断：turn 优先（它读的是 transcript 的
+ * 跟 src/items/facets.ts 的 stateOf 同一套判断：turn 优先（它读的是 transcript 的
  * stop_reason，是记录格式的一部分），读不到才退回屏幕推出来的 idle。两边说法必须
  * 一致——同一个会话在卡片上和在维度里给出不同状态，比没有状态更糟。
  */
@@ -145,8 +145,8 @@ export const ITEM_DIM_LABEL = {
  */
 /**
  * 把一行明细的 `send` 文本发给一个正在跑的会话。走已经存在的那条通路——回复
- * 正在跑的会话用的就是这个端点（见 plugins/jira/public/jira.js 的 openQuestion）,
- * 这里不是新开一条,是同一个动作换了一个入口。
+ * 正在跑的会话用的就是这个端点（会话页的回复入口走的也是它）,这里不是新开一条,
+ * 是同一个动作换了一个入口。
  *
  * 成功后按钮短暂切成勾选态再恢复，不关掉浮层——旁边可能还有别的失败检查也
  * 想发。失败复用 push.actionFailed，那是站里唯一一个已有的"操作失败"通用键。
@@ -188,7 +188,7 @@ async function sendToSession(sessionName, text, btn) {
 function detailRowLine(row, sessionName) {
   const line = el("div", "detail-row");
   if (row.url) {
-    // 内核只放行 http/https（plugins/handlers.ts 的 safeHttpUrl），到这里已经是
+    // 内核只放行 http/https（src/items/sources.ts 的 safeHttpUrl），到这里已经是
     // 绝对地址。noopener 是因为 target=_blank 会把 window.opener 交给对面。
     const a = document.createElement("a");
     a.className = "detail-label";
@@ -262,6 +262,36 @@ function detailGroup(title, rows, groupUrl, sessionName) {
 }
 
 /**
+ * 一张浮层的关闭函数，外加它自己那份 Esc。
+ *
+ * 浮层可能开在单浮层（item-panel.js）之上，而那一层的 Esc 监听是**捕获期**的：
+ * 不在这里以同样的捕获期把 Esc 截下来，一次 Esc 会先关掉底下那层浮层，把这张
+ * 表单孤零零留在页面上，终端页还顺手把 modalOpen 放下、焦点抢回会话。
+ * stopPropagation 同时挡住终端页整页的键盘接管，否则关浮层还附送一个 Esc 进会话。
+ *
+ * @param {HTMLElement} back 背板
+ * @returns {() => void} 关闭（重复调用无副作用）
+ */
+function sheetCloser(back) {
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener("keydown", onKey, true);
+    back.remove();
+  };
+  /** @param {KeyboardEvent} e */
+  function onKey(e) {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  }
+  document.addEventListener("keydown", onKey, true);
+  return close;
+}
+
+/**
  * @param {string} title
  * @param {DetailRow[]} rows
  * @param {string | null} [sessionName] 恰好绑了一个会话时的会话名,穿透给能
@@ -273,7 +303,7 @@ function detailGroup(title, rows, groupUrl, sessionName) {
 export function openDetailSheet(title, rows, sessionName, url) {
   const back = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
-  const close = () => back.remove();
+  const close = sheetCloser(back);
 
   const head = el("div", "sheet-head");
   head.append(el("h2", "sheet-title", title));
@@ -370,8 +400,8 @@ export function facetChip(facet, opts) {
   }
   // 插件可以给这个 chip 一个形状。内核不问它是什么意思——史诗和缺陷的区别是
   // Jira 的概念，内核一旦认识 epic 就等于认识了一个插件。它只负责套上跟全站
-  // 一致的外壳，形状本身已经在服务端被限过长、过滤过标签（见 handlers.ts 的
-  // safeIconPaths）。
+  // 一致的外壳，形状本身已经在服务端被限过长、过滤过标签（见 src/items/sources.ts
+  // 的 safeIconPaths）。
   if (facet.icon) {
     const mark = el("span", "f-icon");
     mark.innerHTML = svgShell(facet.icon, 13);
@@ -615,7 +645,7 @@ function renderMarkdown(text) {
 export function openAnswerSheet(sessionName, onSent) {
   const back = el("div", "sheet-backdrop");
   const sheet = el("div", "sheet");
-  const close = () => back.remove();
+  const close = sheetCloser(back);
 
   sheet.append(el("h2", "sheet-title", tr("items.answerTitle")));
   sheet.append(el("p", "sheet-name", sessionName));

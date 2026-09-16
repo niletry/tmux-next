@@ -10,9 +10,9 @@ import { readdirSync, readFileSync } from "node:fs";
  */
 const dir = new URL("./", import.meta.url).pathname;
 
-// readdirSync 本身不递归。后续任务会加 plugins/jira/public/index.html 和
-// plugins/jira/public/jira.js——最容易被人顺手粘进一个真实 URL 试手的文件，
-// 所以扫描从一开始就要走进子目录，覆盖面才不会随着目录长深而漏掉。
+// readdirSync 本身不递归。这个插件今天没有 public/ 目录了（页面已退役），但扫描
+// 仍然走进子目录：夹具和辅助模块随时可能分出一层，而一个只扫顶层的检查会在那一天
+// 悄悄漏掉新目录，什么都不报。
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

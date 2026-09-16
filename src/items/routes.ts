@@ -88,6 +88,12 @@ export async function advanceAllLifecycles(): Promise<void> {
       id: i.id,
       source: i.source ? { provider: i.source.provider, ref: i.source.ref } : null,
     })),
+    undefined,
+    undefined,
+    // 状态机不是卡片，不受"一张卡最多几个 chip"那条封顶——那条护栏是为了版面，
+    // 而这里被砍掉的恰好可能是 role: "check" 那条，信号就凭空少了一个。传 Infinity
+    // 跳过它，同 itemDetail。
+    Infinity,
   );
   const transitions = advanceLifecycle(items, facets, bindings);
   for (const { item, from, to } of transitions) {

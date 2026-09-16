@@ -275,7 +275,8 @@ export type Facet = {
    * 这条 facet 在单的进度状态机里扮演什么角色。内核只认这一个字段，不看 dim。
    *
    * "pr"：value 是 PR 数，detail 每行一个 PR，行的 tone 是 undefined=open、
-   *       "dim"=merged、"warn"=declined。
+   *       "dim"=merged、"warn"=declined。`pr` 的 detail 里只有带 `url` 的行算一个
+   *       PR；没有 `url` 的行是注释（比如「另有 N 条被隐藏」），状态机不看。
    * "check"：顶层 tone 是 "ok"=全过、"warn"=有失败；这条 facet 只在真的问到过
    *          检查时才出现——缺席就是"没查到"，不是"过了"。
    *
