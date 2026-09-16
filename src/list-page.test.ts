@@ -108,11 +108,17 @@ async function mount(
   store: Record<string, string> = {},
   restorable: unknown[] = [],
   items: unknown[] = [],
+  pointerFine = true,
 ) {
   posted = [];
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
   const doc = win.document;
   doc.body.innerHTML = '<header id="header"></header><main id="list"></main>';
+  // 默认摆出"有精确指针"的设备：happy-dom 自带的 matchMedia 不认识 pointer 这类
+  // 特性查询，测不出真实分支——假装桌面，让终端链接测的都是既有的"开新标签页"
+  // 这条路；触屏那条分支传 pointerFine=false 单独覆盖。见 pointer-mode.js。
+  // @ts-expect-error 覆盖 happy-dom 自带实现。
+  win.matchMedia = (query: string) => ({ matches: pointerFine && query === "(pointer: fine)", media: query });
 
   const shims: Record<string, unknown> = {
     window: win,
@@ -712,9 +718,9 @@ test("动作行的「打开」指向这个会话的终端", async () => {
   expect(open.href).toContain("terminal.html?target=orbit");
 });
 
-// 终端是自己在跑的另一个东西，原地跳走会把会话列表这一页一起带走——「打开」
-// 按钮和整张卡片的主链接都跳去同一个终端，两处都要在新标签页打开。
-test("「打开」和卡片主链接都在新标签页打开终端", async () => {
+// 终端是自己在跑的另一个东西，原地跳走会把会话列表这一页一起带走——但只在
+// 有精确指针的设备上：手机的标签页管理挤不下这个，见 pointer-mode.js。
+test("有精确指针的设备：「打开」和卡片主链接都在新标签页打开终端", async () => {
   const root = await mount([session({ name: "orbit" })]);
   const open = root.querySelector(".card-act.primary")!;
   expect(open.getAttribute("target")).toBe("_blank");
@@ -722,6 +728,16 @@ test("「打开」和卡片主链接都在新标签页打开终端", async () =>
   const main = root.querySelector(".card-main")!;
   expect(main.getAttribute("target")).toBe("_blank");
   expect(main.getAttribute("rel")).toBe("noopener noreferrer");
+});
+
+test("纯触屏设备：「打开」和卡片主链接都原地跳转", async () => {
+  const root = await mount([session({ name: "orbit" })], {}, [], [], false);
+  const open = root.querySelector(".card-act.primary")!;
+  expect(open.getAttribute("target")).toBeNull();
+  expect(open.getAttribute("rel")).toBeNull();
+  const main = root.querySelector(".card-main")!;
+  expect(main.getAttribute("target")).toBeNull();
+  expect(main.getAttribute("rel")).toBeNull();
 });
 
 // 破坏性动作要跟另外三个分得开，靠的是它自己的 class——样式表按这个 class 把它

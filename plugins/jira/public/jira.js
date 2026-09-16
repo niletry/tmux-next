@@ -19,6 +19,7 @@ import { pickSessionName } from "./session-name.js";
 import { refreshState } from "./refresh-state.js";
 import { matches, options, filtersFromSearch, searchOfFilters } from "./filter.js";
 import { parseMarkdown } from "./markdown.js";
+import { applyTerminalLinkTarget } from "../../pointer-mode.js";
 
 const mainEl = /** @type {HTMLElement} */ (document.getElementById("issues"));
 
@@ -351,9 +352,9 @@ async function openQuestion(session) {
     closeBtn.addEventListener("click", close);
     const open = el("a", "btn primary", tr("jira.open"));
     open.href = terminalHref(session);
-    // 终端是自己在跑的另一个东西，原地跳走会把这个浮层所在的这一页一起带走。
-    open.target = "_blank";
-    open.rel = "noopener noreferrer";
+    // 终端是自己在跑的另一个东西，原地跳走会把这个浮层所在的这一页一起带走——
+    // 只在有精确指针的设备上，见 pointer-mode.js。
+    applyTerminalLinkTarget(open);
     actions.append(closeBtn, open);
     sheet.append(actions);
 
@@ -490,8 +491,7 @@ function sessionRow(binding) {
 
   const link = el("a", "jira-session-link", binding.session);
   link.href = terminalHref(binding.session);
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
+  applyTerminalLinkTarget(link);
   link.title = tr("jira.open");
   row.append(link);
 

@@ -20,6 +20,11 @@ let patched = false;
 
 beforeEach(async () => {
   const win = new Window({ url: "http://127.0.0.1:7682/index.html" });
+  // 默认摆出"有精确指针"的设备：happy-dom 自带的 matchMedia 不认识 pointer 这类
+  // 特性查询，测不出真实分支——这里假装桌面，让终端链接测的都是既有的
+  // "开新标签页"这条路；触屏那条分支单独在下面一条用例里覆盖。
+  // @ts-expect-error 覆盖 happy-dom 自带实现。
+  win.matchMedia = (query: string) => ({ matches: query === "(pointer: fine)", media: query });
   patched = true;
   for (const key of PATCHED) {
     if (key in globalThis) saved.set(key, (globalThis as Record<string, unknown>)[key]);
@@ -111,12 +116,22 @@ test("会话行链到终端页，参数名是 target", async () => {
 });
 
 // 会话终端是自己在跑的另一个东西，不是"看完就关"的一次性内容——原地跳走会把
-// 点开它之前那一页（单面板、会话列表）一起带走。
-test("会话行的终端链接在新标签页打开", async () => {
+// 点开它之前那一页（单面板、会话列表）一起带走。但只在有精确指针的设备上：
+// 见 pointer-mode.js，手机的标签页管理挤不下这个。
+test("有精确指针的设备：会话行的终端链接在新标签页打开", async () => {
   const { sessionRow } = await load();
   const row = sessionRow(session({ name: "web-1-a" }), null);
   expect(row.getAttribute("target")).toBe("_blank");
   expect(row.getAttribute("rel")).toBe("noopener noreferrer");
+});
+
+test("纯触屏设备：会话行的终端链接原地跳转", async () => {
+  // @ts-expect-error 覆盖成"没有精确指针"。
+  window.matchMedia = (query: string) => ({ matches: false, media: query });
+  const { sessionRow } = await load();
+  const row = sessionRow(session({ name: "web-1-a" }), null);
+  expect(row.getAttribute("target")).toBeNull();
+  expect(row.getAttribute("rel")).toBeNull();
 });
 
 test("单头给出标题、单号链接与会话数", async () => {

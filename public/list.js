@@ -9,6 +9,7 @@ import { readIds, toggleId } from "./collapse-store.js";
 import { openItemPanel } from "./item-panel.js";
 import { isWaiting } from "./session-state.js";
 import { statusLightRow } from "./item-card.js";
+import { applyTerminalLinkTarget } from "./pointer-mode.js";
 
 // Before anything renders: paints the cached theme synchronously, then
 // reconciles with the machine's stored choice.
@@ -312,9 +313,10 @@ function cardActions(session, itemsById) {
 
   const open = el("a", "card-act primary");
   open.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
-  // 终端是自己在跑的另一个东西，原地跳走会把会话列表这一页一起带走。
-  open.target = "_blank";
-  open.rel = "noopener noreferrer";
+  // 终端是自己在跑的另一个东西，原地跳走会把会话列表这一页一起带走——但只在
+  // 有精确指针的设备上：手机的标签页管理挤不下"每点一个会话就多一个标签页"，
+  // 而系统自带的后退手势已经够用了。见 pointer-mode.js。
+  applyTerminalLinkTarget(open);
   open.innerHTML = icon("terminal");
   open.append(document.createTextNode(tr("list.openSession")));
   bar.append(open);
@@ -399,9 +401,9 @@ function card(session, itemsById, facetsById) {
   const link = el("a", "card-main");
   link.href = `terminal.html?target=${encodeURIComponent(session.name)}`;
   // The terminal is its own running thing — navigating away in place would
-  // take this session list with it.
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
+  // take this session list with it. Only on a device with a precise pointer,
+  // though — see pointer-mode.js.
+  applyTerminalLinkTarget(link);
 
   // The name gets a line to itself: sharing one with the badges, status and
   // timestamp squeezed it down to an ellipsis on a phone.
