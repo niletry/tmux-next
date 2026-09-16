@@ -20,6 +20,7 @@
 import { tr } from "./i18n-apply.js";
 import { url } from "./root.js";
 import { svgShell, icon } from "./icons.js";
+import { parseMarkdown } from "./markdown.js";
 
 /**
  * @typedef {object} DetailRow
@@ -508,6 +509,191 @@ function confirmUnbind(name, onConfirm) {
 }
 
 /**
+ * 把行内片段建成节点。
+ *
+ * 文字一律走 `textContent`——解析器交出来的是数据，这里也不把它拼回字符串，
+ * 于是「会话内容变成标记」这条路从形状上就不存在。
+ *
+ * 从工单页搬进内核（见 openAnswerSheet）：那边的两个函数原样复制，插件页删掉
+ * 之前先用它自己那份，重复是暂时的。
+ *
+ * @param {HTMLElement} parent
+ * @param {import("./markdown.js").Span[]} spans
+ */
+function renderSpans(parent, spans) {
+  for (const span of spans) {
+    if (span.type === "link") {
+      const a = el("a", "md-link", span.value);
+      a.href = span.href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      parent.append(a);
+    } else if (span.type === "code") {
+      parent.append(el("code", "md-code", span.value));
+    } else if (span.type === "strong") {
+      parent.append(el("strong", undefined, span.value));
+    } else if (span.type === "em") {
+      parent.append(el("em", undefined, span.value));
+    } else {
+      parent.append(document.createTextNode(span.value));
+    }
+  }
+  return parent;
+}
+
+/**
+ * 一棵解析结果 → 一串节点。这一层很薄，判断都在 markdown.js 里，那边可以无头地测。
+ * @param {string} text
+ */
+function renderMarkdown(text) {
+  return parseMarkdown(text).map((block) => {
+    if (block.type === "code") {
+      const pre = el("pre", "md-pre");
+      pre.append(el("code", undefined, block.value));
+      return pre;
+    }
+    if (block.type === "hr") return el("hr", "md-hr");
+    if (block.type === "table") {
+      // 表格套在自己的滚动容器里：宽内容横向滚动，绝不让它把浮层撑破——这是这个
+      // 仓库里对宽内容的一贯做法（代码块也是这么处理的）。
+      const wrap = el("div", "md-tablewrap");
+      const table = el("table", "md-table");
+
+      const thead = el("thead");
+      const hr = el("tr");
+      block.head.forEach((cell, n) => {
+        const th = renderSpans(el("th"), cell);
+        th.style.textAlign = block.align[n] ?? "left";
+        hr.append(th);
+      });
+      thead.append(hr);
+      table.append(thead);
+
+      const tbody = el("tbody");
+      for (const row of block.rows) {
+        const tr = el("tr");
+        row.forEach((cell, n) => {
+          const td = renderSpans(el("td"), cell);
+          td.style.textAlign = block.align[n] ?? "left";
+          tr.append(td);
+        });
+        tbody.append(tr);
+      }
+      table.append(tbody);
+      wrap.append(table);
+      return wrap;
+    }
+    if (block.type === "list") {
+      const list = el(block.ordered ? "ol" : "ul", "md-list");
+      for (const item of block.items) list.append(renderSpans(el("li"), item));
+      return list;
+    }
+    if (block.type === "h") {
+      // 标题级别压到 h4/h5：浮层里再大就压过它自己的标题了。
+      return renderSpans(el(block.level <= 2 ? "h4" : "h5", "md-h"), block.spans);
+    }
+    if (block.type === "quote") return renderSpans(el("blockquote", "md-quote"), block.spans);
+    return renderSpans(el("p", "md-p"), block.spans);
+  });
+}
+
+/**
+ * 会话停在"等你回答"时，就地看它问了什么、回一句。
+ *
+ * 从工单页搬进内核：它读的是会话的最后一条消息（GET /api/sessions/:name/message）、
+ * 发的是 send-keys（POST /api/sessions/:name/keys），两条路由早就在内核里，跟
+ * 哪个来源没有关系。为这一两句话先进终端、等 xterm 起来、再找输入框，正是
+ * 这个浮层要省掉的那段路。
+ *
+ * 发成功就关，然后 onSent 让调用方重画——会话从"等你"变成"在跑"。失败留在
+ * 浮层里、输入不清：最不该做的事是把人刚打的字扔掉。
+ *
+ * @param {string} sessionName
+ * @param {() => Promise<void>} onSent
+ * @returns {HTMLElement} 背板
+ */
+export function openAnswerSheet(sessionName, onSent) {
+  const back = el("div", "sheet-backdrop");
+  const sheet = el("div", "sheet");
+  const close = () => back.remove();
+
+  sheet.append(el("h2", "sheet-title", tr("items.answerTitle")));
+  sheet.append(el("p", "sheet-name", sessionName));
+
+  const body = el("div", "answer-body", tr("items.answerLoading"));
+  sheet.append(body);
+
+  const form = el("form", "answer-form");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "answer-input";
+  input.placeholder = tr("items.answerPlaceholder");
+  input.setAttribute("aria-label", tr("items.answerPlaceholder"));
+  input.enterKeyHint = "send";
+  input.autocapitalize = "off";
+  input.setAttribute("autocorrect", "off");
+  input.spellcheck = false;
+  const send = el("button", "btn primary answer-send", tr("items.send"));
+  send.type = "submit";
+  const note = el("p", "answer-note");
+  form.append(input, send);
+  sheet.append(form, note);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    send.disabled = true;
+    input.disabled = true;
+    note.textContent = tr("items.sending");
+    try {
+      const res = await fetch(url(`api/sessions/${encodeURIComponent(sessionName)}/keys`), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      close();
+      await onSent();
+    } catch {
+      note.textContent = tr("items.sendFailed");
+      send.disabled = false;
+      input.disabled = false;
+    }
+  });
+
+  const actions = el("div", "sheet-actions");
+  const cancel = el("button", "btn", tr("items.close"));
+  cancel.type = "button";
+  cancel.addEventListener("click", close);
+  const open = el("a", "btn", tr("items.open"));
+  open.href = url(`terminal.html?target=${encodeURIComponent(sessionName)}`);
+  open.target = "_blank";
+  open.rel = "noopener noreferrer";
+  actions.append(cancel, open);
+  sheet.append(actions);
+
+  back.addEventListener("click", (e) => {
+    if (e.target === back) close();
+  });
+  back.append(sheet);
+  document.body.append(back);
+  setTimeout(() => input.focus(), 50);
+
+  fetch(url(`api/sessions/${encodeURIComponent(sessionName)}/message`))
+    .then((r) => r.json())
+    .then((got) => {
+      if (got && typeof got.text === "string" && got.text) body.replaceChildren(...renderMarkdown(got.text));
+      else body.textContent = tr("items.answerNone");
+    })
+    .catch(() => {
+      body.textContent = tr("items.answerNone");
+    });
+
+  return back;
+}
+
+/**
  * 一张单下的一行会话：它现在什么状态，点进去，以及（给了 onUnbind 时）把它从
  * 这张单上解下来。别的动作仍然在会话页上。
  *
@@ -523,8 +709,9 @@ function confirmUnbind(name, onConfirm) {
 /**
  * @param {SessionLike} session
  * @param {(() => Promise<void>) | null} [onUnbind]
+ * @param {{onSent?: () => Promise<void>}} [opts]
  */
-export function sessionRow(session, onUnbind) {
+export function sessionRow(session, onUnbind, opts = {}) {
   const link = el("a", "item-session");
   link.href = url(`terminal.html?target=${encodeURIComponent(session.name)}`);
   // 终端是自己在跑的另一个东西，原地跳走会把点开它之前那一页一起带走。
@@ -533,32 +720,44 @@ export function sessionRow(session, onUnbind) {
   link.append(el("span", "s-name", session.name));
   link.append(el("span", "s-state", sessionState(session)));
   link.append(el("span", "s-open", tr("items.open")));
-  if (!onUnbind) return link;
 
-  // 挂错了要能就地解开。外面套一层，而不是把按钮塞进 <a> 里——button 嵌在
-  // anchor 里既不合法，点它也会顺带触发导航。`.item-session` 仍然是那条链接
-  // 本身，所以样式和既有断言都不用跟着改。
+  const waiting = stateOf(session) === "waiting";
+  if (!onUnbind && !waiting) return link;
+
+  // 挂错了要能就地解开、等你回答要能就地回一句。外面套一层，而不是把按钮塞进
+  // <a> 里——button 嵌在 anchor 里既不合法，点它也会顺带触发导航。
+  // `.item-session` 仍然是那条链接本身，所以样式和既有断言都不用跟着改。
   const row = el("div", "item-session-row");
   row.append(link);
-  const unbind = el("button", "item-unbind", "\u00d7");
-  unbind.type = "button";
-  unbind.title = tr("items.unlink");
-  unbind.setAttribute("aria-label", tr("items.unlink"));
-  unbind.addEventListener("click", () => {
-    confirmUnbind(session.name, async () => {
-      const res = await fetch(
-        url(`api/items/bind?session=${encodeURIComponent(session.name)}`),
-        { method: "DELETE" },
-      );
-      if (!res.ok) {
-        // 这一步没改成任何东西，所以不重画——重画只会原地抖一下又回到原样。
-        alert(tr("push.actionFailed"));
-        throw new Error(String(res.status));
-      }
-      await onUnbind();
+  if (waiting) {
+    // 它在等你：一个"回答"入口，不用进终端。放在链接外面——button 不能嵌在
+    // <a> 里。
+    const answer = el("button", "item-answer", tr("items.answer"));
+    answer.type = "button";
+    answer.addEventListener("click", () => openAnswerSheet(session.name, opts.onSent ?? (async () => {})));
+    row.append(answer);
+  }
+  if (onUnbind) {
+    const unbind = el("button", "item-unbind", "\u00d7");
+    unbind.type = "button";
+    unbind.title = tr("items.unlink");
+    unbind.setAttribute("aria-label", tr("items.unlink"));
+    unbind.addEventListener("click", () => {
+      confirmUnbind(session.name, async () => {
+        const res = await fetch(
+          url(`api/items/bind?session=${encodeURIComponent(session.name)}`),
+          { method: "DELETE" },
+        );
+        if (!res.ok) {
+          // 这一步没改成任何东西，所以不重画——重画只会原地抖一下又回到原样。
+          alert(tr("push.actionFailed"));
+          throw new Error(String(res.status));
+        }
+        await onUnbind();
+      });
     });
-  });
-  row.append(unbind);
+    row.append(unbind);
+  }
   return row;
 }
 

@@ -960,6 +960,13 @@ a.facet.is-link:hover { text-decoration: underline; }
 .item-unbind:active { background: var(--surface-1); color: var(--text-1); }
 .item-unbind:disabled { opacity: 0.5; }
 
+/* 「回答」：等你回答那句话，不用进终端就能就地回一句。 */
+.item-answer { margin-left: 6px; padding: 2px 8px; border: 1px solid var(--border-2); border-radius: 6px; background: var(--surface-3); color: var(--text-1); font-size: 12px; }
+.answer-body { margin: 8px 0; max-height: 40vh; overflow: auto; color: var(--text-1); white-space: pre-wrap; }
+.answer-form { display: flex; gap: 8px; }
+.answer-input { flex: 1; min-width: 0; }
+.answer-note { min-height: 1.2em; color: var(--text-3); font-size: 12px; }
+
 .s-name {
   flex: 1 1 auto;
   min-width: 0;

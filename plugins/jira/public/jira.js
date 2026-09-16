@@ -18,7 +18,7 @@ import { url } from "../../root.js";
 import { pickSessionName } from "./session-name.js";
 import { refreshState } from "./refresh-state.js";
 import { matches, options, filtersFromSearch, searchOfFilters } from "./filter.js";
-import { parseMarkdown } from "./markdown.js";
+import { parseMarkdown } from "../../markdown.js";
 
 const mainEl = /** @type {HTMLElement} */ (document.getElementById("issues"));
 

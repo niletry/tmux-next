@@ -450,3 +450,70 @@ test("没有 url 也没有明细的 chip 还是 span", async () => {
   const { facetChip } = await load();
   expect(facetChip({ dim: "jira.status", value: "Done" }).tagName).toBe("SPAN");
 });
+
+async function withFetch(fake: (u: string, init?: RequestInit) => Promise<Response>, run: () => Promise<void>) {
+  const real = globalThis.fetch;
+  Object.defineProperty(globalThis, "fetch", { value: fake, writable: true, configurable: true });
+  try {
+    await run();
+  } finally {
+    Object.defineProperty(globalThis, "fetch", { value: real, writable: true, configurable: true });
+  }
+}
+
+test("等你的会话行有「回答」按钮，在跑的没有", async () => {
+  const { sessionRow } = await load();
+  const waiting = sessionRow(session({ turn: "waiting" }), null);
+  expect(waiting.querySelector(".item-answer")?.textContent).toBe(tr("items.answer"));
+  const working = sessionRow(session({ turn: "working" }), null);
+  expect(working.querySelector(".item-answer")).toBeNull();
+});
+
+test("回答浮层显示会话最后说的话，发送 POST 到 keys 端点并回调", async () => {
+  const { openAnswerSheet } = await load();
+  const asked: string[] = [];
+  let sent = 0;
+  await withFetch(async (u, init) => {
+    asked.push(`${init?.method ?? "GET"} ${u}`);
+    if (String(u).endsWith("/message")) return new Response(JSON.stringify({ text: "要**合并**吗？" }));
+    return new Response(null, { status: 204 });
+  }, async () => {
+    const back: HTMLElement = openAnswerSheet("甲", async () => { sent += 1; });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(back.querySelector(".answer-body strong")?.textContent).toBe("合并");
+    const input = back.querySelector(".answer-input") as HTMLInputElement;
+    input.value = "合并吧";
+    (back.querySelector(".answer-form") as HTMLFormElement).dispatchEvent(new window.Event("submit", { cancelable: true }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(asked.some((a) => a.startsWith("POST") && a.includes("api/sessions/%E7%94%B2/keys"))).toBe(true);
+    expect(sent).toBe(1);
+    expect(document.querySelector(".answer-form")).toBeNull(); // 发成功就关
+  });
+});
+
+test("发送失败留在浮层里，输入不清", async () => {
+  const { openAnswerSheet } = await load();
+  await withFetch(async (u) => {
+    if (String(u).endsWith("/message")) return new Response(JSON.stringify({ text: "?" }));
+    return new Response("gone", { status: 404 });
+  }, async () => {
+    const back: HTMLElement = openAnswerSheet("甲", async () => {});
+    await new Promise((r) => setTimeout(r, 20));
+    const input = back.querySelector(".answer-input") as HTMLInputElement;
+    input.value = "回一句";
+    (back.querySelector(".answer-form") as HTMLFormElement).dispatchEvent(new window.Event("submit", { cancelable: true }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(back.isConnected).toBe(true);
+    expect(input.value).toBe("回一句");
+    expect(back.querySelector(".answer-note")?.textContent).toBe(tr("items.sendFailed"));
+  });
+});
+
+test("读不到最后一句时说明读不到", async () => {
+  const { openAnswerSheet } = await load();
+  await withFetch(async () => new Response(JSON.stringify({ text: null })), async () => {
+    const back = openAnswerSheet("甲", async () => {});
+    await new Promise((r) => setTimeout(r, 20));
+    expect(back.querySelector(".answer-body")?.textContent).toBe(tr("items.answerNone"));
+  });
+});

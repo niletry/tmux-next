@@ -130,17 +130,20 @@ export async function openItemPanel(query, opts = {}) {
         sheet.append(row);
       }
 
+      // 刷完按 id 再取一次，不按打开时那个 query：入口可能是会话名，而重画的
+      // 目标从来是这张单本身——按会话名再问一遍，中间要是刚解绑就变成 404。
+      // 提到会话行循环之前：回答按钮发出去之后也要用它重画（会话从"等你"变成
+      // "在跑"）。
+      const again = async () => fill(await fetchDetail({ id: data.item.id }));
+
       // 解绑不给：这是只读的一眼，改绑定在首页和会话列表上都有入口。
-      for (const session of sessions) sheet.append(sessionRow(session, null));
+      for (const session of sessions) sheet.append(sessionRow(session, null, { onSent: again }));
 
       const history = Array.isArray(data.history) ? data.history : [];
       const historyBox = historySection(history);
       if (historyBox) sheet.append(historyBox);
 
       const providers = Array.isArray(data.providers) ? data.providers : [];
-      // 刷完按 id 再取一次，不按打开时那个 query：入口可能是会话名，而重画的
-      // 目标从来是这张单本身——按会话名再问一遍，中间要是刚解绑就变成 404。
-      const again = async () => fill(await fetchDetail({ id: data.item.id }));
       const refresh = refreshButton(data.item, providers, again);
       if (refresh) {
         const actions = document.createElement("div");

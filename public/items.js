@@ -310,7 +310,7 @@ function itemCard(item, sessions, facets, providers, onChange, link) {
     card.append(row);
   }
 
-  for (const session of sessions) card.append(sessionRow(session, onChange));
+  for (const session of sessions) card.append(sessionRow(session, onChange, { onSent: onChange }));
 
   // 行里留常用的两个：开会话和刷新。关联已有会话、归档进了右上角的 ⋯——四个
   // 按钮并排时谁都不显眼，而那两个是偶尔才用一次的。
@@ -1090,7 +1090,7 @@ function itemListRow(item, sessions, facets, cols, providers, onChange, link) {
 
   // 会话仍然是链接本身，不是一个数字：下一步动作永远是"点进去看某一个"。
   // onChange 传下去，所以这里的解绑 × 跟卡片上是同一颗，不是只读的复制品。
-  for (const session of sessions) status.append(sessionRow(session, onChange));
+  for (const session of sessions) status.append(sessionRow(session, onChange, { onSent: onChange }));
 
   row.append(status);
 
