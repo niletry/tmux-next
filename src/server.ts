@@ -8,11 +8,11 @@ import { recordUsage, readUsage } from "./key-usage";
 import {
   SERVERS,
   enabledPlugins,
-  collectFacets,
   pluginSettings,
   savePluginSettings,
   runPluginAction,
 } from "../plugins/handlers";
+import { collectFacets } from "./items/sources";
 import type { Facet } from "../plugins/types";
 import { readTemplates, writeTemplates } from "./templates";
 import { KERNEL_FIELD_KEYS } from "./items/fields";

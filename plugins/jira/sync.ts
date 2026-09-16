@@ -1,5 +1,5 @@
 import type { Issue } from "./client";
-import type { SyncResult } from "../handlers";
+import type { SyncResult } from "../../src/items/sources";
 
 /**
  * Jira 工单→ items 映射循环，纯函数无网络无磁盘，测试可无头进行。

@@ -7,7 +7,7 @@ import { historyForItem } from "../session-history";
 import { listSessions, sessionIdentities } from "../tmux/session-list";
 import { notifyLifecycle } from "../push";
 import { render, sanitiseName } from "../template";
-import { collectFacets, collectFields, runSync, refreshFromSource, notifyLifecycleChange } from "../../plugins/handlers";
+import { collectFacets, collectFields, runSync, refreshFromSource, notifyLifecycleChange } from "./sources";
 import type { Facet } from "../../plugins/types";
 
 /**
@@ -47,6 +47,7 @@ async function itemDetail(id: string): Promise<Response> {
   // 面板不是卡片，不受首页那条"一张卡最多几个"的护栏——见 collectFacets 的 cap 注释。
   const theirs = await collectFacets(
     [{ id: item.id, source: item.source ? { provider: item.source.provider, ref: item.source.ref } : null }],
+    undefined,
     undefined,
     Infinity,
   );

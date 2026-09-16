@@ -10,7 +10,7 @@ import type { ItemStatus } from "../../src/items/lifecycle";
 import { bindSession, unbindSession, resolveBindings, type ResolvedBinding } from "../../src/items/binding";
 import { sessionIdentities } from "../../src/tmux/session-list";
 import type { Facet, ItemRef } from "../types";
-import type { SyncResult } from "../handlers";
+import type { ItemSourceProvider, SyncResult } from "../../src/items/sources";
 import { classifyStatusStage, stageRank, STAGE_COUNT } from "./status-stage";
 
 /**
@@ -983,3 +983,18 @@ export async function writeSettings(values: Record<string, string | boolean>): P
   };
   await writeJiraConfig(next);
 }
+
+/**
+ * 交给内核的来源：五个方法都是这个文件里已有的函数。
+ *
+ * 内核只按 `provider` 这个字符串找到它，从不知道这是哪个插件——`plugins/handlers.ts`
+ * 的 `SERVERS.jira.sources` 里放的就是这一个对象。
+ */
+export const source: ItemSourceProvider = {
+  provider: "jira",
+  sync,
+  refreshItem,
+  enrich,
+  fields,
+  onLifecycleChange,
+};
