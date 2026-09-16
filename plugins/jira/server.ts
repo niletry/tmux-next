@@ -387,12 +387,18 @@ export function facetsFor(
       // 数字说不出是哪个分支、开着还是并了。明细一行一个 PR：标题、状态、链接。
       // 这里给 url 而 checks 不给，是因为一个 PR 有自己的地址而一次检查在这份数据
       // 里没有——不是两处标准不一样。
-      detail: got.prs.map((pr) => ({
-        label: pr.title || pr.branch,
-        value: pr.status,
-        tone: prFacetTone(pr.status),
-        url: pr.url,
-      })),
+      detail: [
+        ...got.prs.map((pr) => ({
+          label: pr.title || pr.branch,
+          value: pr.status,
+          tone: prFacetTone(pr.status),
+          url: pr.url,
+        })),
+        // 过滤掉的说出来，不是悄悄少几条：onlyKeyedPrs 的意义就是 dev-status 会
+        // 把别的单的 PR 挂过来，一个不声不响的过滤只是把一种不准换成另一种。
+        // 文案是服务端中文：enrich 没有语言上下文，来源侧文案的 i18n 通路本轮不开。
+        ...(got.hidden ? [{ label: `另有 ${got.hidden} 条 PR 未带本单号，已隐藏`, value: "", tone: "dim" as const }] : []),
+      ],
     });
     // 只统计问到过检查的 PR：checksKnown 为 false 是"我们没问到"，跟"没有检查"是
     // 两回事，收成一个数字会让页面往好看的方向撒谎。

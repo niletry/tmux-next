@@ -314,6 +314,15 @@ test("问不到检查的 PR 仍然列在 PR 明细里", () => {
   expect(dims(got)["jira.checks"]).toBeUndefined();
 });
 
+test("被过滤掉的 PR 数在明细末尾多一行 dim 提示", () => {
+  const dev = new Map<string, DevResult>([
+    ["10001", { ok: true, hidden: 2, prs: [{ id: "1", title: "fix", branch: "b", destinationBranch: "", repo: "", updated: 0, url: "https://bitbucket.org/ws/repo/pull-requests/1", status: "OPEN", checks: [], checksKnown: false }] }],
+  ]);
+  const facets = facetsFor(jiraItem, new Map([["EXAMPLE-1", issue()]]), dev);
+  const rows = facets.find((f) => f.dim === "jira.prs")?.detail ?? [];
+  expect(rows.at(-1)).toEqual({ label: "另有 2 条 PR 未带本单号，已隐藏", value: "", tone: "dim" });
+});
+
 /**
  * 工单类型这一维。
  *

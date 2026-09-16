@@ -409,6 +409,15 @@ test("明细的 label 截断到 120，没有 label 的整行丢掉", async () =>
   expect(got["it-1"]![0]!.detail?.[0]!.label.length).toBe(120);
 });
 
+test("明细行 value 为空也保留", async () => {
+  const src_prov: ItemSourceProvider = {
+    provider: "alpha",
+    enrich: async () => ({ "it-1": [{ dim: "a.prs", value: "1", detail: [{ label: "提示", value: "" }] }] }),
+  };
+  const got = await collectFacets(items, [src_prov], []);
+  expect(got["it-1"]![0]!.detail).toEqual([{ label: "提示", value: "" }]);
+});
+
 test("明细的 tone 只认三个值", async () => {
   const toned = (async () => ({
     "it-1": [
