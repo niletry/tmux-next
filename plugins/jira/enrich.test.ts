@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { facetsFor } from "./server";
+import { facetsFor } from "./facets";
 import type { Issue } from "./client";
 import type { DevResult } from "./dev";
 import type { ItemRef } from "../types";

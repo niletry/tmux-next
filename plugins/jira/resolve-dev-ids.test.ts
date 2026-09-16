@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { resolveDevIds } from "./server";
+import { resolveDevIds } from "./source";
 import type { Issue } from "./client";
 
 /**

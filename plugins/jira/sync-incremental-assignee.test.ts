@@ -57,9 +57,12 @@ function issueRow(key: string, id: string, summary: string, assignee: string | n
 
 const realFetch = globalThis.fetch;
 
-// 带查询串的动态 import：拿一份全新的模块实例，保证 cache/issueCache 都是
-// 刚初始化的 null/空 Map，跟 sync-e2e.test.ts 里同样的手法。
-const { sync, enrich } = await import("./server" + "?incremental-assignee-regression-test");
+// `cache`/`issueCache` 单独存在 cache.ts 里，跟 sync-e2e.test.ts 同样的道理：
+// 带查询串的动态 import 换不出它 import 进来的这份缓存单例（相对路径 import
+// 不看查询串），改用 cache.ts 自己导出的 __resetForTest() 显式清零。
+const { sync, enrich } = await import("./source");
+const { __resetForTest } = await import("./cache");
+__resetForTest();
 
 test("增量同步带回的新单：不点单条刷新，负责人 facet 也应该已经在", async () => {
   // 第一次：没有游标，走全量——只用来焐热 cache，结果里不含目标单，避免
