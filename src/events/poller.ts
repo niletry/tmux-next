@@ -21,6 +21,19 @@ let timer: ReturnType<typeof setInterval> | null = null;
 let snapshot = new Map<string, Snapshot>();
 let busy = false;
 let injected: (() => Promise<SessionSummary[]>) | null = null;
+let lastListingEmpty = false;
+
+/**
+ * 启停代数。每次 `startPolling` / `stopPolling` 加一。
+ *
+ * 在途的那一轮不会因为 `stopPolling` 而消失，它只是变得**过期**。没有这个计数器的话：
+ * 起步的静默轮询把 `busy` 占上 → 最后一个订阅者走开 → `stopPolling`（旧代码不清
+ * `busy`，清了也一样错）→ 新订阅者来 → `startPolling` 起第二次静默轮询 → 这时第一轮
+ * 的 `.finally` 落地，把 `busy` 清成 false，而第二轮还在飞 → 下一个滴答又起第三轮，
+ * 两轮并行写同一张快照，重复的 created 就是这么来的。而"订阅者走光又回来"对这个特性
+ * 恰恰是常态路径，不是边角。
+ */
+let generation = 0;
 
 export function pollingActive(): boolean {
   return timer !== null;
@@ -41,10 +54,24 @@ export function setPollLister(lister: (() => Promise<SessionSummary[]>) | null):
  * 列举失败时这一轮什么也不做，**并且保留快照**。清空快照会让下一轮把每个会话都重报
  * 一次 created；把异常放出去会让定时器永久停摆，而症状只是事件流安静下来，不会有
  * 任何东西报错。tmux 短暂不可用（正在重启）是正常情况，不是需要惊动调用方的事。
+ *
+ * **但失败几乎从不走 try/catch。** `listSessions()`（`src/tmux/session-list.ts`）在
+ * tmux 调用失败时返回 `[]`，不抛。于是一次短暂的 tmux 抖动会被当成"机器上一个会话
+ * 都没有了"，这一轮为每个会话发一条 `session.ended`，下一轮成功之后再为每个会话发一条
+ * `session.created`——每个订阅者都被告知整台机器清空又重建了一遍。
+ *
+ * 修在这里而不是修 `listSessions` 的返回契约：那个函数被单列表路由和 Jira 来源共用，
+ * 为轮询一个人的问题去改它，要动这条分支之外的调用方。所以规则落在轮询侧：
+ * **快照非空而这一轮列举为空时跳过这一轮，第二次连续的空才信。** 代价是一次真正的
+ * 群体退出会晚一个间隔才报出来——比每次 tmux 打嗝都报一次假的便宜得多。
+ *
+ * `stillCurrent` 是启停代数的守卫，见 `generation`。默认永远为真，所以直接调
+ * `pollOnce` 的测试不受影响。
  */
 export async function pollOnce(
   lister: () => Promise<SessionSummary[]> = injected ?? listSessions,
   publishChanges = true,
+  stillCurrent: () => boolean = () => true,
 ): Promise<number> {
   let current: SessionSummary[];
   try {
@@ -53,6 +80,15 @@ export async function pollOnce(
     console.error("session poll failed", e);
     return 0;
   }
+
+  // 这一轮已经过期了（中途 stopPolling 过）：结果不许落进快照，也不许发布。
+  if (!stillCurrent()) return 0;
+
+  if (current.length === 0 && snapshot.size > 0 && !lastListingEmpty) {
+    lastListingEmpty = true;
+    return 0;
+  }
+  lastListingEmpty = current.length === 0;
 
   const { drafts, next } = diffSessions(snapshot, current);
   snapshot = next;
@@ -67,6 +103,17 @@ export function startPolling(opts?: {
 }): void {
   if (timer) return;
   const lister = opts?.lister ?? injected ?? listSessions;
+  generation += 1;
+  const gen = generation;
+  // 这一轮的结果只有在代数没变的时候才算数，`busy` 也只有它自己那一代能清——一轮
+  // 过期的轮询落地时清掉 `busy`，正好会放行一轮和现役轮询并行的比对。
+  const current = () => gen === generation;
+  const run = (publishChanges: boolean) => {
+    busy = true;
+    void pollOnce(lister, publishChanges, current).finally(() => {
+      if (current()) busy = false;
+    });
+  };
 
   // 起步先静默填一次快照。不填的话，第一轮会把机器上已经存在的每个会话都报成
   // `session.created`——说的是一件没发生过的事，而刚连上的客户端没有任何办法
@@ -74,15 +121,13 @@ export function startPolling(opts?: {
   //
   // 它也要占住 busy：一台会话很多的机器上这一次列举可能慢过间隔，不占住的话第一个
   // 定时器滴答会和它并行跑，两份比对写同一张快照。
-  busy = true;
-  void pollOnce(lister, false).finally(() => { busy = false; });
+  run(false);
 
   timer = setInterval(() => {
     // 一轮还没跑完就不开下一轮：一台会话很多的机器上 `capture-pane` 可能慢过间隔，
     // 叠加起来只会让它更慢。
     if (busy) return;
-    busy = true;
-    void pollOnce(lister).finally(() => { busy = false; });
+    run(true);
   }, opts?.intervalMs ?? DEFAULT_INTERVAL_MS);
 }
 
@@ -90,6 +135,11 @@ export function stopPolling(): void {
   if (!timer) return;
   clearInterval(timer);
   timer = null;
+  // 代数一加，还在飞的那一轮就作废了：它的结果不会落进快照，也不会把 `busy` 清掉给
+  // 下一次 `startPolling` 起的轮询添乱。`busy` 本身留给下一次 `startPolling` 去置位。
+  generation += 1;
+  // 停着的这段时间快照会变陈旧，"连续两次空列举才信"的计数不该跨越这个缺口。
+  lastListingEmpty = false;
 }
 
 /**
@@ -103,4 +153,5 @@ export function resetPoller(): void {
   snapshot = new Map();
   busy = false;
   injected = null;
+  lastListingEmpty = false;
 }
