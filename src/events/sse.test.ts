@@ -93,3 +93,27 @@ test("两个订阅者各自收到同一条事件", async () => {
   expect(await readA).toContain("event: session.ended");
   expect(await readB).toContain("event: session.ended");
 });
+
+/**
+ * `cancel()` 里"退订"和"数到零才停轮询"这两步的顺序是这个模块唯一容易悄悄错掉的
+ * 地方：谁先谁后不会让任何一次单订阅者测试变红，但顺序错了或者漏掉计数判断，
+ * 后果是轮询在还有人订阅的时候停了——流没报错、心跳照样在跳，事件就是再也不来。
+ * 这条测试专门盯住"还有一个订阅者在场时不能停轮询"这件事。
+ */
+test("两个订阅者，一个断开不影响另一个，轮询要等两个都走了才停", async () => {
+  const a = eventsResponse(null);
+  const b = eventsResponse(null);
+  await Bun.sleep(10);
+  expect(pollingActive()).toBe(true);
+  expect(subscriberCount()).toBe(2);
+
+  await a.body!.cancel();
+  await Bun.sleep(10);
+  expect(pollingActive()).toBe(true);
+  expect(subscriberCount()).toBe(1);
+
+  await b.body!.cancel();
+  await Bun.sleep(10);
+  expect(pollingActive()).toBe(false);
+  expect(subscriberCount()).toBe(0);
+});
