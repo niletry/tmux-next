@@ -59,6 +59,31 @@ cookie 那一段是必需的：浏览器发起 WebSocket 握手时**不会**带 
 caddy-cf reload --config /opt/homebrew/etc/Caddyfile --adapter caddyfile
 ```
 
+## 事件流（`/api/events`）
+
+新加的 `GET /api/events`（SSE）过反代时有两个坑，都不是代码的问题。
+
+1. **不能被缓冲。** 反代默认会攒够一块再吐给客户端，事件流会变成「几十秒一批」，
+   看起来像服务端不发事件，其实事件早就发出来了，只是卡在反代的缓冲区里。Caddy
+   的 `reverse_proxy` 块要加 `flush_interval -1`：
+
+   ```
+   	handle_path /tmux/* {
+   		basic_auth { lcm <bcrypt> }
+   		header +Set-Cookie "ttyd_auth=...; Path=/; Secure; HttpOnly; SameSite=Strict"
+   		reverse_proxy 127.0.0.1:7682 {
+   			flush_interval -1
+   		}
+   	}
+   ```
+
+2. **是普通 GET，不是 WebSocket。** 上面那段 cookie 舞蹈是给 `/ws` 单独准备的，
+   因为浏览器发起 WebSocket 握手时不会带 Basic Auth 头，只能先在普通请求上种一个
+   cookie 再靠它放行。`/api/events` 没有这个限制——它就是一次普通的 HTTP GET，
+   走的是 `handle_path /tmux/*` 那一段现成的 `basic_auth`，跟 `/ws` 的 cookie 门禁
+   完全无关。不要因为两者都在「事件流」这个话题下就把 cookie 规则也搬到
+   `/api/events` 上，那是给一个不存在的问题加一道门。
+
 ## 验证部署是否正常
 
 ```bash
