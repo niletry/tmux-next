@@ -48,6 +48,7 @@ import { kernelFacets } from "./items/facets";
 import { setListeningPort } from "./listening-port";
 import { itemsRoutes } from "./items/routes";
 import { eventsResponse } from "./events/sse";
+import { publish as publishEvent } from "./events/bus";
 
 type WsData = { session: PaneSession | null };
 
@@ -609,6 +610,19 @@ export function startServer(
           return Response.json({ error: "invalid" }, { status: 400 });
         }
         const message = typeof body.message === "string" ? body.message : undefined;
+        // 推送和 SSE 由同一个来源喂养，否则两者会对同一件事给出不同说法。
+        //
+        // 本期只接 `attention`：它是**边沿**（agent 主动要人），没有去重问题。
+        // `waiting` / `ended` 是**状态**，它们的去重靠轮询那张按 sessionId 索引的
+        // 快照表，而 hook 只知道会话名——要让两个生产者共用那张表需要一个名字到 id
+        // 的索引，在 Webhook 存在之前这点延迟换不来什么。见第 3 期。
+        if (body.event === "attention") {
+          publishEvent({
+            type: "session.attention",
+            session: body.session,
+            data: message === undefined ? {} : { message },
+          });
+        }
         const result = await notify(body.event as PushEvent, body.session, { message });
         return Response.json(result, { status: 202 });
       }
