@@ -1,0 +1,95 @@
+import { test, expect, beforeEach, afterEach } from "bun:test";
+import { eventsResponse } from "./sse";
+import { publish, resetBus, subscriberCount } from "./bus";
+import { pollingActive, resetPoller, setPollLister } from "./poller";
+
+beforeEach(() => {
+  resetBus();
+  resetPoller();
+  // 没有这一行，`eventsResponse` 里的 `startPolling()` 会去列举真的 tmux 会话，
+  // 让这个纯粹的流格式测试依赖开发机上恰好开着什么。
+  setPollLister(async () => []);
+});
+afterEach(() => { resetPoller(); });
+
+/**
+ * 读出流里已经落下的字节，不等流结束——SSE 的流永远不会结束。
+ *
+ * 那个 `pending` 必须跨循环留住。每轮新起一个 `reader.read()` 去 race 的话，上一轮
+ * 输给超时的那个 read 依然挂着，它稍后拿到的那块数据再也没人去 await——测试于是
+ * 随机丢帧，表现成"偶尔收不到事件"，而实现是好的。
+ */
+async function drain(res: Response, ms = 60): Promise<string> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let out = "";
+  const deadline = Date.now() + ms;
+  let pending: ReturnType<typeof reader.read> | null = null;
+  while (Date.now() < deadline) {
+    pending ??= reader.read();
+    const got = await Promise.race([pending, Bun.sleep(15).then(() => "timeout" as const)]);
+    if (got === "timeout") continue;
+    pending = null;
+    if (got.done) break;
+    out += decoder.decode(got.value, { stream: true });
+  }
+  await reader.cancel();
+  return out;
+}
+
+test("响应头是 SSE 该有的那几个", () => {
+  const res = eventsResponse(null);
+  expect(res.headers.get("content-type")).toBe("text/event-stream");
+  expect(res.headers.get("cache-control")).toBe("no-cache");
+  // 反代默认会攒够一块再吐，事件流会变成几十秒一批，看起来像服务端不发事件。
+  expect(res.headers.get("x-accel-buffering")).toBe("no");
+  void res.body!.cancel();
+});
+
+test("发布的事件按 SSE 帧格式落到流里", async () => {
+  const res = eventsResponse(null);
+  const read = drain(res);
+  await Bun.sleep(10);
+  const event = publish({ type: "session.turn", session: "alpha", data: { turn: "waiting" } });
+  const text = await read;
+  expect(text).toContain(`id: ${event.id}`);
+  expect(text).toContain("event: session.turn");
+  expect(text).toContain(`data: ${JSON.stringify(event)}`);
+});
+
+test("连上就启动轮询，断开就停", async () => {
+  expect(pollingActive()).toBe(false);
+  const res = eventsResponse(null);
+  await Bun.sleep(10);
+  expect(pollingActive()).toBe(true);
+  await res.body!.cancel();
+  await Bun.sleep(10);
+  expect(pollingActive()).toBe(false);
+  expect(subscriberCount()).toBe(0);
+});
+
+test("带着还在缓冲里的 id 重连会拿到补发", async () => {
+  const first = publish({ type: "session.created", session: "alpha", data: {} });
+  publish({ type: "session.turn", session: "alpha", data: {} });
+  const res = eventsResponse(first.id);
+  const text = await drain(res);
+  expect(text).toContain("event: session.turn");
+  expect(text).not.toContain("event: session.created");
+});
+
+test("带着认不出来的 id 重连先拿到一条 resync", async () => {
+  const res = eventsResponse("evt_deadbeef_9");
+  const text = await drain(res);
+  expect(text).toContain("event: resync");
+});
+
+test("两个订阅者各自收到同一条事件", async () => {
+  const a = eventsResponse(null);
+  const b = eventsResponse(null);
+  const readA = drain(a);
+  const readB = drain(b);
+  await Bun.sleep(10);
+  publish({ type: "session.ended", session: "alpha", data: {} });
+  expect(await readA).toContain("event: session.ended");
+  expect(await readB).toContain("event: session.ended");
+});

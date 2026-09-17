@@ -47,6 +47,7 @@ import { resolveBindings } from "./items/binding";
 import { kernelFacets } from "./items/facets";
 import { setListeningPort } from "./listening-port";
 import { itemsRoutes } from "./items/routes";
+import { eventsResponse } from "./events/sse";
 
 type WsData = { session: PaneSession | null };
 
@@ -579,6 +580,12 @@ export function startServer(
         const message = typeof body.message === "string" ? body.message : undefined;
         const result = await notify(body.event as PushEvent, body.session, { message });
         return Response.json(result, { status: 202 });
+      }
+
+      // 事件流。放在具体的 /api/sessions/... 正则之前无所谓——它是精确路径匹配，
+      // 不会被那些贪婪的 (.+) 吞掉，也吞不掉别人。
+      if (url.pathname === "/api/events" && req.method === "GET") {
+        return eventsResponse(req.headers.get("last-event-id"));
       }
 
       // Browsing for a directory the sessions don't already cover. Any path on
