@@ -47,6 +47,8 @@ import { resolveBindings } from "./items/binding";
 import { kernelFacets } from "./items/facets";
 import { setListeningPort } from "./listening-port";
 import { itemsRoutes } from "./items/routes";
+import { eventsResponse } from "./events/sse";
+import { publish as publishEvent } from "./events/bus";
 
 type WsData = { session: PaneSession | null };
 
@@ -278,6 +280,14 @@ export function startServer(
     // reverse proxy in front to provide TLS and authentication.
     hostname,
     port,
+    // Load-bearing for the SSE event stream, not just for WebSockets: Bun
+    // closes any connection that has been silent for this many seconds, and
+    // `HEARTBEAT_MS` in src/events/sse.ts (15s) is what keeps an idle
+    // /api/events stream from going silent. Lowering this below that interval
+    // makes the server hang up on every healthy event stream, and the symptom
+    // — a client reconnecting on a fixed period — looks like a network fault.
+    // Bun's default is 10s, i.e. shorter than the heartbeat; this line is a
+    // precondition of the feature, not incidental tuning.
     idleTimeout: 120,
 
     async fetch(req, srv) {
@@ -458,6 +468,37 @@ export function startServer(
         );
       }
 
+      /**
+       * 这台服务器实际支持什么。
+       *
+       * 用它代替 URL 版本号：调用方是自己的第二个前端，真正会发生的不一致是手机上的
+       * App 和机器上的服务端版本对不上——服务端是 npm 包由用户自己升级，客户端要过
+       * 应用商店审核。`/api/v1` 对此无能为力，一份能力清单可以让新客户端自己降级，
+       * 而不是撞上 404 再猜原因。
+       *
+       * 清单里只能有**已经实现**的东西。提前写上一个名字比没有这个端点更糟：客户端
+       * 会据此走上一条不存在的路径，而它本可以降级。
+       */
+      if (url.pathname === "/api/capabilities" && req.method === "GET") {
+        return Response.json(
+          {
+            version: pkg.version,
+            build: BUILD,
+            events: [
+              "session.created",
+              "session.ended",
+              "session.renamed",
+              "session.turn",
+              "session.attention",
+            ],
+            streamEvents: ["resync"],
+            includes: [],
+            features: ["sse"],
+          },
+          { headers: { "Cache-Control": "no-cache" } },
+        );
+      }
+
       // What can be started, for the new-session picker. Capabilities travel
       // with each entry so the client does not have to know which agent has
       // which — notably a skip-permissions mode, which only Claude Code has.
@@ -577,8 +618,27 @@ export function startServer(
           return Response.json({ error: "invalid" }, { status: 400 });
         }
         const message = typeof body.message === "string" ? body.message : undefined;
+        // 推送和 SSE 由同一个来源喂养，否则两者会对同一件事给出不同说法。
+        //
+        // 本期只接 `attention`：它是**边沿**（agent 主动要人），没有去重问题。
+        // `waiting` / `ended` 是**状态**，它们的去重靠轮询那张按 sessionId 索引的
+        // 快照表，而 hook 只知道会话名——要让两个生产者共用那张表需要一个名字到 id
+        // 的索引，在 Webhook 存在之前这点延迟换不来什么。见第 3 期。
+        if (body.event === "attention") {
+          publishEvent({
+            type: "session.attention",
+            session: body.session,
+            data: message === undefined ? {} : { message },
+          });
+        }
         const result = await notify(body.event as PushEvent, body.session, { message });
         return Response.json(result, { status: 202 });
+      }
+
+      // 事件流。放在具体的 /api/sessions/... 正则之前无所谓——它是精确路径匹配，
+      // 不会被那些贪婪的 (.+) 吞掉，也吞不掉别人。
+      if (url.pathname === "/api/events" && req.method === "GET") {
+        return eventsResponse(req.headers.get("last-event-id"));
       }
 
       // Browsing for a directory the sessions don't already cover. Any path on
