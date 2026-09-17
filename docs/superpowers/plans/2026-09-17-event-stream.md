@@ -265,11 +265,26 @@ test("形状不对的 Last-Event-ID 要求 resync", () => {
   expect(replayFrom("garbage")).toEqual({ ok: false });
 });
 
-test("已经被挤出缓冲的 id 要求 resync", () => {
+/**
+ * 注意这里要三条事件才构成缺口。客户端说"我看到第 1 条了"，那么第 1 条自己被挤出
+ * 缓冲并不算丢——它要的是第 1 条**之后**的。只有当第 2 条也被挤掉、缓冲里最旧的是
+ * 第 3 条时，中间才真的缺了东西。把这个测试写成两条事件会让它在一个正确的实现上
+ * 失败，然后逼着人把判断改成"最旧的一条在不在"，那是错的。
+ */
+test("缺口被挤出缓冲时要求 resync", () => {
   const first = publish({ type: "session.created", session: "a", data: {} }, 1000);
-  // 缓冲按时间保留 300 秒；把时钟推过窗口，第一条就该被挤掉。
+  publish({ type: "session.turn", session: "a", data: {} }, 1000);
+  // 缓冲按时间保留 300 秒；把时钟推过窗口，前两条都该被挤掉。
   publish({ type: "session.ended", session: "a", data: {} }, 1000 + 301);
   expect(replayFrom(first.id)).toEqual({ ok: false });
+});
+
+/** 挤出的是客户端已经看过的那条，不算缺口，照常补发。 */
+test("只挤掉已看过的那条不算缺口", () => {
+  const first = publish({ type: "session.created", session: "a", data: {} }, 1000);
+  const second = publish({ type: "session.ended", session: "a", data: {} }, 1000 + 301);
+  const got = replayFrom(first.id);
+  expect(got).toEqual({ ok: true, events: [second] });
 });
 ```
 
@@ -422,7 +437,7 @@ export function resetBus(): void {
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `bun test src/events/bus.test.ts && bun run typecheck`
-Expected: PASS，9 个测试
+Expected: PASS，10 个测试
 
 - [ ] **Step 6: 提交**
 
@@ -778,16 +793,19 @@ test("启动和停止改变 pollingActive", () => {
   expect(pollingActive()).toBe(false);
 });
 
+/**
+ * 用"填快照那一次列举跑了几遍"来判断，而不是用事件条数：起步的静默填充之后，一个
+ * 没有变化的机器不会再产生任何事件，数事件就什么也数不出来。间隔设得远大于测试时长，
+ * 于是唯一会发生的列举就是各自的起步填充——第二次 startPolling 一次都不该加。
+ */
 test("重复启动不会叠加出第二个定时器", async () => {
-  const seen: AppEvent[] = [];
-  subscribe((e) => seen.push(e));
-  const lister = async () => [session("$1", "alpha")];
-  startPolling({ lister, intervalMs: 20 });
-  startPolling({ lister, intervalMs: 20 });
-  await Bun.sleep(70);
-  stopPolling();
-  // 两个定时器会让同一轮跑两遍；created 只该有一条。
-  expect(seen.filter((e) => e.type === "session.created").length).toBe(1);
+  let calls = 0;
+  const lister = async () => { calls += 1; return [session("$1", "alpha")]; };
+  startPolling({ lister, intervalMs: 10_000 });
+  startPolling({ lister, intervalMs: 10_000 });
+  await Bun.sleep(20);
+  expect(calls).toBe(1);
+  expect(pollingActive()).toBe(true);
 });
 
 test("停止之后不再产生事件", async () => {
@@ -885,7 +903,11 @@ export function startPolling(opts?: {
   // 起步先静默填一次快照。不填的话，第一轮会把机器上已经存在的每个会话都报成
   // `session.created`——说的是一件没发生过的事，而刚连上的客户端没有任何办法
   // 分辨"刚创建"和"这个进程第一次看见"。
-  void pollOnce(lister, false);
+  //
+  // 它也要占住 busy：一台会话很多的机器上这一次列举可能慢过间隔，不占住的话第一个
+  // 定时器滴答会和它并行跑，两份比对写同一张快照。
+  busy = true;
+  void pollOnce(lister, false).finally(() => { busy = false; });
 
   timer = setInterval(() => {
     // 一轮还没跑完就不开下一轮：一台会话很多的机器上 `capture-pane` 可能慢过间隔，
@@ -965,15 +987,26 @@ beforeEach(() => {
 });
 afterEach(() => { resetPoller(); });
 
-/** 读出流里已经落下的字节，不等流结束——SSE 的流永远不会结束。 */
+/**
+ * 读出流里已经落下的字节，不等流结束——SSE 的流永远不会结束。
+ *
+ * 那个 `pending` 必须跨循环留住。每轮新起一个 `reader.read()` 去 race 的话，上一轮
+ * 输给超时的那个 read 依然挂着，它稍后拿到的那块数据再也没人去 await——测试于是
+ * 随机丢帧，表现成"偶尔收不到事件"，而实现是好的。
+ */
 async function drain(res: Response, ms = 60): Promise<string> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let out = "";
   const deadline = Date.now() + ms;
+  let pending: ReturnType<typeof reader.read> | null = null;
   while (Date.now() < deadline) {
-    const race = await Promise.race([reader.read(), Bun.sleep(20).then(() => null)]);
-    if (race && !race.done) out += decoder.decode(race.value, { stream: true });
+    pending ??= reader.read();
+    const got = await Promise.race([pending, Bun.sleep(15).then(() => "timeout" as const)]);
+    if (got === "timeout") continue;
+    pending = null;
+    if (got.done) break;
+    out += decoder.decode(got.value, { stream: true });
   }
   await reader.cancel();
   return out;
