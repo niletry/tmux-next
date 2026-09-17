@@ -280,6 +280,14 @@ export function startServer(
     // reverse proxy in front to provide TLS and authentication.
     hostname,
     port,
+    // Load-bearing for the SSE event stream, not just for WebSockets: Bun
+    // closes any connection that has been silent for this many seconds, and
+    // `HEARTBEAT_MS` in src/events/sse.ts (15s) is what keeps an idle
+    // /api/events stream from going silent. Lowering this below that interval
+    // makes the server hang up on every healthy event stream, and the symptom
+    // — a client reconnecting on a fixed period — looks like a network fault.
+    // Bun's default is 10s, i.e. shorter than the heartbeat; this line is a
+    // precondition of the feature, not incidental tuning.
     idleTimeout: 120,
 
     async fetch(req, srv) {

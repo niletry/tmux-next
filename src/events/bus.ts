@@ -35,6 +35,27 @@ export function subscriberCount(): number {
   return subscribers.size;
 }
 
+/** 事件 id 的唯一构造处。boot 和 seq 的拼法只写在这里，不许有第二份。 */
+function eventId(n: number): string {
+  return `evt_${boot}_${n}`;
+}
+
+/**
+ * 当前队首的事件 id——"一个已经看全了的客户端此刻手里应该拿着的那个 id"。
+ *
+ * 存在的理由只有一个：`resync` 帧要带上 `id:`，把客户端的 `lastEventId` 从别的进程
+ * （或者被挤掉的那一段）搬到本进程的编号上来。不带的话浏览器手里那个旧 id 不会变，
+ * 下一次重连还是 resync，在一台安静的机器上就是永远。
+ *
+ * 暴露的是 id 而不是裸的 seq，因为 id 的拼法（`evt_<boot>_<seq>`）是 `replayFrom`
+ * 要解析的格式，让第二个模块去拼它，等于把这个格式复制了一份。
+ * 一条事件都还没发过时它是 `evt_<boot>_0`，`replayFrom` 认这个形状，语义正好是
+ * "从头补发"。
+ */
+export function headEventId(): string {
+  return eventId(seq);
+}
+
 export function subscribe(fn: (event: AppEvent) => void): () => void {
   subscribers.add(fn);
   return () => {
@@ -48,7 +69,7 @@ export function publish(
   at: number = Math.floor(Date.now() / 1000),
 ): AppEvent {
   seq += 1;
-  const event: AppEvent = { ...draft, id: `evt_${boot}_${seq}`, seq, at };
+  const event: AppEvent = { ...draft, id: eventId(seq), seq, at };
 
   buffer.push(event);
   const cutoff = at - RETAIN_SECONDS;

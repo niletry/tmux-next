@@ -1,7 +1,7 @@
 import { test, expect, beforeEach, afterEach } from "bun:test";
 import { eventsResponse } from "./sse";
 import { publish, resetBus, subscriberCount } from "./bus";
-import { pollingActive, resetPoller, setPollLister } from "./poller";
+import { pollingActive, resetPoller, setPollLister, startPolling } from "./poller";
 
 beforeEach(() => {
   resetBus();
@@ -69,6 +69,8 @@ test("连上就启动轮询，断开就停", async () => {
 });
 
 test("带着还在缓冲里的 id 重连会拿到补发", async () => {
+  // 轮询得是开着的，否则这次重连按"服务端没在看"处理，拿到的是 resync 而不是补发。
+  startPolling({ lister: async () => [], intervalMs: 10_000 });
   const first = publish({ type: "session.created", session: "alpha", data: {} });
   publish({ type: "session.turn", session: "alpha", data: {} });
   const res = eventsResponse(first.id);
@@ -78,9 +80,64 @@ test("带着还在缓冲里的 id 重连会拿到补发", async () => {
 });
 
 test("带着认不出来的 id 重连先拿到一条 resync", async () => {
+  startPolling({ lister: async () => [], intervalMs: 10_000 });
   const res = eventsResponse("evt_deadbeef_9");
   const text = await drain(res);
   expect(text).toContain("event: resync");
+});
+
+/**
+ * 头部必须立刻能刷出去。Bun 在流产出第一块之前不会发响应头，而常见路径（新连接、
+ * 没有 Last-Event-ID、补发为空）原本一个字节都不写——`EventSource.onopen` 于是要等
+ * 到 15 秒后的第一次心跳。这条钉的就是"第一帧不为空"。
+ */
+test("常见路径也立刻写出第一帧，头部不用等心跳", async () => {
+  const res = eventsResponse(null);
+  const reader = res.body!.getReader();
+  const got = await Promise.race([
+    reader.read(),
+    Bun.sleep(500).then(() => "timeout" as const),
+  ]);
+  if (got === "timeout") throw new Error("开流 500ms 内一个字节都没有");
+  const text = new TextDecoder().decode(got.value);
+  // retry 一并钉死客户端的重连间隔——能说这句话的最早时机就是开流第一帧。
+  expect(text).toContain("retry: 3000");
+  await reader.cancel();
+});
+
+/**
+ * resync 帧必须带 `id:`。不带的话浏览器手里那个对不上的 id 原封不动，下一次重连还是
+ * resync——在一台安静的机器上就是永远 resync。
+ */
+test("resync 帧带上本进程的 id，把客户端挪到新编号上", async () => {
+  startPolling({ lister: async () => [], intervalMs: 10_000 });
+  const event = publish({ type: "session.turn", session: "alpha", data: {} });
+  const res = eventsResponse("evt_deadbeef_9");
+  const text = await drain(res);
+  expect(text).toContain("event: resync");
+  expect(text).toContain(`id: ${event.id}\nevent: resync`);
+});
+
+/**
+ * 轮询停着的那段时间里发生的变化被起步的静默填快照吸收，一条事件都没发过——于是
+ * `replayFrom` 会回答"你没错过什么"，而那是假的。服务端没资格认一个它没在看的时间段。
+ */
+test("轮询停着时重连按跟丢处理，即使 id 还在缓冲里", async () => {
+  const first = publish({ type: "session.created", session: "alpha", data: {} });
+  publish({ type: "session.turn", session: "alpha", data: {} });
+  expect(pollingActive()).toBe(false);
+  const res = eventsResponse(first.id);
+  const text = await drain(res);
+  expect(text).toContain("event: resync");
+  expect(text).not.toContain("event: session.turn");
+});
+
+/** 但没带 id 的新连接不受影响：它本来就没有"错过"可言。 */
+test("没带 id 的新连接不会平白拿到 resync", async () => {
+  expect(pollingActive()).toBe(false);
+  const res = eventsResponse(null);
+  const text = await drain(res);
+  expect(text).not.toContain("event: resync");
 });
 
 test("两个订阅者各自收到同一条事件", async () => {
