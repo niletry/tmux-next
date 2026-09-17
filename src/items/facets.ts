@@ -2,6 +2,7 @@ import type { Facet } from "../../plugins/types";
 import type { WorkItem } from "./model";
 import type { SessionSummary } from "../tmux/session-list";
 import type { ResolvedBinding } from "./binding";
+import { sessionState } from "../agents/session-state";
 
 /**
  * 内核自己的维度。
@@ -22,21 +23,6 @@ const AGENT_TONE: Record<AgentState, Facet["tone"]> = {
 };
 
 /**
- * 一条会话此刻算在跑还是在等。
- *
- * `turn` 优先：它从 transcript 的 stop_reason 读出来，是记录格式的一部分。读不到
- * 才退回 `idle`——那是认 TUI 屏幕上的空闲标记，会随 agent 改版无声失效，所以只当
- * 兜底，不当依据。
- *
- * 注意：这里 `idle` 是本仓库对"在提示符等你"这个状态的既定叫法。见 `public/list.js:219`
- * 的等待点和 `:581` 的"等待你"徽章，它们都用 `session.idle` 来表示。
- */
-function stateOf(session: SessionSummary): "waiting" | "working" {
-  if (session.turn) return session.turn;
-  return session.idle ? "waiting" : "working";
-}
-
-/**
  * 一张单的 agent 状态。
  *
  * 只要有**一个**会话在等你，整张单就算等你——手机上第一眼要回答的是"该我动了吗"，
@@ -47,7 +33,7 @@ function stateOf(session: SessionSummary): "waiting" | "working" {
  */
 function agentState(sessions: SessionSummary[]): AgentState {
   if (!sessions.length) return "none";
-  const states = sessions.map(stateOf);
+  const states = sessions.map(sessionState);
   if (states.includes("waiting")) return "waiting";
   return "working";
 }
