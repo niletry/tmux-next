@@ -459,6 +459,37 @@ export function startServer(
         );
       }
 
+      /**
+       * 这台服务器实际支持什么。
+       *
+       * 用它代替 URL 版本号：调用方是自己的第二个前端，真正会发生的不一致是手机上的
+       * App 和机器上的服务端版本对不上——服务端是 npm 包由用户自己升级，客户端要过
+       * 应用商店审核。`/api/v1` 对此无能为力，一份能力清单可以让新客户端自己降级，
+       * 而不是撞上 404 再猜原因。
+       *
+       * 清单里只能有**已经实现**的东西。提前写上一个名字比没有这个端点更糟：客户端
+       * 会据此走上一条不存在的路径，而它本可以降级。
+       */
+      if (url.pathname === "/api/capabilities" && req.method === "GET") {
+        return Response.json(
+          {
+            version: pkg.version,
+            build: BUILD,
+            events: [
+              "session.created",
+              "session.ended",
+              "session.renamed",
+              "session.turn",
+              "session.attention",
+            ],
+            streamEvents: ["resync"],
+            includes: [],
+            features: ["sse"],
+          },
+          { headers: { "Cache-Control": "no-cache" } },
+        );
+      }
+
       // What can be started, for the new-session picker. Capabilities travel
       // with each entry so the client does not have to know which agent has
       // which — notably a skip-permissions mode, which only Claude Code has.
