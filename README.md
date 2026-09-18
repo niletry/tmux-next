@@ -307,6 +307,7 @@ Each browser connection makes a `web-<uuid>` **grouped session** as a disposable
 ## Docs
 
 - [SECURITY.md](SECURITY.md) — **read this first**: the service has no built-in auth, and exposing it exposes a shell
+- [docs/api.md](docs/api.md) — the HTTP API, for writing a second client
 - [docs/deploy.md](docs/deploy.md) — reverse proxy, TLS, launchd service
 - [docs/Caddyfile.reference](docs/Caddyfile.reference) — Caddy config structure reference (credentials replaced with placeholders)
 - `docs/superpowers/` — design docs and implementation plans
