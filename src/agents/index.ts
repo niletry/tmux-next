@@ -20,6 +20,8 @@
  */
 
 /** Id-safe characters only — uuids and the like, nothing shell-shaped. */
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { readPiTask } from "./pi";
 import { readOpencodeTask } from "./opencode";
 import { readLastPrompt, transcriptPath } from "../claude-activity";
@@ -85,6 +87,14 @@ export type Agent = {
    */
   supportsSkipPermissions: boolean;
 
+  /**
+   * 探可用性时要找的可执行文件名，缺省等于 id。
+   *
+   * 同一个 agent 可以有多个 profile（见下面的 claudeAgent），它们的 id 各不相同，
+   * 而机器上只有一个可执行文件。拿 id 去 `command -v` 会把每个 profile 都判成不可用。
+   */
+  bin?: string;
+
   /** The command that starts a fresh conversation. Always a constant. */
   launch(opts: LaunchOptions): string;
 
@@ -117,24 +127,8 @@ export type Agent = {
 /** Box drawing, which every one of these TUIs uses for its frame. */
 const BOX_ONLY = /^[\s─│╭╮╰╯━┃┏┓┗┛|]*$/;
 
-const claude: Agent = {
-  id: "claude",
-  label: "Claude Code",
-  supportsSkipPermissions: true,
-  readTask: (cwd, id) => readLastPrompt(transcriptPath(cwd, id)),
-  readLastAction,
-  readTurnState,
-  readTurnMessage,
-  launch: ({ skipPermissions }) =>
-    skipPermissions
-      ? 'exec "$SHELL" -lc "claude --dangerously-skip-permissions"'
-      : 'exec "$SHELL" -lc claude',
-  resume: (id, { skipPermissions }) => {
-    if (!UUID_ID.test(id)) return null;
-    const flags = skipPermissions ? " --dangerously-skip-permissions" : "";
-    return `exec "$SHELL" -lc "claude --resume ${id}${flags}"`;
-  },
-  screen: {
+/** Claude Code 的 TUI 长相。三个 profile 共用一份——长相与配置目录无关。 */
+const CLAUDE_SCREEN = {
     chrome: [
       BOX_ONLY,
       /bypass permissions/,
@@ -146,8 +140,83 @@ const claude: Agent = {
     // e.g. "✻ Cogitated for 1m 21s"
     idleMarker: /^\s*[✻✽✢·*]\s+\S+ for \d/,
     readyMarker: /^\s*(?:>|❯)\s*$/,
-  },
 };
+
+/**
+ * Claude Code，一个 profile 一个 agent。
+ *
+ * 所谓 profile 就是一个 CLAUDE_CONFIG_DIR：各自登各自的账号，各自一棵 transcript 树，
+ * 用的还是同一个可执行文件。把它建模成独立的 agent，启动命令仍然是常量——上面那条铁律
+ * 一个字都不用改——而对其余部分零成本，因为调用方本来就只送一个 agent id 过来。
+ *
+ * 缺省 profile（configDir 为空）就是原来的 claude：命令、路径都与从前逐字相同。
+ */
+function claudeAgent(profile?: { id: string; label: string; dirName: string }): Agent {
+  // 用 $HOME 而不是在这里展开家目录：字符串仍是常量，也不用担心路径里的引号。
+  const envPrefix = profile ? `env CLAUDE_CONFIG_DIR="$HOME/${profile.dirName}" ` : "";
+  // transcript 跟着配置目录走，不在 ~/.claude/projects 里。读不到的话「在跑 / 等你」
+  // 会退回屏幕启发式，那条路不准——profile 会话看起来就总是差一口气。
+  const projectsDir = profile ? join(homedir(), profile.dirName, "projects") : undefined;
+  return {
+    id: profile?.id ?? "claude",
+    label: profile ? `Claude Code（${profile.label}）` : "Claude Code",
+    bin: "claude",
+    supportsSkipPermissions: true,
+    readTask: (cwd, id) => readLastPrompt(transcriptPath(cwd, id, projectsDir)),
+    readLastAction: (cwd, id) => readLastAction(cwd, id, projectsDir),
+    readTurnState: (cwd, id) => readTurnState(cwd, id, projectsDir),
+    readTurnMessage: (cwd, id) => readTurnMessage(cwd, id, projectsDir),
+    launch: ({ skipPermissions }) =>
+      skipPermissions
+        ? `exec ${envPrefix}"$SHELL" -lc "claude --dangerously-skip-permissions"`
+        : `exec ${envPrefix}"$SHELL" -lc claude`,
+    resume: (id, { skipPermissions }) => {
+      if (!UUID_ID.test(id)) return null;
+      const flags = skipPermissions ? " --dangerously-skip-permissions" : "";
+      return `exec ${envPrefix}"$SHELL" -lc "claude --resume ${id}${flags}"`;
+    },
+    screen: CLAUDE_SCREEN,
+  };
+}
+
+/**
+ * 额外的 Claude 配置目录，从环境变量读。
+ *
+ * 格式是逗号分隔的 `名字=目录名`，目录名相对家目录：
+ *
+ *   TMUX_NEXT_CLAUDE_PROFILES="work=.claude-work,alt=.claude-alt"
+ *
+ * 为什么是环境变量而不是配置文件：设这个变量的人就是启动这个服务的人，
+ * 和命令行参数同级；而 `~/.tmux-next` 下的文件谁都能写，那里的一行会变成
+ * 启动命令的一部分——两者信任级别不同（见 CLAUDE.md 里关于插件不做运行时扫描的那段）。
+ *
+ * 取值仍然逐字校验：名字和目录名都只许 [A-Za-z0-9._-]，于是拼进命令的东西里
+ * 不可能出现引号、斜杠或空格。不合法的条目整条丢掉，不做纠正。
+ */
+const PROFILE_NAME = /^[A-Za-z0-9._-]{1,32}$/;
+
+export function parseClaudeProfiles(
+  spec: string | undefined,
+): { id: string; label: string; dirName: string }[] {
+  if (!spec) return [];
+  const out: { id: string; label: string; dirName: string }[] = [];
+  const seen = new Set<string>();
+  for (const entry of spec.split(",")) {
+    const [label, dirName] = entry.split("=").map((x) => x.trim());
+    if (!label || !dirName) continue;
+    if (!PROFILE_NAME.test(label) || !PROFILE_NAME.test(dirName)) continue;
+    const id = `claude-${label}`;
+    if (id === "claude" || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, label, dirName });
+  }
+  return out;
+}
+
+const CLAUDE_PROFILES = parseClaudeProfiles(process.env.TMUX_NEXT_CLAUDE_PROFILES);
+
+const claude = claudeAgent();
+const claudeProfiles = CLAUDE_PROFILES.map((p) => claudeAgent(p));
 
 const opencode: Agent = {
   id: "opencode",
@@ -183,10 +252,20 @@ const pi: Agent = {
   },
 };
 
-export const AGENTS: Record<string, Agent> = { claude, opencode, pi };
+export const AGENTS: Record<string, Agent> = {
+  claude,
+  ...Object.fromEntries(claudeProfiles.map((a) => [a.id, a])),
+  opencode,
+  pi,
+};
 
 /** Display order for the picker; explicit rather than relying on key order. */
-export const AGENT_IDS = ["claude", "opencode", "pi"] as const;
+export const AGENT_IDS: readonly string[] = [
+  "claude",
+  ...CLAUDE_PROFILES.map((p) => p.id),
+  "opencode",
+  "pi",
+];
 
 export const DEFAULT_AGENT = "claude";
 

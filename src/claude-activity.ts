@@ -80,6 +80,6 @@ export async function readLastPrompt(path: string): Promise<string | null> {
  * Claude Code files transcripts under a directory named after the cwd, so both
  * are needed; the binding record written by the SessionStart hook carries them.
  */
-export function transcriptPath(cwd: string, id: string): string {
-  return join(historyDir(), encodeProjectDir(cwd), `${id}.jsonl`);
+export function transcriptPath(cwd: string, id: string, projectsDir?: string): string {
+  return join(projectsDir ?? historyDir(), encodeProjectDir(cwd), `${id}.jsonl`);
 }

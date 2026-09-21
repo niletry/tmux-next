@@ -183,7 +183,11 @@ export function lastActionFrom(chunk: string): LastAction | null {
 }
 
 /** The last action in a session's transcript, or null if there is none to read. */
-export async function readLastAction(cwd: string, id: string): Promise<LastAction | null> {
-  const chunk = await readTailOf(transcriptPath(cwd, id));
+export async function readLastAction(
+  cwd: string,
+  id: string,
+  projectsDir?: string,
+): Promise<LastAction | null> {
+  const chunk = await readTailOf(transcriptPath(cwd, id, projectsDir));
   return chunk === null ? null : lastActionFrom(chunk);
 }

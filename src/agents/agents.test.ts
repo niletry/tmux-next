@@ -1,5 +1,12 @@
 import { test, expect } from "bun:test";
-import { AGENTS, AGENT_IDS, DEFAULT_AGENT, agentOf, isKnownAgent } from "./index";
+import {
+  AGENTS,
+  AGENT_IDS,
+  DEFAULT_AGENT,
+  agentOf,
+  isKnownAgent,
+  parseClaudeProfiles,
+} from "./index";
 
 /**
  * The registry, and the invariant that makes it safe.
@@ -163,4 +170,52 @@ test("「一轮跑完了」不等于就绪：输入框里有字时不该敲进�
 test("弹着菜单时两个标记都不命中", () => {
   expect(hits(MENU_SCREEN, agentOf("claude").screen.readyMarker)).toBe(false);
   expect(hits(MENU_SCREEN, agentOf("claude").screen.idleMarker)).toBe(false);
+});
+
+/**
+ * Profile：同一个 Claude Code，不同的配置目录。
+ *
+ * 名字不写在代码里——它们是某台机器上的私事，而这个仓库是公开的。
+ * 谁启动服务谁用 TMUX_NEXT_CLAUDE_PROFILES 声明，解析是一个纯函数，直接测它。
+ */
+test("profile 从环境变量解析，名字和目录都逐字校验", () => {
+  expect(parseClaudeProfiles("work=.claude-work,alt=.claude-alt")).toEqual([
+    { id: "claude-work", label: "work", dirName: ".claude-work" },
+    { id: "claude-alt", label: "alt", dirName: ".claude-alt" },
+  ]);
+  // 没声明就一个都没有：默认装机与从前逐字相同。
+  expect(parseClaudeProfiles(undefined)).toEqual([]);
+  expect(parseClaudeProfiles("")).toEqual([]);
+});
+
+test("带引号、斜杠、空格的条目整条丢掉，不做纠正", () => {
+  for (const bad of [
+    "a=../../etc",
+    "a=~/x",
+    "a='b'",
+    'a="b"',
+    "a=b c",
+    "a=$HOME",
+    "a=b;rm -rf /",
+    "=.claude-x",
+    "x=",
+  ]) {
+    expect(parseClaudeProfiles(bad)).toEqual([]);
+  }
+});
+
+test("profile 不许顶掉默认的 claude，重名只取第一个", () => {
+  expect(parseClaudeProfiles("=.claude")).toEqual([]);
+  expect(parseClaudeProfiles("a=.one,a=.two")).toEqual([
+    { id: "claude-a", label: "a", dirName: ".one" },
+  ]);
+});
+
+test("没有 profile 时注册表就是原来那三个", () => {
+  expect([...AGENT_IDS]).toEqual(["claude", "opencode", "pi"]);
+  expect(agentOf("claude").launch({ skipPermissions: false })).toBe('exec "$SHELL" -lc claude');
+  expect(agentOf("claude").launch({ skipPermissions: true })).toBe(
+    'exec "$SHELL" -lc "claude --dangerously-skip-permissions"',
+  );
+  expect(agentOf("claude").bin).toBe("claude");
 });

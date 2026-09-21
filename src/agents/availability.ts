@@ -21,9 +21,12 @@ const CACHE_MS = 30_000;
 let cache: { at: number; value: Record<string, boolean> } | null = null;
 
 async function probe(id: string): Promise<boolean> {
+  // 探的是可执行文件名，不是 agent id：同一个 claude 可以有多个 profile，
+  // 它们 id 各异而机器上只有一个 claude，拿 id 去找会把每个 profile 都判成不可用。
+  const bin = AGENTS[id]?.bin ?? id;
   const shell = process.env.SHELL || "/bin/sh";
   try {
-    const proc = Bun.spawn([shell, ...PROBE_SHELL_FLAGS, `command -v ${id}`], {
+    const proc = Bun.spawn([shell, ...PROBE_SHELL_FLAGS, `command -v ${bin}`], {
       stdout: "pipe",
       stderr: "ignore",
     });

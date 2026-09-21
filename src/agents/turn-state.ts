@@ -113,8 +113,12 @@ export function turnStateFrom(chunk: string): TurnState | null {
  * 全函数：没有 transcript（会话早于绑定记录、或者根本不是 Claude）、文件读不了、
  * 尾部里一条轮次记录都没有，都返回 null，由调用方退回原来的屏幕判断。
  */
-export async function readTurnState(cwd: string, id: string): Promise<TurnState | null> {
-  const chunk = await readTailOf(transcriptPath(cwd, id));
+export async function readTurnState(
+  cwd: string,
+  id: string,
+  projectsDir?: string,
+): Promise<TurnState | null> {
+  const chunk = await readTailOf(transcriptPath(cwd, id, projectsDir));
   return chunk === null ? null : turnStateFrom(chunk);
 }
 
@@ -124,8 +128,12 @@ export async function readTurnState(cwd: string, id: string): Promise<TurnState 
  * 单独一个读取函数、按需调用：这段文字实测 34 到 1700 多字，塞进会话列表意味着
  * 每个会话都为一段你多半不会展开的文字付流量，而这个应用的目标设备是手机。
  */
-export async function readTurnMessage(cwd: string, id: string): Promise<string | null> {
-  const chunk = await readTailOf(transcriptPath(cwd, id));
+export async function readTurnMessage(
+  cwd: string,
+  id: string,
+  projectsDir?: string,
+): Promise<string | null> {
+  const chunk = await readTailOf(transcriptPath(cwd, id, projectsDir));
   if (chunk === null) return null;
   const turn = turnFrom(chunk);
   return turn.state === "waiting" ? turn.text : null;
